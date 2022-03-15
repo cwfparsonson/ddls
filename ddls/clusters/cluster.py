@@ -15,6 +15,7 @@ class Cluster:
                  scheduler: Any,
                  placer: Any,
                  queue_capacity: int = int(100e12),
+                 verbose: bool = True,
                  **kwargs):
         '''
         Args:
@@ -25,6 +26,8 @@ class Cluster:
         self.placer = placer
         
         self.queue_capacity = queue_capacity
+
+        self.verbose = verbose
                 
         self.kwargs = self._init_default_kwargs(kwargs)
         
@@ -109,28 +112,54 @@ class Cluster:
         # use scheduler to assign scheduling priority to 
         prioritised_jobs = self.scheduler.prioritise_jobs(self.job_queue.jobs)
         
-        # while have space, divide the jobs into workloads and place the workloads across the cluster
+        # while have space, parallelise the jobs into workloads and place the workloads across the cluster
+        self.workload_to_workloads_manager, self.workloads_managers = {}, []
         for job in prioritised_jobs:
-            node_to_workloads = self.placer.place_job(job, self)
-            if node_to_workloads is None:
+            workloads_manager = self.placer.place_job(job, self)
+            if workloads_manager.node_to_workloads is None:
                 # could not place job on cluster
                 break
             else:
                 # mount workloads onto cluster devices
-                for node, workloads in node_to_workloads.items():
+                self.workloads_managers.append(workloads_manager)
+                for node, workloads in workloads_manager.node_to_workloads.items():
                     for workload in workloads:
                         self.topology.topology.nodes[node]['device'].mount(workload)
+                        self.workload_to_workloads_manager[id(workload)] = workloads_manager
                         
     def step_cluster_processors(self):
         '''Step the cluster devices.'''
         for node in self.topology.topology.nodes:
             self.topology.topology.nodes[node]['device'].step(time=self.kwargs['simulation_time_resolution'])
+
+    def register_completed_workloads(self):
+        completed_workloads = []
+        for node in self.topology.topology.nodes:
+            device = self.topology.topology.nodes[node]['device']
+            for workload in device.mounted_workloads.values():
+                if workload.completed:
+                    completed_workloads.append(workload)
+                    self.workload_to_workloads_manager[id(workload)].register_completed_workload()
+                    device.unmount(workload)
+
+    def step_workloads_managers(self):
+        completed_managers = []
+        for workloads_manager in self.workloads_managers:
+            raise Exception('Not implemented.')
+
     
     def step_cluster(self):
-        print(f't={self.wallclock_time}')
         self.step_wallclock_time()
         self.step_job_arrivals()
         self.step_cluster_managers()
         self.step_cluster_processors()
         
-        # self.register_jobs_status()
+        self.register_completed_workloads()
+        self.step_workloads_managers()
+
+        if self.verbose:
+            print(self.verbose_logger())
+
+    def verbose_logger(self):
+        verbose_log = f'Wallclock time: {self.wallclock_time}'
+        return verbose_log

@@ -1,5 +1,6 @@
 from ddls.managers.placers.placer import Placer
 from ddls.demands.workloads.data_parallel_workload import DataParallelWorkload
+from ddls.demands.workloads.workloads_manager import DataParallelWorkloadsManager
 
 import numpy as np
 import copy
@@ -23,6 +24,8 @@ class RandomPlacer(Placer):
         local_batch_size = int(job.batch_size / num_workers)
         if self.parallelisation == 'data_parallelisation':
             workloads = [DataParallelWorkload(workload_id=i, job=job, local_batch_size=local_batch_size) for i in range(num_workers)]
+        else:
+            raise Exception(f'Unrecognised parallelisation {self.parallelisation}')
             
         # map workloads to cluster nodes
         nodes = np.array(copy.deepcopy(cluster.topology.topology.nodes))
@@ -37,5 +40,7 @@ class RandomPlacer(Placer):
                     if counter == len(nodes) - 1:
                         # cannot place workload on any node in cluster
                         return None
+
+        workloads_manager = DataParallelWorkloadsManager(job, node_to_workloads)
                     
-        return node_to_workloads
+        return workloads_manager

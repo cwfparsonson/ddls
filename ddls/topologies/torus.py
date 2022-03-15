@@ -66,8 +66,12 @@ class Torus(Topology):
             self.topology.add_edge(dim_to_nodes[dim][idx], dim_to_nodes[dim][idx+1])
         self.topology.add_edge(dim_to_nodes[dim][-1], dim_to_nodes[dim][0])
                 
-    def render(self, label_node_names=True, label_node_devices=True):
-        fig = plt.figure()
+    def render(self, 
+               label_node_names=False, 
+               label_node_devices=False,
+               node_size=20,
+               figsize=(10,10)):
+        fig = plt.figure(figsize=figsize)
         
         pos = nx.spring_layout(self.topology)
         
@@ -85,7 +89,8 @@ class Torus(Topology):
         
         nx.draw_networkx_nodes(self.topology,
                                pos,
-                               label=node_labels)
+                               label=node_labels,
+                               node_size=node_size)
         nx.draw_networkx_edges(self.topology,
                                pos)
         

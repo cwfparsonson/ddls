@@ -18,7 +18,7 @@ class DataParallelWorkload(Workload):
         self.details = details
         
         self.time_ran_for = 0
-        self.completed = False
+        self.started, self.completed = False, False
         
     def get_workload_size(self):
         return self.job.get_model_size() + (self.local_batch_size * self.job.sample_size)
@@ -65,6 +65,8 @@ class DataParallelWorkload(Workload):
             raise Exception(f'Unrecognised device type {type(device)}')
             
     def step(self, device, time):
+        if not self.started:
+            self.started = True # started running workload
         self.time_ran_for += time
         if self.time_ran_for >= self.get_run_time(device):
             self.completed = True
