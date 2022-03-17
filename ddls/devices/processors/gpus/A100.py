@@ -1,31 +1,24 @@
 from ddls.devices.processors.processor import Processor
-import math
 
-
-class GPU(Processor):
+class A100(Processor):
     def __init__(self,
-                 device_id: int,
-                 device_type: str = 'GPU',
-                 memory_capacity: int = int(40e9),
-                 memory_bandwidth: int = int(1.555e9),
-                 num_streaming_multiprocessors: int = 8,
-                 num_tensor_cores_per_streaming_multiprocessor: int = 8,
-                 base_clock_frequency: int = int(1095e6)):
-        '''
-        Refer to https://timdettmers.com/2020/09/07/which-gpu-for-deep-learning/ for more details.
-        '''
-        self.device_id = device_id
-        self.device_type = device_type
-        
-        self.memory_capacity = memory_capacity
+                 device_id: int = None):
+        if device_id is None:
+            self.device_id = id(self)
+        else:
+            self.device_id = device_id
+
+        device_type: str = 'A100'
+
+        self.memory_capacity = int(40e9)
         self.memory_occupied = 0
-        self.memory_bandwidth = memory_bandwidth
-        
-        self.num_streaming_multiprocessors = num_streaming_multiprocessors
-        self.num_tensor_cores_per_streaming_multiprocessor = num_tensor_cores_per_streaming_multiprocessor
+        memory_bandwidth = int(1.555e9)
+
+        num_streaming_multiprocessors = 8
+        num_tensor_cores_per_streaming_multiprocessor = 8
         self.num_tensor_cores = num_streaming_multiprocessors * num_tensor_cores_per_streaming_multiprocessor
-        
-        self.base_clock_frequency = base_clock_frequency
+
+        base_clock_frequency = int(1095e6)
         
         self.mounted_workloads = {}
         

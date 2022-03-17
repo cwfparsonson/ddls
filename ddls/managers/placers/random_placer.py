@@ -12,7 +12,7 @@ class RandomPlacer(Placer):
                  parallelisation: str = 'data_parallelisation'):
         self.parallelisation = parallelisation
         
-    def place_job(self, job, cluster):
+    def place(self, job, cluster):
         '''
         Divides job into parallelisation workloads and attempts to map workloads to cluster nodes.
         If cannot fit all workloads onto cluster, returns None.

@@ -7,6 +7,6 @@ class Placer(ABC):
         self.parallelisation = parallelisation
     
     @abstractmethod
-    def place_job(self, job, cluster):
+    def place(self, job, cluster):
         '''Place a job in the cluster.'''
         pass

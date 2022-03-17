@@ -14,7 +14,7 @@ class JobQueue:
     def __len__(self):
         return len(self.jobs)
         
-    def add(self, jobs: Union[list[Job, ...], Job]):
+    def add(self, jobs: Union[list[Job], Job]):
         if type(jobs) is not list:
             jobs = [jobs]
         if self.can_fit(jobs):
@@ -33,7 +33,7 @@ class JobQueue:
         else:
             return False
     
-    def remove(self, jobs: Union[list[Job, ...], Job]):
+    def remove(self, jobs: Union[list[Job], Job]):
         if type(jobs) is not list:
             jobs = [jobs]
         for job in jobs:

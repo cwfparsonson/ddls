@@ -1,7 +1,8 @@
+
 from abc import ABC, abstractmethod
 
-class Scheduler(ABC):
+class JobPrioritiser(ABC):
     @abstractmethod
-    def prioritise_jobs(self, jobs):
+    def prioritise(self, jobs):
         '''Set order in which a set of jobs should be prioritised.'''
         return

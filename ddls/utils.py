@@ -1,3 +1,4 @@
+from tkinter import W
 import numpy as np
 import random
 import copy
