@@ -8,57 +8,13 @@ matplotlib_axes_logger.setLevel('ERROR')
 import matplotlib.pyplot as plt
 
 
-def plot_computation_graph(graph,
-                             # figsize=(15, 15),
-                             scaling_factor=1,
-                             width_scaling_factor=1,
-                             height_scaling_factor=1,
-                             node_color_palette='pastel',
-                             node_size=150,
-                             edge_alpha=0.5,
-                             edge_width=0.5,
-                             font_size=8,
-                             title=None,
-                             show_fig=True,
-                             dpi=600,
-                             verbose=False):
-    start_time = time.time_ns()
-
-    # fig = plt.figure(figsize=figsize)
-    aesthetics = PlotAesthetics()
-    aesthetics.set_icml_paper_plot_aesthetics(dpi=dpi)
-    fig = plt.figure(figsize=aesthetics.get_standard_fig_size(scaling_factor=scaling_factor, width_scaling_factor=width_scaling_factor, height_scaling_factor=height_scaling_factor))
-    
-    pos = graphviz_layout(graph, prog='dot')
-    
-    node_labels = {node: node for node in graph.nodes}
-    nx.draw_networkx_nodes(graph,
-                           pos,
-                           node_size=node_size,
-                           node_color=sns.color_palette(node_color_palette)[0],
-                           label=node_labels)
-    
-    nx.draw_networkx_edges(graph,
-                           pos,
-                           alpha=edge_alpha,
-                           width=edge_width)
-    
-    nx.draw_networkx_labels(graph, 
-                            pos, 
-                            labels=node_labels,
-                            font_size=font_size)
-    
-    if title is not None:
-        plt.title(title)
-    
-    if show_fig:
-        plt.show()
-    
-    if verbose:
-        print(f'Constructed figure in {(time.time_ns() - start_time) * 1e-9:.3f} s')
-
-    return fig
-
+def get_plot_params_config(font_size):
+    params = {'legend.fontsize': font_size*0.75,
+              'axes.labelsize': font_size,
+              'axes.titlesize': font_size,
+              'xtick.labelsize': font_size*0.75,
+              'ytick.labelsize': font_size*0.75}
+    return params
 
 class PlotAesthetics:
     def __init__(self):
@@ -133,10 +89,55 @@ class PlotAesthetics:
 
 
 
-def get_plot_params_config(font_size):
-    params = {'legend.fontsize': font_size*0.75,
-              'axes.labelsize': font_size,
-              'axes.titlesize': font_size,
-              'xtick.labelsize': font_size*0.75,
-              'ytick.labelsize': font_size*0.75}
-    return params
+
+def plot_computation_graph(graph,
+                             # figsize=(15, 15),
+                             scaling_factor=1,
+                             width_scaling_factor=1,
+                             height_scaling_factor=1,
+                             node_color_palette='pastel',
+                             node_size=150,
+                             edge_alpha=0.5,
+                             edge_width=0.5,
+                             font_size=8,
+                             title=None,
+                             show_fig=True,
+                             dpi=600,
+                             verbose=False):
+    start_time = time.time_ns()
+
+    aesthetics = PlotAesthetics()
+    aesthetics.set_icml_paper_plot_aesthetics(dpi=dpi)
+    fig = plt.figure(figsize=aesthetics.get_standard_fig_size(scaling_factor=scaling_factor, width_scaling_factor=width_scaling_factor, height_scaling_factor=height_scaling_factor))
+    
+    pos = graphviz_layout(graph, prog='dot')
+    
+    node_labels = {node: node for node in graph.nodes}
+    nx.draw_networkx_nodes(graph,
+                           pos,
+                           node_size=node_size,
+                           node_color=sns.color_palette(node_color_palette)[0],
+                           label=node_labels)
+    
+    nx.draw_networkx_edges(graph,
+                           pos,
+                           alpha=edge_alpha,
+                           width=edge_width)
+    
+    nx.draw_networkx_labels(graph, 
+                            pos, 
+                            labels=node_labels,
+                            font_size=font_size)
+    
+    if title is not None:
+        plt.title(title)
+    
+    if show_fig:
+        plt.show()
+    
+    if verbose:
+        print(f'Constructed figure in {(time.time_ns() - start_time) * 1e-9:.3f} s')
+
+    return fig
+
+

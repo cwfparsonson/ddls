@@ -149,7 +149,9 @@ def pbtxt_graph_from_pbtxt_nodes(nodes, verbose=False):
     return graph
 
 
-def ddls_graph_from_pbtxt_graph(pbtxt_graph, verbose=False):
+def ddls_graph_from_pbtxt_graph(pbtxt_graph: nx.MultiDiGraph, 
+                                processor_type_profiled: str = 'A100', 
+                                verbose: bool = False):
     '''
     Returns a directed multi-graph (i.e. can have multiple edges between
     a given parent and child node). Since is a multi-graph, each edge is
@@ -157,12 +159,16 @@ def ddls_graph_from_pbtxt_graph(pbtxt_graph, verbose=False):
     and k is the index of the multi-edge used to distringuish between
     the multi-edges of a pair of nodes.
     
-    Each node has the following attributes:
-        compute_cost: Operation compute time (ms)
+    Node attributes:
+        compute_cost: {processor_type_profiled: Operation compute time (ms)}
         memory_cost: Operation memory size (B)
         
-    Each edge has the following features:
+    Edge attributes:
         size: Size of tensor being transferred by dependency (B)
+        
+    Args:
+        processor_type_profiled: Processor device type profiled to get the compute 
+            cost of the operation(s) in the computation graph. 
     '''
     ddls_graph = nx.MultiDiGraph()
     
@@ -175,7 +181,7 @@ def ddls_graph_from_pbtxt_graph(pbtxt_graph, verbose=False):
             print(node_attrs)
         
         ddls_graph.add_node(node,
-                            compute_cost=node_attrs['compute_cost'] if 'compute_cost' in node_attrs else 0,
+                            compute_cost={processor_type_profiled: node_attrs['compute_cost'] if 'compute_cost' in node_attrs else 0},
                             memory_cost=node_attrs['memory_cost'] if 'memory_cost' in node_attrs else 0)
             
         if verbose:
@@ -190,9 +196,9 @@ def ddls_graph_from_pbtxt_graph(pbtxt_graph, verbose=False):
             print(f'\npbtxt edge {edge} attrs:')
             print(edge_attrs)
             
-        ddls_graph.add_edge(u_for_edge=edge[0], # parent node
-                            v_for_edge=edge[1], # child node
-                            key=edge[2], # multi-edge index
+        ddls_graph.add_edge(u_for_edge=edge[0],
+                            v_for_edge=edge[1],
+                            key=edge[2],
                             size=edge_attrs['size'] if 'size' in edge_attrs else 0)
         
         if verbose:
@@ -205,11 +211,14 @@ def ddls_graph_from_pbtxt_graph(pbtxt_graph, verbose=False):
     
     return ddls_graph
 
-
-def ddls_graph_from_pbtxt_file(file_path, verbose=False):
+def ddls_graph_from_pbtxt_file(file_path: str, 
+                               processor_type_profiled: str,
+                               verbose: bool = False):
     pbtxt_nodes = pbtxt_nodes_from_pbtxt_file(file_path, verbose=verbose)
     pbtxt_computation_graph = pbtxt_graph_from_pbtxt_nodes(pbtxt_nodes)
-    return ddls_graph_from_pbtxt_graph(pbtxt_computation_graph, verbose=verbose)
+    return ddls_graph_from_pbtxt_graph(pbtxt_computation_graph, 
+                                       processor_type_profiled=processor_type_profiled, 
+                                       verbose=verbose)
 
 
 

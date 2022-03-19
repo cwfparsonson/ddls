@@ -23,8 +23,18 @@ class Cluster:
     def __init__(self,
                  topology_config: dict,
                  node_config: dict):
-
+        '''
+        Number of nodes resulting from topology_config must be equal to the total number
+        of nodes specified in the node_config 
+        
+        The 'worker' in the node_config dict should be an **uninnstantiated** ddls processor.
+        '''
+        # init topology
         self.topology = self._init_topology(topology_config)
+        self._check_topology_node_configs_valid(self.topology, node_config)
+        
+        # populate topology with nodes specified by node_config
+        self._populate_topology(self.topology, node_config)
         
     def _init_topology(self, topology_config):
         if topology_config['type'] == 'torus':
@@ -33,6 +43,24 @@ class Cluster:
             raise Exception(f'Unrecognised topology type {topology_config["type"]}')
         return topology
             
+    def _check_topology_node_configs_valid(self, topology, node_config):
+        num_node_config_nodes = sum([node_config[node_type]['num_nodes'] for node_type in node_config])
+        if num_node_config_nodes != len(topology.graph.nodes):
+            raise Exception(f'topology_config generated a topology with {len(topology.graph.nodes)} nodes, but node_config specified a total of {num_node_config_nodes} nodes, which is incompatible.')
+        
+    def _populate_topology(self, topology, node_config):
+        node_ids = iter(list(topology.graph.nodes))
+        topology.graph.graph['worker_to_node'] = dict()
+        for node_type in node_config.keys():
+            for _ in range(node_config[node_type]['num_nodes']):
+                node_id = next(node_ids)
+                topology.graph.nodes[node_id]['workers'] = dict()
+                for worker_config in node_config[node_type]['workers_config']:
+                    for _ in range(worker_config['num_workers']):
+                        # instantiate a worker and add to this node/server
+                        worker = worker_config['worker']()
+                        topology.graph.nodes[node_id]['workers'][worker.device_id] = worker
+                        topology.graph.graph['worker_to_node'][worker.worker_id][node_id]
 
     def reset(self,
               jobs: list[Job], 

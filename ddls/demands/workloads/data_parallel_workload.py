@@ -1,6 +1,6 @@
 from ddls.demands.workloads.workload import Workload
 from ddls.demands.jobs.job import Job
-from ddls.devices.processors.gpu import GPU
+from ddls.devices.processors.gpus.gpu import GPU
 
 from typing import Union
 import math

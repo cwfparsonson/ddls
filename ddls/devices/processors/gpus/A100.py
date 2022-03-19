@@ -7,18 +7,18 @@ class A100(Processor):
             self.device_id = id(self)
         else:
             self.device_id = device_id
-
-        device_type: str = 'A100'
+            
+        self.device_type = 'A100'
 
         self.memory_capacity = int(40e9)
         self.memory_occupied = 0
-        memory_bandwidth = int(1.555e9)
+        self.memory_bandwidth = int(1.555e9)
 
-        num_streaming_multiprocessors = 8
-        num_tensor_cores_per_streaming_multiprocessor = 8
-        self.num_tensor_cores = num_streaming_multiprocessors * num_tensor_cores_per_streaming_multiprocessor
+        self.num_streaming_multiprocessors = 8
+        self.num_tensor_cores_per_streaming_multiprocessor = 8
+        self.num_tensor_cores = self.num_streaming_multiprocessors * self.num_tensor_cores_per_streaming_multiprocessor
 
-        base_clock_frequency = int(1095e6)
+        self.base_clock_frequency = int(1095e6)
         
         self.mounted_workloads = {}
         

@@ -18,7 +18,7 @@ class Torus(Topology):
         self.num_channels = num_channels
         self.channel_capacity = channel_capacity
         
-        self.topology = nx.Graph()
+        self.graph = nx.Graph()
         self._build_topology()
             
     def _build_topology(self):
@@ -48,52 +48,46 @@ class Torus(Topology):
                 
         self._init_link_channels()
         
-        # initialise node devices as being empty
-        for node in self.topology.nodes:
-            self.topology.nodes[node]['device'] = None
+        # initialise node workers as being empty
+        for node in self.graph.nodes:
+            self.graph.nodes[node]['workers'] = dict()
             
     def _init_link_channels(self):
         '''Initialise link channels where each direction has 50% of total channel capacity.'''
         channel_names = [f'channel_{channel}' for channel in range(self.num_channels)]
-        for link in self.topology.edges:
-            self.topology.edges[link[0], link[1]][f'{link[0]}_to_{link[1]}'] = {channel: self.channel_capacity/2 for channel in channel_names}
-            self.topology.edges[link[1], link[0]][f'{link[1]}_to_{link[0]}'] = {channel: self.channel_capacity/2 for channel in channel_names}
-        self.topology.graph['channel_names'] = channel_names
-        self.topology.graph['channel_capacity'] = self.channel_capacity
+        for link in self.graph.edges:
+            self.graph.edges[link[0], link[1]][f'{link[0]}_to_{link[1]}'] = {channel: self.channel_capacity/2 for channel in channel_names}
+            self.graph.edges[link[1], link[0]][f'{link[1]}_to_{link[0]}'] = {channel: self.channel_capacity/2 for channel in channel_names}
+        self.graph.graph['channel_names'] = channel_names
+        self.graph.graph['channel_capacity'] = self.channel_capacity
                          
     def _connect_nodes_in_dim(self, dim, dim_to_nodes):
         for idx in range(len(dim_to_nodes[dim][:-1])):
-            self.topology.add_edge(dim_to_nodes[dim][idx], dim_to_nodes[dim][idx+1])
-        self.topology.add_edge(dim_to_nodes[dim][-1], dim_to_nodes[dim][0])
+            self.graph.add_edge(dim_to_nodes[dim][idx], dim_to_nodes[dim][idx+1])
+        self.graph.add_edge(dim_to_nodes[dim][-1], dim_to_nodes[dim][0])
                 
     def render(self, 
                label_node_names=False, 
-               label_node_devices=False,
                node_size=20,
                figsize=(10,10)):
         fig = plt.figure(figsize=figsize)
         
-        pos = nx.spring_layout(self.topology)
+        pos = nx.spring_layout(self.graph)
         
         node_labels = {}
-        for node in self.topology.nodes:
+        for node in self.graph.nodes:
             node_label = ''
             if label_node_names:
                 node_label += node
-            if label_node_devices:
-                if self.topology.nodes[node]['device'] is None:
-                    node_label += 'None'
-                else:
-                    node_label += str(self.topology.nodes[node]['device'])
             node_labels[node] = node_label
         
-        nx.draw_networkx_nodes(self.topology,
+        nx.draw_networkx_nodes(self.graph,
                                pos,
                                label=node_labels,
                                node_size=node_size)
-        nx.draw_networkx_edges(self.topology,
+        nx.draw_networkx_edges(self.graph,
                                pos)
         
-        nx.draw_networkx_labels(self.topology, pos, labels=node_labels)
+        nx.draw_networkx_labels(self.graph, pos, labels=node_labels)
         
         plt.show()
