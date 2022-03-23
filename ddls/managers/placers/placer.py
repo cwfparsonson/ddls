@@ -1,3 +1,6 @@
+from ddls.demands.jobs.job import Job
+from ddls.clusters.cluster import Cluster
+
 from abc import ABC, abstractmethod
 
 class Placer(ABC):
@@ -7,6 +10,8 @@ class Placer(ABC):
         self.parallelisation = parallelisation
     
     @abstractmethod
-    def place(self, job, cluster):
-        '''Place a job in the cluster.'''
+    def get_placement(self, 
+                      jobs: list[Job], 
+                      cluster: Cluster):
+        '''Place jobs in the cluster.'''
         pass

@@ -29,6 +29,9 @@ class Cluster:
         
         The 'worker' in the node_config dict should be an **uninnstantiated** ddls processor.
         '''
+        self.topology_config = topology_config
+        self.node_config = node_config
+
         # init topology
         self.topology = self._init_topology(topology_config)
         self._check_topology_node_configs_valid(self.topology, node_config)
@@ -59,25 +62,94 @@ class Cluster:
                     for _ in range(worker_config['num_workers']):
                         # instantiate a worker and add to this node/server
                         worker = worker_config['worker']()
-                        topology.graph.nodes[node_id]['workers'][worker.device_id] = worker
-                        topology.graph.graph['worker_to_node'][worker.worker_id][node_id]
+                        topology.graph.nodes[node_id]['workers'][worker.processor_id] = worker
+                        topology.graph.graph['worker_to_node'][worker.processor_id] = node_id
 
     def reset(self,
               jobs: list[Job], 
-              job_interarrival_times: Distribution,
-              simulation_run_time: Union[int, float],
-              job_sampling_mode: str = 'remove_and_repeat'):
-        self.job_interarrival_times = job_interarrival_times
+              job_interarrival_time_dist: Distribution,
+              max_simulation_run_time: Union[int, float],
+              job_sampling_mode: str = 'remove_and_repeat',
+              job_queue_capacity: int = 10,
+              verbose=False):
         self.job_sampler = Sampler(pool=jobs, sampling_mode=job_sampling_mode)
-        self.simulation_run_time = simulation_run_time
+        self.job_interarrival_time_dist = job_interarrival_time_dist 
+        self.max_simulation_run_time = max_simulation_run_time 
+
+        self.job_arrival_times = iter(self._init_job_arrival_times())
+
+        self.job_queue = JobQueue(queue_capacity=job_queue_capacity)
+
+        self.jobs_arrived = {}
+        self.jobs_completed = {}
+        self.jobs_blocked = {}
+
+        self.job_idx_to_job_id = {}
+        self.job_id_to_job_idx = {}
+
+        self.step_counter = 0
+
+        # add first job to queue
+        self.job_queue.add(self._get_next_job())
+
+        obs = None
+        action_set = None
+        reward = None
+        done = False
+        info = None
+
+        if verbose:
+            print(f'Reset cluster environment.')
+            print(f'Job interarrival time dist: {self.job_interarrival_time_dist}')
+            print(f'Job sampler: {self.job_sampler}')
+            print(f'Max sim run time: {self.max_simulation_run_time}')
+
+        return obs, action_set, reward, done, info
+
+    def _init_job_arrival_times(self, 
+                                max_counter: int = 10000):
+        job_arrival_times, counter = [0], 0
+        while job_arrival_times[-1] < self.max_simulation_run_time:
+            job_arrival_times.append(self.job_interarrival_time_dist.sample(size=None) + job_arrival_times[-1])
+            counter += 1
+            if counter > max_counter:
+                raise Exception(f'Unable to meet max_simulation_time after sampling {counter} times. Increase max_counter or decrease max_simulation_run_time')
+        return job_arrival_times
+
+    def _get_next_job(self):
+        job = self.job_sampler.sample()
+        job.job_details['time_arrived'] = next(self.job_arrival_times)
+        job.job_details['time_completed'] = None
+        job_idx = len(list(self.jobs_arrived.keys()))
+        self.jobs_arrived[job_idx] = job
+        self.job_idx_to_job_id[job_idx] = job.job_id
+        self.job_id_to_job_idx[job.job_id] = job_idx
+        return job
+
+    def __str__(self):
+        descr = f'Cluster {type(self)}'
+        descr += f' | Topology: {type(self.topology)} with {len(self.topology.graph.nodes)} nodes and {len(self.topology.graph.edges)}'
+        descr += f' | Topology config: {self.topology_config}'
+        descr += f' | Node config: {self.node_config}'
+        return descr
     
     def step(self, 
-             action):
-       self._prioritise_jobs()
-       self._partition_jobs()
-       self._place_jobs()
-       self._schedule_jobs()
-       self._communicate_jobs()
+             actions,
+             verbose=False):
+        if verbose:
+            print('')
+            print('-'*48)
+            print(f'Step: {self.step_counter}')
+
+        self._prioritise_jobs()
+        self._partition_jobs()
+        self._place_jobs(actions['job_placement'],
+                         verbose=verbose)
+        self._schedule_jobs()
+        self._communicate_jobs()
+
+        self.step_counter += 1
+
 
     def _prioritise_jobs(self):
         pass
@@ -85,8 +157,21 @@ class Cluster:
     def _partition_jobs(self):
         pass
 
-    def _place_jobs(self):
-        pass
+    def _place_jobs(self, job_placement, verbose):
+        if verbose:
+            print('-'*48)
+            print('Placing job ops onto workers...')
+        for job_id in job_placement:
+            job_idx = self.job_id_to_job_idx[job_id]
+            job = self.jobs_arrived[job_idx]
+            if verbose:
+                print(f'Job ID: {job_id} | Job index: {job_idx}')
+            for op_id in job_placement[job_id]:
+                worker_id = job_placement[job_id][op_id]
+                node_id = self.topology.graph.graph['worker_to_node'][worker_id]
+                self.topology.graph.nodes[node_id]['workers'][worker_id].mount(job=job, op_id=op_id)
+                if verbose:
+                    print(f'Op ID {op_id} placed on node ID {node_id} worker ID {worker_id}')
 
     def _schedule_jobs(self):
         pass

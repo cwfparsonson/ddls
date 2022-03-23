@@ -32,8 +32,13 @@ class Job:
             self.job_id = id(self)
         else:
             self.job_id = job_id 
+
+        if job_details is None:
+            self.job_details = {}
+        else:
+            self.job_details = job_details
+
         self.job_type = job_type
-        self.job_detals = job_details
 
         # initialise graph-level info
         self.job_total_operation_memory_cost = self._init_job_total_operation_memory_cost()

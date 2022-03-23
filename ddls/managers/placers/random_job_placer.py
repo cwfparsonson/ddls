@@ -22,44 +22,50 @@ class RandomJobPlacer(Placer):
     def __init__(self):
         pass
 
-    def place(self, 
-              job: Job, 
-              cluster: Cluster):
+    def get_placement(self, 
+                      jobs: list[Job],
+                      cluster: Cluster):
         '''
         Places operations in a job onto available worker(s) in a cluster, where the clusters
         nodes are servers which contain >=1 worker(s) which may or may not have sufficient 
         memory available for a given operation. 
         
-        Returns a mapping of operation_id -> worker_id. If no valid placement for the operation
+        Returns a mapping of job_id -> operation_id -> worker_id. If no valid placement for the operation
         could be found, worker_id will be None.
         '''
         # check how much memory is available on each worker
         worker_to_available_memory = self._get_workers_available_memory(cluster, sort=True)
         
         # make placements
-        operation_to_worker = dict()
-        for op in job.computation_graph.nodes:
-            # find which worker placements would be valid for this operation
-            valid_placements = [worker for worker in worker_to_available_memory if worker_to_available_memory[worker] >= cluster.topology.graph.nodes[op]['memory_cost']]
-            if len(valid_placements) == 0:
-                operation_to_worker = None
-            else:
-                worker = random.choice(valid_placements)                
-                worker_to_available_memory[worker] -= cluster.topology.graph.nodes[op]['memory_cost']
-                operation_to_worker[op] = worker
+        job_to_operation_to_worker = dict()
+        for job in jobs:
+            job_to_operation_to_worker[job.job_id] = dict()
+            for op in job.computation_graph.nodes:
+                # find which worker placements would be valid for this operation
+                valid_placements = [worker for worker in worker_to_available_memory if worker_to_available_memory[worker] >= job.computation_graph.nodes[op]['memory_cost']]
+                if len(valid_placements) == 0:
+                    worker = None
+                else:
+                    worker = random.choice(valid_placements)                
+                    worker_to_available_memory[worker] -= job.computation_graph.nodes[op]['memory_cost']
+                job_to_operation_to_worker[job.job_id][op] = worker
                 
-        return operation_to_worker
+        return job_to_operation_to_worker
                 
     def _get_workers_available_memory(self, 
                                       cluster: Cluster, 
                                       sort: bool = True):
         '''
-        Maps worker ids to available memory. Returned dict is in order of memory available,
-        with the worker with the most memory available first, etc.
+        Maps worker ids to available memory. 
+
+        Args:
+            sort: If true, returned dict is in order of memory available,
+                with the worker with the most memory available first, etc.
         '''
         worker_to_available_memory = dict()
         for worker_id, node_id in cluster.topology.graph.graph['worker_to_node'].items():
-            worker = cluster.topology.graph.graph['worker_to_node'][worker_id]
+            node_id = cluster.topology.graph.graph['worker_to_node'][worker_id]
+            worker = cluster.topology.graph.nodes[node_id]['workers'][worker_id]
             worker_to_available_memory[worker_id] = worker.memory_capacity - worker.memory_occupied
         if sort:
             worker_to_available_memory = dict(sorted(worker_to_available_memory.items(), key=lambda x:x[1], reverse=True))

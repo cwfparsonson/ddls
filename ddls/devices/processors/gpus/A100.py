@@ -1,12 +1,15 @@
 from ddls.devices.processors.processor import Processor
 
+from collections import defaultdict
+
+
 class A100(Processor):
     def __init__(self,
-                 device_id: int = None):
-        if device_id is None:
-            self.device_id = id(self)
+                 processor_id: int = None):
+        if processor_id is None:
+            self.processor_id = id(self)
         else:
-            self.device_id = device_id
+            self.processor_id = processor_id
             
         self.device_type = 'A100'
 
@@ -20,21 +23,21 @@ class A100(Processor):
 
         self.base_clock_frequency = int(1095e6)
         
-        self.mounted_workloads = {}
+        self.mounted_job_to_ops = defaultdict(set)
         
     def __str__(self):
-        return f'{self.device_type}_{self.device_id}'
+        return f'{self.device_type}_{self.processor_id}'
     
-    def mount(self, workload):
-        if self.memory_occupied + workload.get_workload_size() > self.memory_capacity:
-            raise Exception(f'Trying to allocate {workload.get_workload_size()} of memory but have only {self.memory_capacity - self.memory_occupied} available.')
-        self.memory_occupied += workload.get_workload_size()
-        self.mounted_workloads[workload.workload_id] = workload
+    def mount(self, job, op_id):
+        if self.memory_occupied + job.computation_graph.nodes[op_id]['memory_cost'] > self.memory_capacity:
+            raise Exception(f'Trying to allocate {job.nodes[op_id]["memory_cost"]} of memory for job {job} op {op_id} but have only {self.memory_capacity - self.memory_occupied} available on processor {self.processor_id}.')
+        self.mounted_job_to_ops[job.job_id].add(op_id)
         
-    def unmount(self, workload):
-        self.memory_occupied -= workload.get_workload_size()
-        del self.mounted_workloads[workload.workload_id]
+    def unmount(self, job, op_id):
+        self.memory_occupied -= job.computation_graph.nodes[op_id]['memory_cost']
+        self.mounted_job_to_ops[job.job_id][op_id].remove()
         
     def step(self, time):
-        for workload in self.mounted_workloads.values():
-            workload.step(self, time)
+        # for workload in self.mounted_workloads.values():
+            # workload.step(self, time)
+        pass

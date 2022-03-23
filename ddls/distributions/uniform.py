@@ -1,5 +1,8 @@
 from ddls.distributions.distribution import Distribution
 
+from typing import Union
+import numpy as np
+
 
 class Uniform(Distribution):
     def __init__(self,
@@ -13,10 +16,16 @@ class Uniform(Distribution):
         self.decimals = decimals
 
     def sample(self,
-               size: Union[int, tuple[int, ...]] = 1,
+               size: Union[None, int, tuple[int, ...]] = None,
                replace: bool = True):
         return np.random.choice(
                         np.around(
                             np.arange(self.min_val, self.max_val, self.interval), 
                             decimals=self.decimals), 
                         size=size, replace=replace)
+
+    def __str__(self):
+        descr = f'Distribution type: {type(self)}'
+        descr += f' | min_val: {self.min_val} | max_val: {self.max_val}'
+        descr += f' | interval: {self.interval} | decimals: {self.decimals}'
+        return descr
