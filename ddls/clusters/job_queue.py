@@ -1,5 +1,6 @@
 from ddls.demands.jobs.job import Job
 
+from collections import OrderedDict
 from typing import Union
 import copy
 
@@ -7,7 +8,7 @@ import copy
 class JobQueue:
     def __init__(self, 
                  queue_capacity: int):
-        self.jobs = []
+        self.jobs = OrderedDict()
         self.queue_capacity = queue_capacity
         
     def __len__(self):
@@ -17,7 +18,8 @@ class JobQueue:
         if type(jobs) is not list:
             jobs = [jobs]
         if self.can_fit(jobs):
-            self.jobs.extend(jobs)
+            for job in jobs:
+                self.jobs[job.job_id] = job
         else:
             raise Exception(f'Cannot fit all jobs, only have {self.queue_capacity - len(self)} of space remaining.')
     
@@ -33,4 +35,4 @@ class JobQueue:
         if type(jobs) is not list:
             jobs = [jobs]
         for job in jobs:
-            self.jobs.remove(job)
+            del self.jobs[job.job_id]

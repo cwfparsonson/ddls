@@ -1,4 +1,5 @@
 import networkx as nx
+import copy
 
 
 class Job:
@@ -7,7 +8,7 @@ class Job:
                  num_training_steps: int,
                  job_id: int = None,
                  job_type: str = None,
-                 job_details: dict = None):
+                 details: dict = None):
         '''
         A ddls deep learning job consists of a computation_graph which contains the
         operations and dependencies of one forward and backward pass of a DNN model.
@@ -33,10 +34,10 @@ class Job:
         else:
             self.job_id = job_id 
 
-        if job_details is None:
-            self.job_details = {}
+        if details is None:
+            self.details = {}
         else:
-            self.job_details = job_details
+            self.details = details
 
         self.job_type = job_type
 
@@ -47,6 +48,7 @@ class Job:
         # initialse additional node- and edge-level info
         self._init_node_info()
         self._init_edge_info()
+        self._init_graph_info()
         
     def reset(self):
         '''Resets the job ready for a training step to be executed.'''
@@ -65,10 +67,51 @@ class Job:
     def _init_node_info(self):
         for node in self.computation_graph.nodes:
             self.computation_graph.nodes[node]['job_id'] = self.job_id
+            # self.computation_graph.nodes[node]['remaining_run_time'] = self.computation_graph.nodes[node]['compute_cost']
+            self.computation_graph.nodes[node]['remaining_run_time'] = None
+            self.computation_graph.nodes[node]['parent_dependencies_satisfied'] = set()
         
     def _init_edge_info(self):
         for edge in self.computation_graph.edges:
             self.computation_graph[edge[0]][edge[1]][edge[2]]['job_id'] = self.job_id
+
+    def _init_graph_info(self):
+        self.computation_graph.graph['ops_ready'] = {list(nx.topological_sort(self.computation_graph))[0]}
+        self.computation_graph.graph['ops_completed'] = set()
+
+    def check_if_op_ready(self, op_id):
+        return len(self.computation_graph.in_edges(op_id)) == self.computation_graph.nodes[op_id]['parent_dependencies_satisfied']
+
+    def register_ready_op(self, op_id):
+        self.computation_graph.graph['ops_ready'].add(op_id)
+
+    def register_completed_op(self, op_id):
+        self.computation_graph.graph['ops_completed'].add(op_id)
+        self.computation_graph.graph['ops_ready'].remove(op_id)
+        if not self.is_placed:
+            # job must have been placed by now to have had an op completed
+            self.is_placed = True
+
+    def reset_op_remaining_run_time(self, op_id, device_type):
+        '''Given that an op has just been mounted on a device, reset the remaining run time for each op.'''
+        self.computation_graph.nodes[op_id]['remaining_run_time'] = copy.deepcopy(self.computation_graph.nodes[op_id]['compute_cost'][device_type])
+
+    def is_completed(self):
+        return len(self.computation_graph.graph['ops_completed']) == len(self.computation_graph.nodes)
+
+    def register_satisfied_dependency(self, edge):
+        child = edge[1]
+        print(f'Registering dependency {edge}')
+        self.computation_graph.nodes[child]['parent_dependencies_satisfied'].add(child)
+        if len(self.computation_graph[child]['parent_dependencies_satisfied']) == len(self.computation_graph.in_edges(child)):
+            # all parent dependencies satisfied, child op is ready to be executed
+            self.register_ready_op(child)
+
+    def tick_op(self, op_id, tick):
+        op = self.computation_graph.nodes[op_id]
+        op['remaining_run_time'] -= min(tick, op['remaining_run_time'])
+        if op['remaining_run_time'] == 0:
+            self.register_completed_op(op_id)
            
     def _init_job_total_operation_memory_cost(self):
         job_operation_memory_cost = 0

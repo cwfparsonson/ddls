@@ -231,6 +231,18 @@ def ddls_graph_from_pbtxt_file(file_path: str,
 
 
 
+class Stopwatch:
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self._time = 0
+
+    def tick(self, tick=1):
+        self._time += tick
+
+    def time(self):
+        return self._time
 
 
 

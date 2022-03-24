@@ -4,7 +4,7 @@ from ddls.topologies.topology import Topology
 from ddls.topologies.torus import Torus
 from ddls.demands.jobs.job import Job
 from ddls.distributions.distribution import Distribution
-from ddls.utils import seed_stochastic_modules_globally
+from ddls.utils import seed_stochastic_modules_globally, Stopwatch
 
 from typing import Any, Union
 import copy
@@ -38,6 +38,8 @@ class Cluster:
         
         # populate topology with nodes specified by node_config
         self._populate_topology(self.topology, node_config)
+
+        self.stopwatch = Stopwatch()
         
     def _init_topology(self, topology_config):
         if topology_config['type'] == 'torus':
@@ -54,6 +56,7 @@ class Cluster:
     def _populate_topology(self, topology, node_config):
         node_ids = iter(list(topology.graph.nodes))
         topology.graph.graph['worker_to_node'] = dict()
+        topology.graph.graph['worker_to_type'] = dict()
         for node_type in node_config.keys():
             for _ in range(node_config[node_type]['num_nodes']):
                 node_id = next(node_ids)
@@ -64,6 +67,7 @@ class Cluster:
                         worker = worker_config['worker']()
                         topology.graph.nodes[node_id]['workers'][worker.processor_id] = worker
                         topology.graph.graph['worker_to_node'][worker.processor_id] = node_id
+                        topology.graph.graph['worker_to_type'][worker.processor_id] = worker.device_type
 
     def reset(self,
               jobs: list[Job], 
@@ -76,20 +80,23 @@ class Cluster:
         self.job_interarrival_time_dist = job_interarrival_time_dist 
         self.max_simulation_run_time = max_simulation_run_time 
 
-        self.job_arrival_times = iter(self._init_job_arrival_times())
-
         self.job_queue = JobQueue(queue_capacity=job_queue_capacity)
 
-        self.jobs_arrived = {}
+        self.num_jobs_arrived = 0
+        self.jobs_running = {}
         self.jobs_completed = {}
         self.jobs_blocked = {}
+
+        self.job_op_to_worker = {}
 
         self.job_idx_to_job_id = {}
         self.job_id_to_job_idx = {}
 
+        self.stopwatch.reset()
         self.step_counter = 0
 
         # add first job to queue
+        self.time_next_job_to_arrive = 0
         self.job_queue.add(self._get_next_job())
 
         obs = None
@@ -106,25 +113,35 @@ class Cluster:
 
         return obs, action_set, reward, done, info
 
-    def _init_job_arrival_times(self, 
-                                max_counter: int = 10000):
-        job_arrival_times, counter = [0], 0
-        while job_arrival_times[-1] < self.max_simulation_run_time:
-            job_arrival_times.append(self.job_interarrival_time_dist.sample(size=None) + job_arrival_times[-1])
-            counter += 1
-            if counter > max_counter:
-                raise Exception(f'Unable to meet max_simulation_time after sampling {counter} times. Increase max_counter or decrease max_simulation_run_time')
-        return job_arrival_times
-
     def _get_next_job(self):
+        '''Returns next job.'''
         job = self.job_sampler.sample()
-        job.job_details['time_arrived'] = next(self.job_arrival_times)
-        job.job_details['time_completed'] = None
-        job_idx = len(list(self.jobs_arrived.keys()))
-        self.jobs_arrived[job_idx] = job
-        self.job_idx_to_job_id[job_idx] = job.job_id
-        self.job_id_to_job_idx[job.job_id] = job_idx
+        job.details['time_arrived'] = copy.deepcopy(self.stopwatch.time())
+        job.details['time_started'] = None
+        job.details['time_completed'] = None
+        job.details['job_idx'] = copy.deepcopy(self.num_jobs_arrived)
+        self.time_last_job_arrived = copy.deepcopy(self.stopwatch.time())
+        self.time_next_job_to_arrive += self.job_interarrival_time_dist.sample(size=None)
+        self.num_jobs_arrived += 1
         return job
+
+    def _register_running_job(self, job):
+        job.details['time_started'] = copy.deepcopy(self.stopwatch.time())
+        self.jobs_running[job.details['job_idx']] = job
+        self.job_queue.remove(job)
+
+    def _register_completed_job(self, job):
+        job.details['time_completed'] = copy.deepcopy(self.stopwatch.time())
+        self.jobs_completed[job.details['job_idx']] = job
+        del self.jobs_running[job.details['job_idx']]
+        for op_id in job.computation_graph.nodes:
+            worker_id = self.job_op_to_worker[f'{job.details["job_idx"]}_{job.job_id}_{op_id}']
+            node_id = self.worker_to_node[worker_id]
+            worker = self.topology.graph.nodes[node_id]['workers'][worker_id].unmount(job=job, op_id=op_id)
+            del self.job_op_to_worker[f'{job.details["job_idx"]}_{job.job_id}_{op_id}']
+            
+    def _register_blocked_job(self, job):
+        self.jobs_blocked[job.details['job_idx']] = job
 
     def __str__(self):
         descr = f'Cluster {type(self)}'
@@ -146,10 +163,135 @@ class Cluster:
         self._place_jobs(actions['job_placement'],
                          verbose=verbose)
         self._schedule_jobs()
+
+        # run step until either next job arrives or until there are no more mounted ops left to run
+        step_done = False
+        while not step_done:
+            if verbose:
+                print(f'Stopwatch time: {self.stopwatch.time()}')
+
+            # check if next job should arrive
+            if self.stopwatch.time() > self.time_next_job_to_arrive:
+                raise Exception(f'Stopwatch time is {self.stopwatch.time()} but next job should have arrived at {self.time_next_job_to_arrive}')
+            elif self.stopwatch.time() == self.time_next_job_to_arrive:
+                next_job = self._get_next_job()
+                if verbose:
+                    print(f'Next job with job_idx {next_job.details["job_idx"]} arrived. Added to queue.')
+                if self.job_queue.can_fit(next_job):
+                    self.job_queue.add(next_job)
+                else:
+                    self._register_blocked_job(next_job)
+                step_done = True
+            else:
+                pass
+
+            # keep running step until: max sim time reached; next job arrives; or 
+            if not step_done:
+                # run ops which have been placed on workers and records which op(s) completed
+                max_tick = min(self.time_next_job_to_arrive - self.stopwatch.time(), self.max_simulation_run_time - self.stopwatch.time())
+                job_idx_to_completed_op_ids = self._tick_workers(actions['job_schedule'], max_tick=max_tick)
+                if verbose:
+                    print(f'job_idx_to_completed_op_ids: {job_idx_to_completed_op_ids}')
+
+                # TODO: 
+                # 1. Take completed ops and (1) do any communication necessary (2) update parent_dependencies_satisfied
+                # 2. Implement more efficient way of tracking and updating shortest_remaining_run_time of mounted ops that doesn't need to iterate every job op each time
+                # 3. Implement notion of training steps where must keep executing job graph until all training steps completed (i.e. need to count training steps and not unmount until all training steps completed)
+
+                # TEMPORARY: Assume no network communication overhead -> child dependencies of completed ops immediately satisfied
+                for job_idx, op_ids in job_idx_to_completed_op_ids.items():
+                    job = self.jobs_running[job_idx]
+                    for op_id in op_ids:
+                        for child_dependency in job.computation_graph.out_edges(op_id):
+                            job.register_satisfied_dependency(child_dependency)
+
+                # register any completed jobs
+                for job_idx in job_idx_to_completed_op_ids.keys():
+                    job = self.jobs_running[job_idx]
+                    if job.is_completed():
+                        self._register_completed_job(job)
+                        if verbose:
+                            print(f'Job with job_idx {job_idx} completed. Time arrived: {job.details["time_arrived"]} | Time completed: {job.details["time_completed"]}')
+
+                if len(job_idx_to_completed_op_ids) == 0 or self.stopwatch.time() >= self.max_simulation_run_time:
+                    # no ops left to run or reached max sim time
+                    step_done = True
+
         self._communicate_jobs()
 
         self.step_counter += 1
 
+    def _tick_workers(self, job_schedule, max_tick=None):
+        '''
+        Ticks all operations on workers by shortest remaining run time of all 
+        mounted ops (up to max_tick if max_tick is not None). After performing 
+        this tick, at least one operation in the cluster will have been completed.
+
+        Will also tick the cluster's stopwatch.
+
+        Args:
+            job_schedule: Dict mapping worker_id -> job_id -> op_id -> priority,
+                where the ops should be scheduled in order of highest priority value.
+
+        Returns dict mapping job_idx -> completed op ids
+        '''
+        # # find shortest remaining run time of mounted operations
+        # tick = self._get_shortest_remaining_run_time_of_mounted_ops()
+
+        # find: 1) highest priority op on each worker; and 2) the shortest remaining run time of each highest priority op on all workers
+        worker_to_priority_job_op = {}
+        shortest_remaining_run_time = float('inf')
+        for worker_id, node_id in self.topology.graph.graph['worker_to_node'].items():
+            # record priority job op
+            priority_job_op = self._get_highest_priority_job_op(worker=topology.graph.nodes[node_id]['workers'][worker_id], job_schedule=job_schedule)
+            if priority_job_op is not None:
+                worker_to_priority_job_op[worker_id] = priority_job_op
+                # update shortest remaining run time of all priority job ops
+                job_idx, job_id, op_id = priority_job_op.split('_')
+                job = self.jobs_running[job_idx]
+                if job.computation_graph.nodes[op_id]['remaining_run_time'] < shortest_remaining_run_time:
+                    shortest_remaining_run_time = job.computation_graph.nodes[op_id]['remaining_run_time']
+        if max_tick is not None:
+            tick = min(shortest_remaining_run_time, max_tick)
+        else:
+            tick = shortest_remaining_run_time
+
+        # tick highest priority mounted ready op on each worker by shortest_remaining_run_time (or max_tick) and track which op(s) completed
+        job_idx_to_completed_op_ids = defaultdict(list)
+        for worker_id, priority_job_op in worker_to_priority_job_op.items():
+            if priority_job_op is not None:
+                node_id = topology.graph.graph['worker_to_node'][worker_id]
+                worker = topology.graph.nodes[node_id]['workers'][worker_id]
+                job_idx, job_id, op_id = priority_job_op.split('_')
+                job = self.jobs_running[job_idx]
+                job.tick_op(op_id, tick=tick)
+                if op_id in job.computation_graph.graph['ops_completed']:
+                    # op was completed
+                    job_idx_to_completed_op_ids[job_idx].append(op_id)
+
+        # tick stopwatch
+        self.stopwatch.tick(tick)
+
+        return job_idx_to_completed_op_ids
+
+    def _get_highest_priority_job_op(self, worker, job_schedule):
+        '''
+        Takes a worker processor object and returns a string identifying which operation
+        which is ready to run on the worker has the highest priority. If no
+        operation is available to run, will return None.
+        '''
+        priority_job_op = None
+        for job_idx in worker.mounted_job_idx_to_ops.keys():
+            job = self.jobs_running[job_idx]
+            for op_id in job.computation_graph.graph['ops_ready']:
+                if priority_job_op is None:
+                    # not yet considered any other ops, set this op as priority op
+                    priority_job_op = f'{job_idx}_{job.job_id}_{op_id}'
+                else:
+                    if job_schedule[worker_id][job.job_id][op_id] > job_placement[worker_id][int(priority_job_op.split('_')[1])][int(priority_job_op.split('_')[2])]:
+                        # op has higher priority, update priority job op
+                        priority_job_op = f'{job_idx}_{job.job_id}_{op_id}'
+        return priority_job_op
 
     def _prioritise_jobs(self):
         pass
@@ -162,16 +304,18 @@ class Cluster:
             print('-'*48)
             print('Placing job ops onto workers...')
         for job_id in job_placement:
-            job_idx = self.job_id_to_job_idx[job_id]
-            job = self.jobs_arrived[job_idx]
+            job = self.job_queue.jobs[job_idx]
             if verbose:
-                print(f'Job ID: {job_id} | Job index: {job_idx}')
+                print(f'Job ID: {job_id} | Job idx: {job.details["job_idx"]} | Time arrived: {job.details["time_arrived"]}')
             for op_id in job_placement[job_id]:
                 worker_id = job_placement[job_id][op_id]
                 node_id = self.topology.graph.graph['worker_to_node'][worker_id]
                 self.topology.graph.nodes[node_id]['workers'][worker_id].mount(job=job, op_id=op_id)
+                job.reset_op_remaining_run_time(op_id, device_type=self.topology.graph.nodes[node_id]['workers'][worker_id].device_type)
+                self.job_op_to_worker[f'{job.details["job_idx"]}_{job.job_id}_{op_id}'] = worker_id
                 if verbose:
                     print(f'Op ID {op_id} placed on node ID {node_id} worker ID {worker_id}')
+            self._register_running_job(job)
 
     def _schedule_jobs(self):
         pass
