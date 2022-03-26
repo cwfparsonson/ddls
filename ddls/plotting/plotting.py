@@ -1,11 +1,15 @@
 import time
 import numpy as np
+from sigfig import sigfig
 from networkx.drawing.nx_pydot import graphviz_layout
 import networkx as nx
 import seaborn as sns
+import pandas as pd
 from matplotlib.axes._axes import _log as matplotlib_axes_logger
 matplotlib_axes_logger.setLevel('ERROR')
 import matplotlib.pyplot as plt
+
+from typing import Any, Union
 
 
 def get_plot_params_config(font_size):
@@ -139,5 +143,215 @@ def plot_computation_graph(graph,
         print(f'Constructed figure in {(time.time_ns() - start_time) * 1e-9:.3f} s')
 
     return fig
+
+
+
+
+
+def plot_hist(df: pd.DataFrame,
+              x: str,
+              hue: str,
+              xlabel: str = None,
+              ylabel: str = None,
+              element: Union['bars', 'step', 'poly'] = 'bars',
+              fill: bool = True,
+              cumulative: bool = False,
+              stat: Union['count', 'frequency', 'probability', 'percent', 'density'] = 'count',
+              common_norm: bool = True,
+              multiple: Union['layer', 'dodge', 'stack', 'fill'] = 'layer',
+              xlog: bool = False,
+              xaxis_label_style: str = 'plain', # 'plain' 'sci'
+              scaling_factor: int = 1,
+              width_scaling_factor: int = 1,
+              height_scaling_factor: int = 1,
+              title: str = None,
+              show_fig: bool = True,
+              palette: str = 'colorblind',
+              dpi: int = 300):
+    '''
+    To plot a CDF, set:
+        element = 'step'
+        fill = False
+        cumulative = True
+        stat = 'density'
+        common_norm = False
+    '''
+    aesthetics = PlotAesthetics()
+    aesthetics.set_icml_paper_plot_aesthetics(palette=palette, dpi=dpi)
+
+    f, ax = plt.subplots(figsize=aesthetics.get_standard_fig_size(scaling_factor=scaling_factor, width_scaling_factor=width_scaling_factor, height_scaling_factor=height_scaling_factor))
+    g = sns.histplot(data=df,
+                     x=x,
+                     hue=hue,
+                     element=element,
+                     fill=fill,
+                     cumulative=cumulative,
+                     stat=stat,
+                     common_norm=common_norm,
+                     multiple=multiple,
+                     log_scale=xlog)
+
+    if xlabel is not None:
+        plt.xlabel(xlabel)
+    else:
+        plt.xlabel(x)
+    if ylabel is not None:
+        plt.ylabel(ylabel)
+    if title is not None:
+        plt.title(title)
+    plt.ticklabel_format(style=xaxis_label_style, axis='x', scilimits=(0,0))
+    ax.tick_params(axis='both', which='major', pad=2)
+    ax.xaxis.labelpad = 2
+    ax.yaxis.labelpad = 2
+    sns.despine(ax=ax) # remove top and right spines
+    plt.gcf().patch.set_alpha(0.0)
+    if show_fig:
+        plt.show()
+    return g
+
+
+
+
+
+
+def plot_bar(df: pd.DataFrame,
+             x: str,
+             y: str,
+             xlabel: str = None,
+             ylabel: str = None,
+             estimator: Any = np.mean,
+             display_values: bool = True,
+             display_values_y_offset: float = 0.15,
+             ci: Union[float, 'sd', None] = None,
+             errcolor: str = 'gray',
+             capsize: float = 0.05,
+             yaxis_label_style: str = 'plain', # 'plain' 'sci'
+             scaling_factor: int = 1,
+             width_scaling_factor: int = 1,
+             height_scaling_factor: int = 1,
+             title: str = None,
+             show_fig: bool = True,
+             palette: str = 'colorblind',
+             dpi: int = 300):
+    aesthetics = PlotAesthetics()
+    aesthetics.set_icml_paper_plot_aesthetics(palette=palette, dpi=dpi)
+
+    f, ax = plt.subplots(figsize=aesthetics.get_standard_fig_size(scaling_factor=scaling_factor, width_scaling_factor=width_scaling_factor, height_scaling_factor=height_scaling_factor))
+    g = sns.barplot(data=df,
+                    x=x,
+                    y=y,
+                    estimator=estimator,
+                    ci=ci,
+                    errcolor=errcolor,
+                    capsize=capsize)
+
+    if xlabel is not None:
+        plt.xlabel(xlabel)
+    else:
+        plt.xlabel(x)
+    if ylabel is not None:
+        plt.ylabel(ylabel)
+    else:
+        plt.ylabel(y)
+    if title is not None:
+        plt.title(title)
+    plt.ticklabel_format(style=yaxis_label_style, axis='y', scilimits=(0,0))
+    ax.tick_params(axis='both', which='major', pad=2)
+    ax.xaxis.labelpad = 2
+    ax.yaxis.labelpad = 2
+    sns.despine(ax=ax) # remove top and right spines
+    if display_values:
+        show_values_on_bars(ax, sigfigs=3, y_offset=display_values_y_offset)
+    plt.gcf().patch.set_alpha(0.0)
+    if show_fig:
+        plt.show()
+    return g
+
+
+def show_values_on_bars(axs, sigfigs=2, y_offset=0):
+    def _show_on_single_plot(ax):        
+        for p in ax.patches:
+            _x = p.get_x() + p.get_width() / 2
+#             _y = p.get_y() + p.get_height()
+            _y = p.get_y() + y_offset
+            value = sigfig.round(p.get_height(), sigfigs=min(sigfigs, len(str(int(p.get_height())))))
+            ax.text(_x, _y, value, ha="center") 
+
+    if isinstance(axs, np.ndarray):
+        for idx, ax in np.ndenumerate(axs):
+            _show_on_single_plot(ax)
+    else:
+        _show_on_single_plot(axs)
+
+
+
+def plot_line(df: pd.DataFrame,
+              x: str,
+              y: str,
+              hue: str,
+              xlabel: str = None,
+              ylabel: str = None,
+              xlim: list = None,
+              ylim: list = None,
+              xaxis_label_style: str = 'plain', # 'plain' 'sci'
+              yaxis_label_style: str = 'plain', # 'plain' 'sci'
+              xlog: bool = False,
+              ylog: bool = False,
+              scaling_factor: int = 1,
+              width_scaling_factor: int = 1,
+              height_scaling_factor: int = 1,
+              legend: bool = True,
+              title: str = None,
+              show_fig: bool = True,
+              palette: str = 'colorblind',
+              dpi: int = 300):
+    aesthetics = PlotAesthetics()
+    aesthetics.set_icml_paper_plot_aesthetics(palette=palette, dpi=dpi)
+
+    f, ax = plt.subplots(figsize=aesthetics.get_standard_fig_size(scaling_factor=scaling_factor, width_scaling_factor=width_scaling_factor, height_scaling_factor=height_scaling_factor))
+    g = sns.lineplot(data=df, x=x, y=y, hue=hue, linewidth=aesthetics.linewidth, legend=legend)
+
+    if xlim is not None:
+        plt.xlim(left=xlim[0], right=xlim[1])
+    if ylim is not None:
+        plt.ylim(bottom=ylim[0], top=ylim[1])
+    if xlabel is not None:
+        plt.xlabel(xlabel)
+    else:
+        plt.xlabel(x)
+    if ylabel is not None:
+        plt.ylabel(ylabel)
+    else:
+        plt.ylabel(y)
+    if title is not None:
+        plt.title(title)
+    plt.ticklabel_format(style=xaxis_label_style, axis='x', scilimits=(0,0))
+    plt.ticklabel_format(style=yaxis_label_style, axis='y', scilimits=(0,0))
+    ax.tick_params(axis='both', which='major', pad=2)
+    ax.xaxis.labelpad = 2
+    ax.yaxis.labelpad = 2
+    sns.despine(ax=ax) # remove top and right spines
+    if xlog:
+        g.set(xscale='log')
+    if ylog:
+        g.set(yscale='log')
+    plt.gcf().patch.set_alpha(0.0)
+    if show_fig:
+        plt.show()
+    return g
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

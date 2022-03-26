@@ -14,7 +14,6 @@ class A100(Processor):
         self.device_type = 'A100'
 
         self.memory_capacity = int(40e9)
-        self.memory_occupied = 0
         self.memory_bandwidth = int(1.555e9)
 
         self.num_streaming_multiprocessors = 8
@@ -22,12 +21,18 @@ class A100(Processor):
         self.num_tensor_cores = self.num_streaming_multiprocessors * self.num_tensor_cores_per_streaming_multiprocessor
 
         self.base_clock_frequency = int(1095e6)
+
+        self.reset()
         
-        self.mounted_job_idx_to_ops = defaultdict(set)
         
     def __str__(self):
         return f'{self.device_type}_{self.processor_id}'
-    
+
+    def reset(self):
+        self.memory_occupied = 0
+        self.mounted_job_idx_to_ops = defaultdict(set)
+        self.mounted_job_op_to_priority = dict() # job op schedule of mounted ops
+
     def mount(self, job, op_id):
         '''Returns job with initialised remaining_run_time for each op.'''
         if self.device_type not in job.computation_graph.nodes[op_id]['compute_cost']:
@@ -38,7 +43,8 @@ class A100(Processor):
         
     def unmount(self, job, op_id):
         self.memory_occupied -= job.computation_graph.nodes[op_id]['memory_cost']
-        self.mounted_job_idx_to_ops[job.details['job_idx']][op_id].remove()
+        self.mounted_job_idx_to_ops[job.details['job_idx']].remove(op_id)
+        del self.mounted_job_op_to_priority[f'{job.details["job_idx"]}_{job.job_id}_{op_id}']
         if len(self.mounted_job_idx_to_ops[job.details['job_idx']]) == 0:
             del self.mounted_job_idx_to_ops[job.details['job_idx']]
         

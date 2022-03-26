@@ -23,7 +23,6 @@ class RandomJobPlacer(Placer):
         pass
 
     def get_placement(self, 
-                      jobs: list[Job],
                       cluster: Cluster):
         '''
         Places operations in a job onto available worker(s) in a cluster, where the clusters
@@ -31,8 +30,11 @@ class RandomJobPlacer(Placer):
         memory available for a given operation. 
         
         Returns a mapping of job_id -> operation_id -> worker_id. If no valid placement for the operation
-        could be found, worker_id will be None.
+        could be found, the job will not be included in the placement mapping.
         '''
+        # gather jobs which are requesting to be placed
+        jobs = cluster.job_queue.jobs.values()
+
         # check how much memory is available on each worker
         worker_to_available_memory = self._get_workers_available_memory(cluster, sort=True)
         
@@ -44,11 +46,13 @@ class RandomJobPlacer(Placer):
                 # find which worker placements would be valid for this operation
                 valid_placements = [worker for worker in worker_to_available_memory if worker_to_available_memory[worker] >= job.computation_graph.nodes[op]['memory_cost']]
                 if len(valid_placements) == 0:
-                    worker = None
+                    # no valid placement for operation, cannot place this job
+                    del job_to_operation_to_worker[job.job_id]
+                    break
                 else:
                     worker = random.choice(valid_placements)                
                     worker_to_available_memory[worker] -= job.computation_graph.nodes[op]['memory_cost']
-                job_to_operation_to_worker[job.job_id][op] = worker
+                    job_to_operation_to_worker[job.job_id][op] = worker
                 
         return job_to_operation_to_worker
                 

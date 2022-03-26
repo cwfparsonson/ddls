@@ -1,3 +1,5 @@
+from ddls.plotting.plotting import plot_computation_graph
+
 import networkx as nx
 import copy
 
@@ -28,6 +30,7 @@ class Job:
         '''
         self.computation_graph = computation_graph
         self.num_training_steps = num_training_steps
+        self.training_step_counter = 0
 
         if job_id is None:
             self.job_id = id(self)
@@ -41,35 +44,29 @@ class Job:
 
         self.job_type = job_type
 
-        # initialise graph-level info
         self.job_total_operation_memory_cost = self._init_job_total_operation_memory_cost()
         self.job_total_dependency_size = self._init_job_total_dependecy_size()
         
-        # initialse additional node- and edge-level info
+        self.reset()
+        
+    def reset(self):
+        '''Resets the job ready for a training step to be executed.'''
+        # initialse additional node-, edge-, and graph-level info self._init_node_info()
         self._init_node_info()
         self._init_edge_info()
         self._init_graph_info()
         
-    def reset(self):
-        '''Resets the job ready for a training step to be executed.'''
-        # reset record of completed and uncompleted operations and dependencies
-        self.completed_ops, self.uncompleted_ops = {}, {node for node in self.computation_graph.nodes}
-        self.completed_deps, self.uncompleted_deps = {}, {edge for edge in self.computation_graph.edges}
-        
-    def register_completed_op(self, op):
-        self.completed_operations.add(op)
-        self.uncompleted_ops.remove(op)
-        
-    def register_completed_dep(self, dep):
-        self.completed_deps.add(dep)
-        self.uncompleted_deps.remove(dep)
-        
     def _init_node_info(self):
         for node in self.computation_graph.nodes:
             self.computation_graph.nodes[node]['job_id'] = self.job_id
-            # self.computation_graph.nodes[node]['remaining_run_time'] = self.computation_graph.nodes[node]['compute_cost']
-            self.computation_graph.nodes[node]['remaining_run_time'] = None
             self.computation_graph.nodes[node]['parent_dependencies_satisfied'] = set()
+            if 'mounted_device_type' not in self.computation_graph.nodes[node]:
+                # not yet mounted this node
+                self.computation_graph.nodes[node]['mounted_device_type'] = None
+                self.computation_graph.nodes[node]['remaining_run_time'] = None
+            else:
+                # have already mounted this node and resetting ready for another training step, do not change mounted device type, just reset remaining run time
+                self.reset_op_remaining_run_time(node, device_type=self.computation_graph.nodes[node]['mounted_device_type'])
         
     def _init_edge_info(self):
         for edge in self.computation_graph.edges:
@@ -88,22 +85,24 @@ class Job:
     def register_completed_op(self, op_id):
         self.computation_graph.graph['ops_completed'].add(op_id)
         self.computation_graph.graph['ops_ready'].remove(op_id)
-        if not self.is_placed:
-            # job must have been placed by now to have had an op completed
-            self.is_placed = True
+        if self.is_training_step_complete():
+            self.training_step_counter += 1
 
     def reset_op_remaining_run_time(self, op_id, device_type):
         '''Given that an op has just been mounted on a device, reset the remaining run time for each op.'''
         self.computation_graph.nodes[op_id]['remaining_run_time'] = copy.deepcopy(self.computation_graph.nodes[op_id]['compute_cost'][device_type])
+        self.computation_graph.nodes[op_id]['mounted_device_type'] = device_type
 
-    def is_completed(self):
+    def is_job_complete(self):
+        return self.training_step_counter == self.num_training_steps
+
+    def is_training_step_complete(self):
         return len(self.computation_graph.graph['ops_completed']) == len(self.computation_graph.nodes)
 
     def register_satisfied_dependency(self, edge):
         child = edge[1]
-        print(f'Registering dependency {edge}')
-        self.computation_graph.nodes[child]['parent_dependencies_satisfied'].add(child)
-        if len(self.computation_graph[child]['parent_dependencies_satisfied']) == len(self.computation_graph.in_edges(child)):
+        self.computation_graph.nodes[child]['parent_dependencies_satisfied'].add(edge)
+        if len(self.computation_graph.nodes[child]['parent_dependencies_satisfied']) == len(self.computation_graph.in_edges(child)):
             # all parent dependencies satisfied, child op is ready to be executed
             self.register_ready_op(child)
 
@@ -134,6 +133,8 @@ class Job:
         descr += f' | Total dep size: {self.job_total_dependency_size}'
         return descr
     
+    def render(self, scaling_factor=3, title='computation_graph', show_fig=True, verbose=False):
+        return plot_computation_graph(graph, scaling_factor=scaling_factor, title=title, show_fig=show_fig, verbose=verbose)
     
     
 
@@ -143,60 +144,4 @@ class Job:
 
     
 
-
-
-
-#class OldJob:
-#    def __init__(self,
-#                 num_layers: int,
-#                 num_dims_per_layer: int,
-#                 weight_size: int,
-#                 num_weights: int,
-#                 batch_size: int,
-#                 sample_size: int, # memory per data set sample
-#                 num_samples: int, # number of samples in data set
-#                 num_epochs: int,
-#                 job_id: int = None,
-#                 details: dict = {},
-#                 job_type: str = 'DNN'):
-#        
-#        if job_id is None:
-#            self.job_id = id(self)
-#        else:
-#            self.job_id = job_id 
-#
-#        self.weight_size = weight_size
-#        self.num_weights = num_weights
-#        self.num_layers = num_layers
-#        self.num_dims_per_layer = num_dims_per_layer
-#        self.batch_size = batch_size
-#        self.sample_size = sample_size
-#        self.num_samples = num_samples
-#        self.num_epochs = num_epochs
-#        self.details = details
-#        self.job_type = job_type
-#    
-#    def __str__(self):
-#        descr = f'Job ID: {self.job_id}'
-#        descr += f' | Job type: {self.job_type}'
-#        descr += f' | Per-weight memory: {self.weight_size}'
-#        descr += f' | # weights: {self.num_weights:.3e}'
-#        descr += f' | Model memory: {self.get_model_size():.3e}'
-#        descr += f' | # layers: {self.num_layers}'
-#        descr += f' | Per-layer # dims: {self.num_dims_per_layer}'
-#        descr += f' | Batch size: {self.batch_size}'
-#        descr += f' | Per-sample memory: {self.sample_size}'
-#        descr += f' | # samples: {self.num_samples:.3e}'
-#        descr += f' | Data set size: {self.get_dataset_size():.3e}'
-#        descr += f' | # epochs: {self.num_epochs}'
-#        return descr
-#    
-#    def __eq__(self, other):
-#        return self.job_id == other.job_id
-#    
-#    def get_model_size(self):
-#        return self.weight_size * self.num_weights
-#
-#    def get_dataset_size(self):
-#        return self.sample_size * self.num_samples
 
