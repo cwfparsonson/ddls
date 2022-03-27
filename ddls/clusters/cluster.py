@@ -48,11 +48,10 @@ class Cluster:
 
         self.name = name
 
+        self.path_to_save = path_to_save
         self.use_sqlite_database = use_sqlite_database
-        if path_to_save is not None:
-            self.path_to_save = self._init_save_dir(path=path_to_save, use_sqlite_database=use_sqlite_database)
-        else:
-            self.path_to_save = None
+        if self.path_to_save is not None:
+            self.path_to_save = self._init_save_dir(path=self.path_to_save, use_sqlite_database=self.use_sqlite_database)
         self.save_freq = save_freq
 
         # init topology
@@ -63,6 +62,8 @@ class Cluster:
         self._populate_topology(self.topology, node_config)
 
         self.stopwatch = Stopwatch()
+
+        self.reset_counter = 0
         
     def _init_topology(self, topology_config):
         if topology_config['type'] == 'torus':
@@ -100,6 +101,13 @@ class Cluster:
               job_queue_capacity: int = 10,
               seed: int = None,
               verbose=False):
+        self.reset_counter += 1
+        if self.path_to_save is not None:
+            pathlib.Path(self.path_to_save + f'reset_{self.reset_counter}/').mkdir(parents=True, exist_ok=False)
+            print(f'Initialised folder {self.path_to_save}reset_{self.reset_counter}')
+        else:
+            self.path_to_save = None
+
         self.job_sampler = Sampler(pool=jobs, sampling_mode=job_sampling_mode)
         self.job_interarrival_time_dist = job_interarrival_time_dist 
         self.max_simulation_run_time = max_simulation_run_time 
@@ -494,12 +502,9 @@ class Cluster:
             _id = ids[-1] + 1
         else:
             _id = 0
+        # foldername = f'{self.name}_{_id}/reset_{self.reset_counter}/'
         foldername = f'{self.name}_{_id}/'
         pathlib.Path(_path+foldername).mkdir(parents=True, exist_ok=False)
-
-        if use_sqlite_database:
-            # init database folder
-            pathlib.Path(_path+foldername+'/database').mkdir(parents=True, exist_ok=False)
 
         return _path + foldername
 
@@ -516,9 +521,11 @@ class Cluster:
     def _save_logs(self, logs: dict):
         start_time = time.time_ns()
         for log_name, log in logs.items():
+            log_path = self.path_to_save + f'reset_{self.reset_counter}/{log_name}'
+            print(f'log_path: {log_path}')
             if self.use_sqlite_database:
                 # update log sqlite database under database folder
-                with SqliteDict(self.path_to_save + f'database/{log_name}.sqlite') as _log:
+                with SqliteDict(log_path + '.sqlite') as _log:
                     for key, val in log.items():
                         if key in _log and type(val) == list:
                             # extend vals list
@@ -530,10 +537,9 @@ class Cluster:
                     _log.close()
             else:
                 # save log as pkl
-                filename = self.path_to_save + f'{log_name}.pkl'
-                with gzip.open(filename, 'wb') as f:
+                with gzip.open(log_path + '.pkl', 'wb') as f:
                     pickle.dump(log, f)
-        print(f'Saved logs to {self.path_to_save} in {(time.time_ns() - start_time)*1e-9:.4f} s.')
+        print(f'Saved logs to {self.path_to_save}reset_{self.reset_counter}/ in {(time.time_ns() - start_time)*1e-9:.4f} s.')
 
     def save(self):
         if self.save_thread is not None:

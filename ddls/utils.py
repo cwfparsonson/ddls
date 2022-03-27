@@ -44,7 +44,7 @@ class Sampler:
         elif self.sampling_mode == 'remove_and_repeat':
             self.sample_pool.pop(idx)
             if len(self.sample_pool) == 0:
-                self.sample_pool = copy.deepcopy(self.original_pool)
+                self.reset()
             
         return datum
 
@@ -55,6 +55,9 @@ class Sampler:
 
     def __len__(self):
         return len(self.sample_pool)
+
+    def reset(self):
+        self.sample_pool = copy.deepcopy(self.original_pool)
 
 
 
