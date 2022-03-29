@@ -3,10 +3,12 @@ from ddls.demands.jobs.job import Job
 from ddls.clusters.cluster import Cluster
 
 import numpy as np
+import random
 from collections import defaultdict
 import copy
 
-class SRPTJobScheduler(JobScheduler):
+
+class RandomJobScheduler(JobScheduler):
     def __init__(self):
         pass
 
@@ -52,27 +54,30 @@ class SRPTJobScheduler(JobScheduler):
         worker_to_type = cluster.topology.graph.graph['worker_to_type'] # maps worker id to its device type so that can query profiled job computation time -> get op run times
         worker_to_ops = self._get_worker_to_ops(placement)
 
-        # if remaining run time not initialised for op, initialise so can calc op costs for scheduling
-        for job in job_id_to_job.values():
-            test_node = list(job.computation_graph.nodes())[0] 
-            if job.computation_graph.nodes[test_node]['remaining_run_time'] is None:
-                # initialise so can use SRPT
-                for op_id in job.computation_graph.nodes:
-                    worker_id = placement[job.job_id][op_id]
-                    job.reset_op_remaining_run_time(op_id, device_type=worker_to_type[worker_id])
-        
         # schedule ops on each worker
         for worker_id, ops in worker_to_ops.items():
-            # get cost of each op
-            job_op_to_cost = {f'{op["job_id"]}_{op["op_id"]}': job_id_to_job[op['job_id']].computation_graph.nodes[op['op_id']]['remaining_run_time'] for op in ops}
-            # sort ops in descending order of cost
-            sorted_job_op_to_cost = sorted(job_op_to_cost, key=job_op_to_cost.get, reverse=True)
-            # highest cost ops have lowest priority
-            for priority, job_op in enumerate(list(sorted_job_op_to_cost)):
-                job_id, op_id = [int(i) for i in job_op.split('_')]
+            # randomly shuffle order of ops
+            shuffled_ops = list(ops)
+            random.shuffle(shuffled_ops)
+
+            # assign priorities based on random shuffle order
+            for priority, op in enumerate(shuffled_ops):
+                job_id, op_id = op['job_id'], op['op_id']
                 worker_to_job_to_op_to_priority[worker_id][job_id][op_id] = priority
 
         return worker_to_job_to_op_to_priority 
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

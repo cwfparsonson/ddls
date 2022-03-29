@@ -49,7 +49,7 @@ class Sampler:
         return datum
 
     def __str__(self):
-        descr = f'Original pool: {self.original_pool} | Current pool: {self.sample_pool}'
+        descr = f'Original pool length: {len(self.original_pool)} | Current pool length: {len(self.sample_pool)}'
         descr += f' | Sampling mode: {self.sampling_mode}'
         return descr
 

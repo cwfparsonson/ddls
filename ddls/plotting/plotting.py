@@ -297,6 +297,8 @@ def plot_line(df: pd.DataFrame,
               yaxis_label_style: str = 'plain', # 'plain' 'sci'
               xlog: bool = False,
               ylog: bool = False,
+              ci: Union[int, 'sd', None] = 95,
+              err_style: Union['band', 'bars'] = 'band',
               scaling_factor: int = 1,
               width_scaling_factor: int = 1,
               height_scaling_factor: int = 1,
@@ -309,7 +311,14 @@ def plot_line(df: pd.DataFrame,
     aesthetics.set_icml_paper_plot_aesthetics(palette=palette, dpi=dpi)
 
     f, ax = plt.subplots(figsize=aesthetics.get_standard_fig_size(scaling_factor=scaling_factor, width_scaling_factor=width_scaling_factor, height_scaling_factor=height_scaling_factor))
-    g = sns.lineplot(data=df, x=x, y=y, hue=hue, linewidth=aesthetics.linewidth, legend=legend)
+    g = sns.lineplot(data=df, 
+                     x=x, 
+                     y=y, 
+                     hue=hue, 
+                     ci=ci,
+                     err_style=err_style,
+                     linewidth=aesthetics.linewidth, 
+                     legend=legend)
 
     if xlim is not None:
         plt.xlim(left=xlim[0], right=xlim[1])
