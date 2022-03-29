@@ -2,6 +2,7 @@ from ddls.demands.jobs.job import Job
 from ddls.clusters.cluster import Cluster
 
 from abc import ABC, abstractmethod
+from collections import defaultdict
 
 class JobScheduler(ABC):
     @abstractmethod

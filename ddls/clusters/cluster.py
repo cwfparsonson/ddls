@@ -18,6 +18,7 @@ import pathlib
 import glob
 from sqlitedict import SqliteDict
 import gzip
+import pickle
 import time
 
 
@@ -166,23 +167,21 @@ class Cluster:
     def _get_next_job(self):
         '''Returns next job.'''
         job = self.job_sampler.sample()
-        job.details['time_arrived'] = copy.deepcopy(self.stopwatch.time())
-        job.details['time_started'] = None
-        job.details['time_completed'] = None
-        job.details['job_idx'] = copy.deepcopy(self.num_jobs_arrived)
+        job.register_job_arrived(time_arrived=self.stopwatch.time(), 
+                                 job_idx=self.num_jobs_arrived)
         self.time_last_job_arrived = copy.deepcopy(self.stopwatch.time())
         self.time_next_job_to_arrive += self.job_interarrival_time_dist.sample(size=None)
         self.num_jobs_arrived += 1
         return job
 
     def _register_running_job(self, job):
-        job.details['time_started'] = copy.deepcopy(self.stopwatch.time())
+        job.register_job_running(time_started=self.stopwatch.time())
         self.jobs_running[job.details['job_idx']] = job
         self.job_queue.remove(job)
 
     def _register_completed_job(self, job):
         # record completion time
-        job.details['time_completed'] = copy.deepcopy(self.stopwatch.time())
+        job.register_job_completed(time_completed=self.stopwatch.time())
 
         # update loggers
         self.jobs_completed[job.details['job_idx']] = job
@@ -310,7 +309,6 @@ class Cluster:
                 self.time_next_job_to_arrive = float('inf')
 
             # check if simulation finished
-            # if len(job_idx_to_completed_op_ids) == 0 or self.stopwatch.time() >= self.max_simulation_run_time or len(self.jobs_running) == 0:
             if self._is_done():
                 step_done = True
 
@@ -522,7 +520,6 @@ class Cluster:
         start_time = time.time_ns()
         for log_name, log in logs.items():
             log_path = self.path_to_save + f'reset_{self.reset_counter}/{log_name}'
-            print(f'log_path: {log_path}')
             if self.use_sqlite_database:
                 # update log sqlite database under database folder
                 with SqliteDict(log_path + '.sqlite') as _log:

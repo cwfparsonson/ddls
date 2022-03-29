@@ -2,6 +2,7 @@ from ddls.plotting.plotting import plot_computation_graph
 
 import networkx as nx
 import copy
+from typing import Union
 
 
 class Job:
@@ -55,6 +56,41 @@ class Job:
         self._init_node_info()
         self._init_edge_info()
         self._init_graph_info()
+
+    def register_job_arrived(self, 
+                             time_arrived: Union[int, float], 
+                             job_idx: int):
+        '''When job arrives in simulation, call this method to register the details.
+
+        Args:
+            time_arrived: Time job arrived in simulation.
+            job_idx: Index assigned to job ID which is unique to the job across
+                the whole of the simulation.
+        '''
+        self.details['time_arrived'] = copy.deepcopy(time_arrived)
+        self.details['time_started'] = None
+        self.details['time_completed'] = None
+        self.details['job_idx'] = copy.deepcopy(job_idx)
+
+    def register_job_running(self,
+                             time_started: Union[int, float]):
+        '''When start running job on cluster, call this method to register the details.
+
+        Args:
+            time_started: Time job started running on cluster.
+        '''
+        self.details['time_started'] = copy.deepcopy(time_started)
+
+    def register_job_completed(self,
+                               time_completed: Union[int, float]):
+        '''
+        When completed the job by executing the computation_graph some
+        num_training_steps number of times, call this method to register the details.
+
+        Args:
+            time_completed: Time job was completed.
+        '''
+        self.details['time_completed'] = copy.deepcopy(time_completed)
         
     def _init_node_info(self):
         for node in self.computation_graph.nodes:

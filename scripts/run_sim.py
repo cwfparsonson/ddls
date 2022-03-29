@@ -6,6 +6,7 @@ from ddls.demands.jobs.job import Job
 from ddls.managers.placers.random_job_placer import RandomJobPlacer
 from ddls.managers.schedulers.srpt_job_scheduler import SRPTJobScheduler
 from ddls.managers.schedulers.random_job_scheduler import RandomJobScheduler
+from ddls.managers.schedulers.fifo_job_scheduler import FIFOJobScheduler
 from ddls.distributions.uniform import Uniform
 from ddls.utils import seed_stochastic_modules_globally
 
@@ -51,8 +52,9 @@ jobs = [Job(computation_graph=graph, num_training_steps=2) for graph in ddls_com
 # initialise decision-making agents
 control_plane = {
     'job_placer': RandomJobPlacer(),
-    'job_scheduler': SRPTJobScheduler()
     # 'job_scheduler': RandomJobScheduler()
+    # 'job_scheduler': SRPTJobScheduler()
+    'job_scheduler': FIFOJobScheduler()
     }
 
 # initilise cluster environment
