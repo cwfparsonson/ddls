@@ -8,7 +8,7 @@ from collections import defaultdict
 import copy
 
 
-class RandomJobScheduler(JobScheduler):
+class FIFOJobScheduler(JobScheduler):
     def __init__(self):
         super().__init__()
 
@@ -42,13 +42,13 @@ class RandomJobScheduler(JobScheduler):
 
         # schedule ops on each worker
         for worker_id, ops in worker_to_ops.items():
-            # randomly shuffle order of ops
-            shuffled_ops = list(ops)
-            random.shuffle(shuffled_ops)
-
-            # assign priorities based on random shuffle order
-            for priority, op in enumerate(shuffled_ops):
-                job_id, op_id = op['job_id'], op['op_id']
+            # get cost of each op
+            job_op_to_cost = {f'{op["job_id"]}_{op["op_id"]}': job_id_to_job[op['job_id']].details['time_arrived'] for op in ops}
+            # sort ops in descending order of cost
+            sorted_job_op_to_cost = sorted(job_op_to_cost, key=job_op_to_cost.get, reverse=True)
+            # highest cost ops have lowest priority
+            for priority, job_op in enumerate(list(sorted_job_op_to_cost)):
+                job_id, op_id = [int(i) for i in job_op.split('_')]
                 worker_to_job_to_op_to_priority[worker_id][job_id][op_id] = priority
 
         return worker_to_job_to_op_to_priority 

@@ -8,25 +8,11 @@ import copy
 
 class SRPTJobScheduler(JobScheduler):
     def __init__(self):
-        pass
-
-    def _get_worker_to_ops(self, 
-                           placement: dict):
-        '''Gather which ops have been placed on each worker.'''
-        worker_to_ops = defaultdict(list)
-        for job_id in placement.keys():
-            for op_id in placement[job_id].keys():
-                worker_to_ops[placement[job_id][op_id]].append({'op_id': op_id, 'job_id': job_id})
-        return worker_to_ops
+        super().__init__()
 
     def get_schedule(self, 
                      new_placements: dict,
                      cluster: Cluster):
-        '''
-        Args:
-            placement: Any new placement(s) about to be chosen this step by
-                the job placer.
-        '''
         # initialise job op schedule for each worker
         worker_to_job_to_op_to_priority = defaultdict(lambda: defaultdict(dict))
 
@@ -50,7 +36,7 @@ class SRPTJobScheduler(JobScheduler):
         # initialise useful mappings
         job_id_to_job = {job.job_id: job for job in jobs}
         worker_to_type = cluster.topology.graph.graph['worker_to_type'] # maps worker id to its device type so that can query profiled job computation time -> get op run times
-        worker_to_ops = self._get_worker_to_ops(placement)
+        worker_to_ops = self.get_worker_to_ops(placement)
 
         # if remaining run time not initialised for op, initialise so can calc op costs for scheduling
         for job in job_id_to_job.values():
