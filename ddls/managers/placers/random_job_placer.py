@@ -1,6 +1,6 @@
 from ddls.managers.placers.placer import Placer
 from ddls.demands.jobs.job import Job
-from ddls.clusters.cluster import Cluster
+from ddls.environments.cluster.cluster_environment import ClusterEnvironment
 #from ddls.demands.workloads.data_parallel_workload import DataParallelWorkload
 #from ddls.demands.workloads.workloads_manager import DataParallelWorkloadsManager
 
@@ -23,7 +23,7 @@ class RandomJobPlacer(Placer):
         pass
 
     def get_placement(self, 
-                      cluster: Cluster):
+                      cluster: ClusterEnvironment):
         '''
         Places operations in a job onto available worker(s) in a cluster, where the clusters
         nodes are servers which contain >=1 worker(s) which may or may not have sufficient 
@@ -57,7 +57,7 @@ class RandomJobPlacer(Placer):
         return job_to_operation_to_worker
                 
     def _get_workers_available_memory(self, 
-                                      cluster: Cluster, 
+                                      cluster: ClusterEnvironment, 
                                       sort: bool = True):
         '''
         Maps worker ids to available memory. 

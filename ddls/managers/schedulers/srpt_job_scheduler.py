@@ -1,6 +1,6 @@
 from ddls.managers.schedulers.job_scheduler import JobScheduler
 from ddls.demands.jobs.job import Job
-from ddls.clusters.cluster import Cluster
+from ddls.environments.cluster.cluster_environment import ClusterEnvironment
 
 import numpy as np
 from collections import defaultdict
@@ -12,7 +12,7 @@ class SRPTJobScheduler(JobScheduler):
 
     def get_schedule(self, 
                      new_placements: dict,
-                     cluster: Cluster):
+                     cluster: ClusterEnvironment):
         # initialise job op schedule for each worker
         worker_to_job_to_op_to_priority = defaultdict(lambda: defaultdict(dict))
 

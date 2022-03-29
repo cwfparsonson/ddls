@@ -1,5 +1,5 @@
 from ddls.demands.jobs.job import Job
-from ddls.clusters.cluster import Cluster
+from ddls.environments.cluster.cluster_environment import ClusterEnvironment
 
 from abc import ABC, abstractmethod
 from collections import defaultdict
@@ -8,7 +8,7 @@ class JobScheduler(ABC):
     @abstractmethod
     def get_schedule(self, 
                      new_placements: dict,
-                     cluster: Cluster):
+                     cluster: ClusterEnvironment):
         '''Set order in which a set of operations should be scheduled.
 
         Args:

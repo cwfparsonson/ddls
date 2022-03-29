@@ -1,5 +1,5 @@
 from ddls.devices.processors.gpus.A100 import A100
-from ddls.clusters.cluster import Cluster
+from ddls.environments.cluster.cluster_environment import ClusterEnvironment
 from ddls.utils import ddls_graph_from_pbtxt_file
 from ddls.plotting.plotting import plot_computation_graph
 from ddls.demands.jobs.job import Job
@@ -58,8 +58,8 @@ control_plane = {
     }
 
 # initilise cluster environment
-env = Cluster(topology_config=topology_config,
-              node_config=node_config,
+env = ClusterEnvironment(topology_config=topology_config,
+                         node_config=node_config,
               path_to_save='/scratch/datasets/ddls/sims',
               save_freq=100,
               use_sqlite_database=True)

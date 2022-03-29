@@ -1,5 +1,5 @@
 from ddls.demands.jobs.job import Job
-from ddls.clusters.cluster import Cluster
+from ddls.environments.cluster.cluster_environment import ClusterEnvironment
 
 from abc import ABC, abstractmethod
 
@@ -12,6 +12,6 @@ class Placer(ABC):
     @abstractmethod
     def get_placement(self, 
                       jobs: list[Job], 
-                      cluster: Cluster):
+                      cluster: ClusterEnvironment):
         '''Place jobs in the cluster.'''
         pass
