@@ -309,7 +309,7 @@ class ClusterEnvironment:
                 self.time_next_job_to_arrive = float('inf')
 
             # check if simulation finished
-            if self._is_done():
+            if self.is_done():
                 step_done = True
 
             if verbose:
@@ -328,17 +328,17 @@ class ClusterEnvironment:
 
         # save logs
         if self.path_to_save is not None:
-            if self.step_counter % self.save_freq == 0 or self._is_done():
+            if self.step_counter % self.save_freq == 0 or self.is_done():
                 self.save()
-                if self._is_done():
+                if self.is_done():
                     self.save_thread.join()
 
         # TEMPORARY
-        obs, action_set, reward, done, info = None, None, None, self._is_done(verbose), None
+        obs, action_set, reward, done, info = None, None, None, self.is_done(verbose), None
 
         return obs, action_set, reward, done, info
 
-    def _is_done(self, verbose=False):
+    def is_done(self, verbose=False):
         '''Checks if simulation has finished.'''
         done = False
 
