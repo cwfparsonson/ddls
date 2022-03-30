@@ -2,6 +2,9 @@ from ddls.environments.cluster.cluster_environment import ClusterEnvironment
 from ddls.demands.jobs.job import Job
 from ddls.distributions.distribution import Distribution
 
+from typing import Union
+
+
 class JobPlacingAllNodesEnvironment:
     def __init__(self,
                  topology_config: dict,
@@ -20,7 +23,7 @@ class JobPlacingAllNodesEnvironment:
                  use_sqlite_database: bool = False):
         '''
         At each step, place all nodes in a computation graph -> one episode
-        corresponds to >= one job placement.
+        corresponds to >= one job placement (place jobs until cluster env is done).
 
         This is as opposed to JobPlacingPerNodeEnvironment, where at each step
         only place one operation -> one episode corresponds to one job placement.
@@ -63,7 +66,12 @@ class JobPlacingAllNodesEnvironment:
                                verbose=False)
 
     def reset(self):
-        pass
+        # reset the cluster environment
+        self._reset_cluster()
+
+
+
+
 
     def step(self, action):
         pass

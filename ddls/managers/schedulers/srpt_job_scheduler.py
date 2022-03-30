@@ -7,8 +7,6 @@ from collections import defaultdict
 import copy
 
 class SRPTJobScheduler(JobScheduler):
-    def __init__(self):
-        super().__init__()
 
     def get_schedule(self, 
                      new_placements: dict,
@@ -36,7 +34,7 @@ class SRPTJobScheduler(JobScheduler):
         # initialise useful mappings
         job_id_to_job = {job.job_id: job for job in jobs}
         worker_to_type = cluster.topology.graph.graph['worker_to_type'] # maps worker id to its device type so that can query profiled job computation time -> get op run times
-        worker_to_ops = self.get_worker_to_ops(placement)
+        worker_to_ops = super().get_worker_to_ops(placement)
 
         # if remaining run time not initialised for op, initialise so can calc op costs for scheduling
         for job in job_id_to_job.values():

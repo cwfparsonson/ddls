@@ -10,7 +10,7 @@ import copy
 
 class FIFOJobScheduler(JobScheduler):
     def __init__(self):
-        super().__init__()
+        pass
 
     def get_schedule(self, 
                      new_placements: dict,
@@ -38,7 +38,7 @@ class FIFOJobScheduler(JobScheduler):
         # initialise useful mappings
         job_id_to_job = {job.job_id: job for job in jobs}
         worker_to_type = cluster.topology.graph.graph['worker_to_type'] # maps worker id to its device type so that can query profiled job computation time -> get op run times
-        worker_to_ops = self.get_worker_to_ops(placement)
+        worker_to_ops = super().get_worker_to_ops(placement)
 
         # schedule ops on each worker
         for worker_id, ops in worker_to_ops.items():
