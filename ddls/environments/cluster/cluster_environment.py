@@ -82,6 +82,7 @@ class ClusterEnvironment:
         node_ids = iter(list(topology.graph.nodes))
         topology.graph.graph['worker_to_node'] = dict()
         topology.graph.graph['worker_to_type'] = dict()
+        topology.graph.graph['worker_types'] = set()
         for node_type in node_config.keys():
             for _ in range(node_config[node_type]['num_nodes']):
                 node_id = next(node_ids)
@@ -93,6 +94,8 @@ class ClusterEnvironment:
                         topology.graph.nodes[node_id]['workers'][worker.processor_id] = worker
                         topology.graph.graph['worker_to_node'][worker.processor_id] = node_id
                         topology.graph.graph['worker_to_type'][worker.processor_id] = worker.device_type
+                        if worker.device_type not in topology.graph.graph['worker_types']:
+                            topology.graph.graph['worker_types'].add(worker.device_type)
 
     def reset(self,
               jobs: list[Job], 
@@ -131,6 +134,8 @@ class ClusterEnvironment:
 
         # initialise trackers
         self.num_jobs_arrived = 0
+        self.num_mounted_ops = 0
+        self.num_active_workers = 0
         self.jobs_running = {}
         self.jobs_completed = {}
         self.jobs_blocked = {}
@@ -198,6 +203,7 @@ class ClusterEnvironment:
             worker_id = self.job_op_to_worker[f'{job.details["job_idx"]}_{job.job_id}_{op_id}']
             node_id = self.topology.graph.graph['worker_to_node'][worker_id]
             worker = self.topology.graph.nodes[node_id]['workers'][worker_id].unmount(job=job, op_id=op_id)
+            self.num_mounted_ops -= 1
             del self.job_op_to_worker[f'{job.details["job_idx"]}_{job.job_id}_{op_id}']
         # clear job from current cluster placement tracker
         del self.placement[job.job_id]
@@ -320,6 +326,7 @@ class ClusterEnvironment:
         # log step-level data
         self.step_stats['step_end_time'] = self.stopwatch.time()
         self.step_stats['mean_num_active_workers'] = np.mean(self.step_stats['mean_num_active_workers'])
+        self.step_stats['mean_worker_compute_utilisation'] = self.step_stats['mean_num_active_workers'] / len(list(self.topology.graph.graph['worker_to_node']))
         self.step_stats['job_queue_length'] = len(self.job_queue)
         self._update_steps_log(copy.deepcopy(self.step_stats))
 
@@ -391,10 +398,10 @@ class ClusterEnvironment:
 
         # tick highest priority mounted ready op on each worker by shortest_remaining_run_time (or max_tick) and track which op(s) completed
         job_idx_to_completed_op_ids = defaultdict(list)
-        num_active_workers = 0
+        self.num_active_workers = 0
         for worker_id, priority_job_op in worker_to_priority_job_op.items():
             if priority_job_op is not None:
-                num_active_workers += 1
+                self.num_active_workers += 1
                 node_id = self.topology.graph.graph['worker_to_node'][worker_id]
                 worker = self.topology.graph.nodes[node_id]['workers'][worker_id]
                 job_idx, job_id, op_id = [int(i) for i in priority_job_op.split('_')]
@@ -408,7 +415,7 @@ class ClusterEnvironment:
                     job_idx_to_completed_op_ids[job_idx].append(op_id)
                     if verbose:
                         print(f'Op {op_id} of job index {job_idx} completed')
-        self.step_stats['mean_num_active_workers'].append(num_active_workers)
+        self.step_stats['mean_num_active_workers'].append(self.num_active_workers)
 
         # tick stopwatch
         self.stopwatch.tick(tick)
@@ -461,6 +468,7 @@ class ClusterEnvironment:
                 worker_id = job_placement[job_id][op_id]
                 node_id = self.topology.graph.graph['worker_to_node'][worker_id]
                 self.topology.graph.nodes[node_id]['workers'][worker_id].mount(job=job, op_id=op_id)
+                self.num_mounted_ops += 1
                 job.reset_op_remaining_run_time(op_id, device_type=self.topology.graph.nodes[node_id]['workers'][worker_id].device_type)
                 self.job_op_to_worker[f'{job.details["job_idx"]}_{job.job_id}_{op_id}'] = worker_id
                 if verbose:

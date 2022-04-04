@@ -1,10 +1,13 @@
 from ddls.environments.cluster.cluster_environment import ClusterEnvironment
 from ddls.environments.job_placing.observations.job_placing_all_nodes_observation import JobPlacingAllNodesObservation
-from ddls.environments.job_placing.rewards.job_completion_time import JobCompletionTime
+from ddls.environments.job_placing.rewards.worker_compute_utilisation import WorkerComputeUtilisation
 from ddls.demands.jobs.job import Job
 from ddls.distributions.distribution import Distribution
+from ddls.utils import flatten_list
 
 from typing import Union
+import numpy as np
+import pprint
 
 
 class JobPlacingAllNodesEnvironment:
@@ -13,9 +16,9 @@ class JobPlacingAllNodesEnvironment:
                  node_config: dict,
                  jobs: list[Job], 
                  job_interarrival_time_dist: Distribution,
-                 observation_function: str = 'default',
+                 observation_function: str = 'job_placing_all_nodes_observation',
                  information_function: str = 'default',
-                 reward_function: str = 'default',
+                 reward_function: str = 'worker_compute_utilisation',
                  max_cluster_simulation_run_time: Union[int, float] = float('inf'),
                  job_sampling_mode: str = 'remove_and_repeat',
                  job_queue_capacity: int = 10,
@@ -51,7 +54,7 @@ class JobPlacingAllNodesEnvironment:
         self.use_sqlite_database = use_sqlite_database
 
         self.observation_function_str = observation_function
-        if observation_function == 'default':
+        if observation_function == 'job_placing_all_nodes_observation':
             self.observation_function = JobPlacingAllNodesObservation()
         else:
             raise Exception(f'Unrecognised observation_function {self.observation_function_str}')
@@ -62,8 +65,8 @@ class JobPlacingAllNodesEnvironment:
         else:
             raise Exception(f'Unrecognised information_function {self.information_function_str}')
         self.reward_function_str = reward_function
-        if reward_function == 'default':
-            self.reward_function = {'job_completion_time': JobCompletionTime()}
+        if reward_function == 'worker_compute_utilisation':
+            self.reward_function = {'worker_compute_utilisation': WorkerComputeUtilisation()}
         else:
             raise Exception(f'Unrecognised reward_function {self.reward_function_str}')
 
@@ -93,19 +96,27 @@ class JobPlacingAllNodesEnvironment:
         # reset the cluster environment
         self._reset_cluster()
 
-        # extract observation
-        obs = self.observation_function.extract(cluster=self.cluster, done=self.is_done())
+        # extract MDP info for this step
+        done = self.is_done()
+        obs = self.observation_function.extract(cluster=self.cluster, done=done) # encoded obs of job to place
+        action_set = self._get_action_set()
+        reward = self.reward_function.extract(cluster=self.cluster, done=done)
+        info = self._get_info()
 
-
-
-
-
-
-
-
+        return obs, action_set, reward, done, info
 
     def step(self, action):
         pass
+
+    def _get_action_set(self):
+        return None
+
+    def _get_info(self):
+        return None
+
+
+
+
 
 
 

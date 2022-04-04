@@ -3,6 +3,7 @@ from ddls.plotting.plotting import plot_computation_graph
 import networkx as nx
 import copy
 from typing import Union
+from collections import defaultdict
 
 
 class Job:
@@ -38,10 +39,6 @@ class Job:
         else:
             self.job_id = job_id 
 
-        if details is None:
-            self.details = {}
-        else:
-            self.details = details
 
         self.job_type = job_type
 
@@ -49,6 +46,50 @@ class Job:
         self.job_total_dependency_size = self._init_job_total_dependecy_size()
         
         self.reset()
+        self.details = self._init_job_details(details)
+
+    def _init_job_details(self, details: dict = None):
+        '''Initialises some additional useful details about the job.'''
+        if details is None:
+            details = {}
+
+        details['max_compute_node'], details['max_compute_cost'], details['max_memory_node'], details['max_memory_cost'], details['max_depth_node'], details['max_depth'] = self.get_max_node_details()
+
+        return details
+
+    def get_max_node_details(self):
+        '''
+        Goes through each op in computation graph and finds info about nodes with
+        maximum stats for various metrics.
+
+        For compute cost info, will return max_compute_node and max_compute_node
+        which are dicts mapping device types to the corresponding info.
+
+        For memory cost info, is device-agnostic so no need for dict mapping.
+
+        For depth info, gets maximum depth of any node from source.
+        '''
+        max_compute_node, max_compute_cost = defaultdict(lambda: 0), defaultdict(lambda: 0)
+        max_memory_node, max_memory_cost = 0, 0
+        max_depth_node, max_depth = 0, 0
+        for node in self.computation_graph.nodes:
+            # check if update max cost info
+            for device_type, compute_cost in self.computation_graph.nodes[node]['compute_cost'].items():
+                if self.computation_graph.nodes[node]['compute_cost'][device_type] > max_compute_cost[device_type]:
+                    max_compute_node[device_type] = copy.deepcopy(node)
+                    max_compute_cost[device_type] = copy.deepcopy(compute_cost)
+            # check if update max memory info
+            if self.computation_graph.nodes[node]['memory_cost'] > max_memory_cost:
+                max_memory_node[device_type] = copy.deepcopy(node)
+                max_memory_cost[device_type] = copy.deepcopy(self.computation_graph.nodes[node]['memory_cost'])
+            # check if update max depth info
+            node_depth = len(nx.shortest_path(self.computation_graph, source=0, target=node))
+            if node_depth > max_depth:
+                max_depth_node = copy.deepcopy(node)
+                max_depth = copy.deepcopy(node_depth)
+        return max_compute_node, max_compute_cost, max_memory_node, max_memory_cost, max_depth_node, max_depth
+
+
         
     def reset(self):
         '''Resets the job ready for a training step to be executed.'''
@@ -109,6 +150,8 @@ class Job:
             self.computation_graph[edge[0]][edge[1]][edge[2]]['job_id'] = self.job_id
 
     def _init_graph_info(self):
+        if len(list(self.computation_graph.predecessors(0))) != 0:
+            raise Exception(f'Source node of computation graph must have id 0.')
         self.computation_graph.graph['ops_ready'] = {list(nx.topological_sort(self.computation_graph))[0]}
         self.computation_graph.graph['ops_completed'] = set()
 

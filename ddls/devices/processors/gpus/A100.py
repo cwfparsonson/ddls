@@ -13,7 +13,7 @@ class A100(Processor):
             
         self.device_type = 'A100'
 
-        # self.memory_capacity = int(40e9)
+        self.memory_capacity = int(40e9)
         # self.memory_bandwidth = int(1.555e9)
 
         # self.num_streaming_multiprocessors = 8
@@ -40,7 +40,7 @@ class A100(Processor):
         if self.memory_occupied + job.computation_graph.nodes[op_id]['memory_cost'] > self.memory_capacity:
             raise Exception(f'Trying to allocate {job.nodes[op_id]["memory_cost"]} of memory for job {job} op {op_id} but have only {self.memory_capacity - self.memory_occupied} available on processor {self.processor_id}.')
         self.mounted_job_idx_to_ops[job.details['job_idx']].add(op_id)
-        self.mounted_occupied += job.computation_graph.nodes[op_id]['memory_cost']
+        self.memory_occupied += job.computation_graph.nodes[op_id]['memory_cost']
         
     def unmount(self, job, op_id):
         self.memory_occupied -= job.computation_graph.nodes[op_id]['memory_cost']

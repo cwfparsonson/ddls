@@ -247,8 +247,9 @@ class Stopwatch:
     def time(self):
         return self._time
 
-
-
+def flatten_list(t):
+    '''Flattens a list of lists t.'''
+    return [item for sublist in t for item in sublist]
 
 
 
