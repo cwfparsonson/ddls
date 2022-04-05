@@ -16,6 +16,9 @@ class JobPlacingAllNodesEnvironment:
                  node_config: dict,
                  jobs: list[Job], 
                  job_interarrival_time_dist: Distribution,
+                 continuous_action_mode: bool = False,
+                 worker_selection: Union['random'] = 'random',
+                 op_allocation: Union['random', 'sequential'] = 'sequential',
                  observation_function: str = 'job_placing_all_nodes_observation',
                  information_function: str = 'default',
                  reward_function: str = 'worker_compute_utilisation',
@@ -30,16 +33,40 @@ class JobPlacingAllNodesEnvironment:
                  save_freq: int = 1,
                  use_sqlite_database: bool = False):
         '''
-        At each step, place all nodes in a computation graph -> one episode
-        corresponds to >= one job placement (place jobs until cluster env is done).
+        The cluster has $$n$$ servers, each server $$s_i$$ has $$m$$ workers,
+        therefore there are $$n \times m$$ workers in total.
 
-        This is as opposed to JobPlacingPerNodeEnvironment, where at each step
-        only place one operation -> one episode corresponds to one job placement.
+        Args:
+            continuous_action_mode: Whether or not to accept continuous float actions
+                or discrete int actions to specify number of workers to use.
+            worker_selection: Given a number of workers to use in the cluster,
+                how to select the set of workers.
+            op_allocation: Given a set of workers to use, how to allocate the ops
+                in the job across some workers.
+                    sequential: Loops through each op in order of index and each worker
+                        and allocates sequentially. When reach end of workers, starts
+                        at first worker again. Repeat until all ops allocated.
+                    random: Choose random workers from set for each op.
+
+        MDP:
+            state: Job computation graph which is requesting to be placed on the
+                cluster.
+            action: 
+                if continuous_action_mode:
+                    Float 0 <= action <= 1 specifying fraction of the $$n \times m$$
+                        workers in the cluster to use for the job.
+                else:
+                    Int 0 <= action <= $$n \times m$$ specifying the number of workers
+                        in the cluster to use for the job.
+            transition: When next job arrives, will transition to next state.
         '''
         self.topology_config = topology_config
         self.node_config = node_config
         self.jobs = jobs
         self.job_interarrival_time_dist = job_interarrival_time_dist
+        self.continuous_action_mode = continuous_action_mode
+        self.worker_selection = worker_selection
+        self.op_allocation = op_allocation
         self.max_cluster_simulation_run_time = max_cluster_simulation_run_time
         self.job_sampling_mode = job_sampling_mode
         self.job_interarrival_time_dist = job_interarrival_time_dist
@@ -96,23 +123,71 @@ class JobPlacingAllNodesEnvironment:
         # reset the cluster environment
         self._reset_cluster()
 
+        # reset the reward and observation function
+        self.observation_function.reset()
+        for reward_function in self.reward_function.values():
+            reward_function.reset()
+
         # extract MDP info for this step
         done = self.is_done()
         obs = self.observation_function.extract(cluster=self.cluster, done=done) # encoded obs of job to place
         action_set = self._get_action_set()
-        reward = self.reward_function.extract(cluster=self.cluster, done=done)
+        action_mask = self._get_action_mask()
+        reward = {reward: self.reward_function[reward].extract(cluster=self.cluster, done=done) for reward in self.reward_function.keys()}
         info = self._get_info()
 
-        return obs, action_set, reward, done, info
+        return obs, action_set, action_mask, reward, done, info
 
     def step(self, action):
         pass
 
     def _get_action_set(self):
-        return None
+        return [action for action in range(len(self.cluster.topology.graph.graph['worker_to_node']) + 1)]
+
+    def _get_action_mask(self):
+        # TEMPORARY: Just assume placing 1st job in queue
+        # TODO: Implement where get given job and do per-job encoding?
+        job = list(self.cluster.job_queue.jobs.values())[0] # assume event-driven where only ever have one job to queue
+
+        # check how much memory is available on each worker
+        worker_to_available_memory = self._get_workers_available_memory(self.cluster, sort=True)
+        workers = list(worker_to_available_memory.keys())
+
+        # initialise action mask
+        action_mask = [1] # choosing 0 workers (i.e. do not place job) is always valid
+
+        # check which action(s) valid
+        for action in range(1, len(workers)):
+            if sum(worker_to_available_memory[workers[i]] for i in range(action)) >= job.job_total_operation_memory_cost:
+                # can fit job on cluster if use 'action' many workers -> action is valid
+                action_mask.append(1)
+            else:
+                # cannot fit job on cluster if use 'action' many workers -> action is invalid
+                action_mask.append(0)
+
+        return action_mask 
 
     def _get_info(self):
         return None
+
+    def _get_workers_available_memory(self, 
+                                      cluster: ClusterEnvironment, 
+                                      sort: bool = True):
+        '''
+        Maps worker ids to available memory. 
+
+        Args:
+            sort: If true, returned dict is in order of memory available,
+                with the worker with the most memory available first, etc.
+        '''
+        worker_to_available_memory = dict()
+        for worker_id, node_id in cluster.topology.graph.graph['worker_to_node'].items():
+            node_id = cluster.topology.graph.graph['worker_to_node'][worker_id]
+            worker = cluster.topology.graph.nodes[node_id]['workers'][worker_id]
+            worker_to_available_memory[worker_id] = worker.memory_capacity - worker.memory_occupied
+        if sort:
+            worker_to_available_memory = dict(sorted(worker_to_available_memory.items(), key=lambda x:x[1], reverse=True))
+        return worker_to_available_memory
 
 
 
