@@ -103,7 +103,7 @@ class GNN(nn.Module):
     This model expects an input of a DGL graph where nodes and edges have a single feature
     denoted as 'z'. This is something that should be handled by preprocessing.
 
-    Arguments:
+    Arguments (__init__):
         in_features_node (int): dimension of the node features seen by this layer
         in_features_edge (int): dimension of the edge features seen by this layer
         out_features_msg (int): dimension of the message that will be sent between nodes
@@ -111,6 +111,9 @@ class GNN(nn.Module):
         out_features_reduce (int): dimension of the embedding of the final layer
         num_layers (int): number of message passing layers (including first and last)
         aggregator_type (str): reference to a particular type of message-passing/aggregation layer
+
+    Arguments (forward):
+        graph (DGL DiGraph): a DGL DiGraph, where nodes and edges have only a single feature vector 'z' 
     '''
 
     def __init__(self,
@@ -128,17 +131,20 @@ class GNN(nn.Module):
             agg = MeanPool
 
         self.layers = []
+        #add first layer
         self.layers.append(agg(in_features_node=in_features_node,
                                 in_features_edge=in_features_edge,
                                 out_features_msg=out_features_msg,
                                 out_features_reduce=out_features_hidden))
 
+        #add hidden layers
         for _ in range(num_layers-2):
             self.layers.append(agg(in_features_node=out_features_hidden,
                                     in_features_edge=in_features_edge,
                                     out_features_msg=out_features_msg,
                                     out_features_reduce=out_features_hidden))
 
+        #add output layer
         self.layers.append(agg(in_features_node=out_features_hidden,
                                 in_features_edge=in_features_edge,
                                 out_features_msg=out_features_msg,
@@ -146,9 +152,13 @@ class GNN(nn.Module):
 
     def forward(self,graph):
         
+        
         for layer in self.layers:
-            
+
+            #generate node embeddings    
             output = layer(graph)
+            
+            #set node features as embeddings
             graph.ndata['z'] = output
 
         return graph.ndata['z']
