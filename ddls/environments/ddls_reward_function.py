@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-class DDLSReward(ABC):
+class DDLSRewardFunction(ABC):
     @abstractmethod
     def reset(self):
         pass

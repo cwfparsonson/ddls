@@ -1,3 +1,4 @@
+from ddls.environments.ddls_observation_function import DDLSObservationFunction
 from ddls.environments.ddls_observation import DDLSObservation
 from ddls.environments.cluster.cluster_environment import ClusterEnvironment
 from ddls.demands.jobs.job import Job
@@ -6,7 +7,7 @@ from ddls.utils import flatten_list
 import networkx as nx
 import numpy as np
 
-class JobPlacingAllNodesObservation(DDLSObservation):
+class JobPlacingAllNodesObservation(DDLSObservationFunction):
     def reset(self):
         pass
 
@@ -60,19 +61,30 @@ class JobPlacingAllNodesObservation(DDLSObservation):
         # TODO: Implement where get given job and do per-job encoding?
         job = list(cluster.job_queue.jobs.values())[0] # assume event-driven where only ever have one job to queue
 
-        encoded_obs = []
+        # encoded_ops = []
 
-        # only need to compute job and network features once
-        job_features = self._get_job_features(job)
-        network_worker_features = self._get_network_worker_features(job, cluster)
-        network_global_features = self._get_network_global_features(job, cluster)
+        # # only need to compute job and network features once
+        # job_features = self._get_job_features(job)
+        # network_worker_features = self._get_network_worker_features(job, cluster)
+        # network_global_features = self._get_network_global_features(job, cluster)
 
-        # compute op features for each node and create node features
-        for node in job.computation_graph.nodes:
-            node_features = flatten_list([self._get_op_features(node, job, cluster), job_features, network_worker_features, network_global_features])
-            encoded_obs.append(np.array(node_features, dtype=object))
+        # # compute op features for each node and create node features
+        # for node in job.computation_graph.nodes:
+            # node_features = flatten_list([self._get_op_features(node, job, cluster), job_features, network_worker_features, network_global_features])
+            # encoded_ops.append(np.array(node_features, dtype=object))
 
-        return np.array(encoded_obs, dtype=object)
+        obs = DDLSObservation()
+        obs.node_features = np.array([self._get_op_features(node, job, cluster) for node in job.computation_graph.nodes], dtype=object)
+        obs.edge_features = None
+        obs.global_features = np.array(flatten_list([self._get_job_features(job), 
+                                                     self._get_network_worker_features(job, cluster), 
+                                                     self._get_network_global_features(job, cluster)
+                                                     ]), dtype=object)
+        obs.edge_index = np.array([edge for edge in job.computation_graph.edges])
+        
+        return obs
+
+        
 
     def _get_job_features(self, job):
         job_features = []
@@ -88,7 +100,7 @@ class JobPlacingAllNodesObservation(DDLSObservation):
             ready_op_counter = 0
             mounted_op_counter = 0
             for job_idx, op_ids in worker.mounted_job_idx_to_ops.items():
-                job = cluster.running_jobs[job_idx]
+                job = cluster.jobs_running[job_idx]
                 for op_id in op_ids:
                     mounted_op_counter += 1
                     if op_id in job.computation_graph.graph['ops_ready']:

@@ -83,6 +83,7 @@ class ClusterEnvironment:
         topology.graph.graph['worker_to_node'] = dict()
         topology.graph.graph['worker_to_type'] = dict()
         topology.graph.graph['worker_types'] = set()
+        topology.graph.graph['num_workers'] = 0
         for node_type in node_config.keys():
             for _ in range(node_config[node_type]['num_nodes']):
                 node_id = next(node_ids)
@@ -94,6 +95,7 @@ class ClusterEnvironment:
                         topology.graph.nodes[node_id]['workers'][worker.processor_id] = worker
                         topology.graph.graph['worker_to_node'][worker.processor_id] = node_id
                         topology.graph.graph['worker_to_type'][worker.processor_id] = worker.device_type
+                        topology.graph.graph['num_workers'] += 1
                         if worker.device_type not in topology.graph.graph['worker_types']:
                             topology.graph.graph['worker_types'].add(worker.device_type)
 
@@ -240,6 +242,12 @@ class ClusterEnvironment:
     def step(self, 
              actions,
              verbose=False):
+
+        if self.path_to_save is not None and self.use_sqlite_database and self.step_counter % self.save_freq == 0:
+            # saved logs at end of previous step, can reset in-memory logs for this step
+            self._reset_sim_log()
+            self._reset_steps_log()
+
         self.step_stats = self._init_step_stats()
         if verbose:
             print('')
@@ -554,10 +562,10 @@ class ClusterEnvironment:
                                                    'steps_log': copy.deepcopy(self.steps_log)},))
         self.save_thread.start()
 
-        if self.use_sqlite_database:
-            # reset in-memory logs
-            self._reset_sim_log()
-            self._reset_steps_log()
+        # if self.use_sqlite_database:
+            # # reset in-memory logs
+            # self._reset_sim_log()
+            # self._reset_steps_log()
 
 
 

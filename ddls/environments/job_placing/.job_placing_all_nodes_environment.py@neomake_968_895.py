@@ -2,7 +2,6 @@ from ddls.environments.cluster.cluster_environment import ClusterEnvironment
 from ddls.environments.job_placing.observations.job_placing_all_nodes_observation import JobPlacingAllNodesObservation
 from ddls.environments.job_placing.rewards.worker_compute_utilisation import WorkerComputeUtilisation
 from ddls.environments.job_placing.rewards.mean_job_completion_time import MeanJobCompletionTime 
-from ddls.environments.job_placing.rewards.total_job_completion_time import TotalJobCompletionTime 
 from ddls.managers.schedulers.srpt_job_scheduler import SRPTJobScheduler
 from ddls.demands.jobs.job import Job
 from ddls.distributions.distribution import Distribution
@@ -25,7 +24,7 @@ class JobPlacingAllNodesEnvironment:
                  job_scheduler: Union['srpt_job_scheduler'] = 'srpt_job_scheduler',
                  observation_function: Union['default'] = 'default',
                  information_function: Union['default'] = 'default',
-                 reward_function: Union['worker_compute_utilisation', 'mean_job_completion_time', 'total_job_completion_time'] = 'mean_job_completion_time',
+                 reward_function: Union['worker_compute_utilisation', 'mean_job_completion_time'] = 'mean_job_completion_time',
                  max_cluster_simulation_run_time: Union[int, float] = float('inf'),
                  job_sampling_mode: str = 'remove_and_repeat',
                  job_queue_capacity: int = 10,
@@ -94,9 +93,7 @@ class JobPlacingAllNodesEnvironment:
         if reward_function == 'worker_compute_utilisation':
             self.reward_function = WorkerComputeUtilisation()
         elif reward_function == 'mean_job_completion_time':
-            self.reward_function = MeanJobCompletionTime()
-        elif reward_function == 'total_job_completion_time':
-            self.reward_function = TotalJobCompletionTime()
+            self.reward_function = JobCompletionTime()
         else:
             raise Exception(f'Unrecognised reward_function {self.reward_function_str}')
 

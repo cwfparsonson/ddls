@@ -1,14 +1,17 @@
-from ddls.environments.ddls_reward import DDLSReward
+from ddls.environments.ddls_reward_function import DDLSRewardFunction
 
-class WorkerComputeUtilisation(DDLSReward):
+class WorkerComputeUtilisation(DDLSRewardFunction):
     def reset(self):
         self.started = False
 
     def extract(self, cluster, done):
+
         if not self.started:
             self.started = True
-            return 0
+            reward = 0
         else:
-            return cluster.step_stats['mean_worker_compute_utilisation']
+            reward = cluster.step_stats['mean_worker_compute_utilisation']
+
+        return reward
 
         
