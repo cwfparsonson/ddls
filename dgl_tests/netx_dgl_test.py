@@ -3,6 +3,7 @@ import random as rnd
 import numpy as np
 import dgl
 import torch
+from sage import MeanPool, GNN
 
 def stack_features(g,**kwargs):
 
@@ -34,7 +35,7 @@ def stack_features(g,**kwargs):
     for node_feat in list(node_feats):
         del g.ndata[node_feat]
 
-    g.ndata['z'] = node_stack
+    g.ndata['z'] = node_stack.type(torch.FloatTensor)
 
     #################EDGES#################
 
@@ -64,11 +65,11 @@ def stack_features(g,**kwargs):
     for edge_feat in list(edge_feats):
         del g.edata[edge_feat]
 
-    g.edata['z'] = edge_stack
+    g.edata['z'] = edge_stack.type(torch.FloatTensor)
 
     return g
     
-    
+
 
 g_tmp = nx.complete_graph(10)
 g = nx.DiGraph()
@@ -85,4 +86,13 @@ for edge in g.edges():
 
 g = dgl.from_networkx(g,node_attrs=['feat_0','feat_1'],edge_attrs=['feat_0','feat_1'])
 
-print(stack_features(g))
+g = stack_features(g)
+print(g)
+
+gnn = GNN(in_features_node=11,
+        in_features_edge=19,
+        out_features_msg=8,
+        out_features_hidden=16,
+        out_features=4,
+        num_layers=1)
+print(gnn(g))
