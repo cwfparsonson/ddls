@@ -4,6 +4,7 @@ from ddls.environments.cluster.cluster_environment import ClusterEnvironment
 from ddls.demands.jobs.job import Job
 from ddls.utils import flatten_list
 
+import gym
 import networkx as nx
 import numpy as np
 
@@ -84,7 +85,12 @@ class JobPlacingAllNodesObservation(DDLSObservationFunction):
         
         return obs
 
-        
+    @property
+    def observation_space(self):
+        return gym.spaces.Dict({'node_features': gym.spaces.Box(low=0, high=1, shape=(16,)),
+                                'global_features': gym.spaces.Box(low=0, high=1, shape=(130,))
+                                })
+                        
 
     def _get_job_features(self, job):
         job_features = []

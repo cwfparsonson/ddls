@@ -8,3 +8,10 @@ class DDLSObservationFunction(ABC):
     @abstractmethod
     def extract(self):
         pass
+
+    @property
+    @abstractmethod
+    def observation_space(self):
+        pass
+
+
