@@ -37,7 +37,7 @@ class DummyNetworkEnv(gym.Env):
     def __init__(self, env_config):
 
         super(DummyNetworkEnv, self).__init__()
-
+        
         #init graph and convert to DGL with single features
 
         g_tmp = nx.complete_graph(env_config['num_nodes'])
@@ -67,25 +67,35 @@ class DummyNetworkEnv(gym.Env):
 
         self.g = stack_features(g)
 
+        edges_src = self.g.edges()[0].numpy().astype(np.float32)
+        edges_dst = self.g.edges()[1].numpy().astype(np.float32)
+
         #create action and observation space based on these features
         self.action_space = Discrete(len(self.g.ndata))
         self.observation_space = Dict({
-            'node_features':Box(-1,1,shape=(np.array(self.g.ndata).shape)),
-            'edge_features':Box(-1,1,shape=(np.array(self.g.edata).shape)),
+            'node_features':Box(0,1,shape=np.array(self.g.ndata['z']).shape),
+            'edge_features':Box(0,1,shape=np.array(self.g.edata['z']).shape),
+            'edges_src':Box(0,max(edges_src)+1,shape=edges_src.shape),
+            'edges_dst':Box(0,max(edges_dst)+1,shape=edges_dst.shape)
         })
 
         self.dummy_obs = {
-            'node_features':np.array(self.g.ndata),
-            'edge_features':np.array(self.g.edata)
+            'node_features':np.array(self.g.ndata['z']),
+            'edge_features':np.array(self.g.edata['z']),
+            'edges_src':edges_src,
+            'edges_dst':edges_dst
         }
 
-        def reset(self):
+        # self.dummy_obs = np.ones((3,))
+        # self.observation_space = Box(-1,1,shape=(3,))
 
-            return self.dummy_obs
+    def reset(self):
 
-        def step(self,action):
+        return self.dummy_obs
 
-            return self.dummy_obs, 1, False, {}
+    def step(self,action):
+
+        return self.dummy_obs, 1, False, {}
 
         # self.observation_space = Dict({
         #     'node_features':np.array(self.g.ndata),
