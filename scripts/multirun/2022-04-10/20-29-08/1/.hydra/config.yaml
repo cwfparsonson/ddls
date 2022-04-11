@@ -1,0 +1,28 @@
+experiment:
+  name: job_placing
+  seed: 1
+  path_to_save: /scratch/datasets/ddls/sims
+environment:
+  _target_: ddls.environments.job_placing.job_placing_all_nodes_environment.JobPlacingAllNodesEnvironment
+  node_config:
+    type_1:
+      num_nodes: 16
+      workers_config:
+      - num_workers: 4
+        worker: ddls.devices.processors.gpus.A100.A100
+  topology_config:
+    type: torus
+    kwargs:
+      x_dims: 4
+      y_dims: 4
+  jobs_config:
+    path_to_files: /scratch/datasets/ddls/jobs/tensorflow_synthetic_graphs/valid
+    max_files: 1
+    job_sampling_mode: remove
+    job_interarrival_time_dist:
+      _target_: ddls.distributions.uniform.Uniform
+      min_val: 1
+      max_val: 1000
+agent:
+  _target_: ddls.environments.job_placing.agents.random_job_placing_agent.RandomJobPlacingAgent
+  name: Random

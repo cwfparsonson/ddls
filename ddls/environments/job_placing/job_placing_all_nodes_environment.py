@@ -20,9 +20,9 @@ class JobPlacingAllNodesEnvironment(gym.Env):
     def __init__(self,
                  topology_config: dict,
                  node_config: dict,
-                 jobs: list[Job], 
-                 job_interarrival_time_dist: Distribution,
-                 continuous_action_mode: bool = False
+                 # jobs: list[Job], 
+                 jobs_config: dict,
+                 continuous_action_mode: bool = False,
                  worker_selection: Union['random'] = 'random',
                  op_allocation: Union['random', 'sequential'] = 'sequential',
                  job_scheduler: Union['srpt_job_scheduler'] = 'srpt_job_scheduler',
@@ -30,7 +30,6 @@ class JobPlacingAllNodesEnvironment(gym.Env):
                  information_function: Union['default'] = 'default',
                  reward_function: Union['worker_compute_utilisation', 'mean_job_completion_time', 'total_job_completion_time'] = 'mean_job_completion_time',
                  max_cluster_simulation_run_time: Union[int, float] = float('inf'),
-                 job_sampling_mode: str = 'remove_and_repeat',
                  job_queue_capacity: int = 10,
                  name: str = 'job_placing_all_nodes',
                  cluster_name: str = 'cluster',
@@ -69,16 +68,12 @@ class JobPlacingAllNodesEnvironment(gym.Env):
         '''
         self.topology_config = topology_config
         self.node_config = node_config
-        self.jobs = jobs
-        self.job_interarrival_time_dist = job_interarrival_time_dist
+        self.jobs_config = jobs_config
         self.continuous_action_mode = continuous_action_mode
         self.worker_selection = worker_selection
         self.op_allocation = op_allocation
         self.max_cluster_simulation_run_time = max_cluster_simulation_run_time
-        self.job_sampling_mode = job_sampling_mode
-        self.job_interarrival_time_dist = job_interarrival_time_dist
         self.max_cluster_simulation_run_time = max_cluster_simulation_run_time
-        self.job_sampling_mode = job_sampling_mode
         self.job_queue_capacity = job_queue_capacity
         self.cluster_name = cluster_name
         self.path_to_save = path_to_save
@@ -101,7 +96,7 @@ class JobPlacingAllNodesEnvironment(gym.Env):
         if self.continuous_action_mode:
             self.action_space = gym.spaces.Box(low=0, high=1, dtype=np.float32)
         else:
-            self.action_space = gym.spaces.Discrete(self.cluster.num_workers + 1)
+            self.action_space = gym.spaces.Discrete(self.cluster.topology.graph.graph['num_workers'] + 1)
 
         # init info
         self.information_function_str = information_function
@@ -138,9 +133,7 @@ class JobPlacingAllNodesEnvironment(gym.Env):
                                            use_sqlite_database=self.use_sqlite_database)
 
     def _reset_cluster(self, seed: int = None):
-        _ = self.cluster.reset(jobs=self.jobs,
-                               job_sampling_mode=self.job_sampling_mode,
-                               job_interarrival_time_dist=self.job_interarrival_time_dist,
+        _ = self.cluster.reset(jobs_config=self.jobs_config,
                                max_simulation_run_time=self.max_cluster_simulation_run_time,
                                job_queue_capacity=self.job_queue_capacity,
                                seed=seed,

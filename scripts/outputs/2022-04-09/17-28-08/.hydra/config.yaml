@@ -1,0 +1,9 @@
+environment:
+  _target_: from ddls.environments.job_placing.job_placing_all_nodes_environment.JobPlacingAllNodesEnvironment
+agent:
+  _target_: ddls.environments.job_placing.agents.RandomJobPlacingAgent
+  name: Random
+experiment:
+  name: job_placing
+  seed: 0
+  path_to_save: /scratch/datasets/ddls/sims

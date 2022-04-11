@@ -1,0 +1,2 @@
+_target_: ddls.environments.job_placing.agents.random_job_placing_agent.RandomJobPlacingAgent
+name: Random

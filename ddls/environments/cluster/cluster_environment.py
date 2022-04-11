@@ -3,8 +3,9 @@ from ddls.utils import Sampler, seed_stochastic_modules_globally
 from ddls.topologies.topology import Topology
 from ddls.topologies.torus import Torus
 from ddls.demands.jobs.job import Job
+from ddls.demands.jobs.jobs_generator import JobsGenerator
 from ddls.distributions.distribution import Distribution
-from ddls.utils import seed_stochastic_modules_globally, Stopwatch
+from ddls.utils import seed_stochastic_modules_globally, Stopwatch, get_class_from_path
 
 from typing import Any, Union
 from collections import defaultdict
@@ -91,7 +92,15 @@ class ClusterEnvironment:
                 for worker_config in node_config[node_type]['workers_config']:
                     for _ in range(worker_config['num_workers']):
                         # instantiate a worker and add to this node/server
-                        worker = worker_config['worker']()
+                        if isinstance(worker_config['worker'], str):
+                            # get worker class from str
+                            Worker = get_class_from_path(worker_config['worker'])
+                        else:
+                            # is already a class
+                            Worker = worker_config['worker']
+                        # instantiate class as an object
+                        worker = Worker()
+                        # update topology details
                         topology.graph.nodes[node_id]['workers'][worker.processor_id] = worker
                         topology.graph.graph['worker_to_node'][worker.processor_id] = node_id
                         topology.graph.graph['worker_to_type'][worker.processor_id] = worker.device_type
@@ -100,10 +109,8 @@ class ClusterEnvironment:
                             topology.graph.graph['worker_types'].add(worker.device_type)
 
     def reset(self,
-              jobs: list[Job], 
-              job_interarrival_time_dist: Distribution,
+              jobs_config: dict,
               max_simulation_run_time: Union[int, float] = float('inf'),
-              job_sampling_mode: str = 'remove_and_repeat',
               job_queue_capacity: int = 10,
               seed: int = None,
               verbose=False):
@@ -114,8 +121,11 @@ class ClusterEnvironment:
         else:
             self.path_to_save = None
 
-        self.job_sampler = Sampler(pool=jobs, sampling_mode=job_sampling_mode)
-        self.job_interarrival_time_dist = job_interarrival_time_dist 
+        self.jobs_generator = JobsGenerator(**jobs_config)
+
+        # self.job_sampler = Sampler(pool=jobs, sampling_mode=job_sampling_mode)
+        # self.job_interarrival_time_dist = job_interarrival_time_dist 
+
         self.max_simulation_run_time = max_simulation_run_time 
         self.seed = seed
         if seed is not None:
@@ -165,19 +175,17 @@ class ClusterEnvironment:
 
         if verbose:
             print(f'Reset cluster environment.')
-            print(f'Job interarrival time dist: {self.job_interarrival_time_dist}')
-            print(f'Job sampler: {self.job_sampler}')
             print(f'Max sim run time: {self.max_simulation_run_time}')
 
         return obs, action_set, reward, done, info
 
     def _get_next_job(self):
         '''Returns next job.'''
-        job = self.job_sampler.sample()
+        job = self.jobs_generator.sample_job()
         job.register_job_arrived(time_arrived=self.stopwatch.time(), 
                                  job_idx=self.num_jobs_arrived)
         self.time_last_job_arrived = copy.deepcopy(self.stopwatch.time())
-        self.time_next_job_to_arrive += self.job_interarrival_time_dist.sample(size=None)
+        self.time_next_job_to_arrive += self.jobs_generator.sample_interarrival_time(size=None)
         self.num_jobs_arrived += 1
         return job
 
@@ -301,7 +309,7 @@ class ClusterEnvironment:
                         print(f'Job with job_idx {job_idx} completed. Time arrived: {job.details["time_arrived"]} | Time completed: {job.details["time_completed"]}')
 
             # check if next job should arrive
-            if len(self.job_sampler) > 0:
+            if len(self.jobs_generator) > 0:
                 if verbose:
                     print(f'Time next job due to arrive: {self.time_next_job_to_arrive}')
                 if self.stopwatch.time() > self.time_next_job_to_arrive:
@@ -363,7 +371,7 @@ class ClusterEnvironment:
                 if verbose:
                     print(f'Maximum simulation run time reached -> done.')
 
-        if len(self.job_sampler) == 0 and len(self.jobs_running) == 0 and len(self.job_queue) == 0:
+        if len(self.jobs_generator) == 0 and len(self.jobs_running) == 0 and len(self.job_queue) == 0:
             done = True
             if verbose:
                 print(f'No more jobs running, in queue, or left to sample -> done.')
