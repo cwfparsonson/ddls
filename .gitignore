@@ -149,3 +149,6 @@ docker_usage.txt
 *.prof
 logs/
 
+# hydra logs
+output/
+multirun/

@@ -1,9 +1,0 @@
-defaults:
-    - environment: env_config
-    - agent: random_agent
-
-experiment:
-    - name: job_placing
-    - seed: 0
-
-
