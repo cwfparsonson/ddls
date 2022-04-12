@@ -150,5 +150,5 @@ docker_usage.txt
 logs/
 
 # hydra logs
-output/
+outputs/
 multirun/
