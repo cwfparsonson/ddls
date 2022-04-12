@@ -1,0 +1,16 @@
+defaults:
+    - environment: job_placing_all_nodes_environment 
+    - agent: random_job_placing_agent
+
+experiment:
+    name: job_placing
+    seed: 0
+    path_to_save: '/scratch/datasets/ddls/sims'
+
+launcher:
+     num_epochs: null
+     num_episodes: 1
+     num_actor_steps: null
+     num_eval_episodes: null
+     eval_freq: null
+     epoch_batch_size: null

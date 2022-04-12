@@ -168,16 +168,12 @@ class ClusterEnvironment:
         self.placement = defaultdict(dict)
 
         obs = None
-        action_set = None
-        reward = None
-        done = False
-        info = None
 
         if verbose:
             print(f'Reset cluster environment.')
             print(f'Max sim run time: {self.max_simulation_run_time}')
 
-        return obs, action_set, reward, done, info
+        return obs
 
     def _get_next_job(self):
         '''Returns next job.'''
@@ -241,10 +237,13 @@ class ClusterEnvironment:
         step_stats['step_counter'] = copy.deepcopy(self.step_counter)
         step_stats['step_start_time'] = copy.deepcopy(self.stopwatch.time())
         step_stats['mean_num_active_workers'] = []
+
+        # need to init following manually to ensure they're recorded in saved results
         step_stats['num_jobs_completed'] = 0
         step_stats['num_jobs_running'] = 0
         step_stats['num_jobs_arrived'] = 0
         step_stats['num_jobs_blocked'] = 0
+
         return step_stats
 
     def step(self, 

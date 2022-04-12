@@ -9,7 +9,7 @@ import networkx as nx
 import numpy as np
 
 class JobPlacingAllNodesObservation(DDLSObservationFunction):
-    def reset(self):
+    def reset(self, cluster):
         pass
 
     def extract(self, 

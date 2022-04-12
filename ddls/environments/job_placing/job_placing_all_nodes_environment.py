@@ -147,16 +147,13 @@ class JobPlacingAllNodesEnvironment(gym.Env):
         self._reset_cluster(seed=seed)
 
         # reset the reward and observation function
-        self.observation_function.reset()
-        self.reward_function.reset()
+        self.observation_function.reset(self.cluster)
+        self.reward_function.reset(self.cluster)
 
         # extract current MDP info and save so can access for next env.step() call
         self.obs = self._get_observation() # encoded obs of job to place
-        self.reward = self._get_reward()
-        self.done = self._is_done()
-        self.info = self._get_info()
 
-        return self.obs, self.reward, self.done, self.info
+        return self.obs
 
     def _conv_frac_workers_to_int(self, frac):
         '''Converts a fraction of cluster works to an integer number of workers.'''
