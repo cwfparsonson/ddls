@@ -71,10 +71,12 @@ class DummyNetworkEnv(gym.Env):
         edges_dst = self.g.edges()[1].numpy().astype(np.float32)
 
         #create action and observation space based on these features
-        self.action_space = Discrete(len(self.g.ndata))
+        # self.action_space = Discrete(len(self.g.ndata))
+        self.action_space = Box(0,1,shape=(1,))
         self.observation_space = Dict({
             'node_features':Box(0,1,shape=np.array(self.g.ndata['z']).shape),
             'edge_features':Box(0,1,shape=np.array(self.g.edata['z']).shape),
+            'graph_features':Box(0,1,shape=(env_config['graph_features'],)),
             'edges_src':Box(0,max(edges_src)+1,shape=edges_src.shape),
             'edges_dst':Box(0,max(edges_dst)+1,shape=edges_dst.shape)
         })
@@ -82,20 +84,25 @@ class DummyNetworkEnv(gym.Env):
         self.dummy_obs = {
             'node_features':np.array(self.g.ndata['z']),
             'edge_features':np.array(self.g.edata['z']),
+            'graph_features':np.random.rand(env_config['graph_features']).astype(np.float32),
             'edges_src':edges_src,
             'edges_dst':edges_dst
         }
+
 
         # self.dummy_obs = np.ones((3,))
         # self.observation_space = Box(-1,1,shape=(3,))
 
     def reset(self):
-
+        
+        
+        #if loading a new graph with different size, need to re-define the obs spaces (right?)
+        # print('reset obs: {}'.format(self.dummy_obs))
         return self.dummy_obs
 
     def step(self,action):
 
-        return self.dummy_obs, 1, False, {}
+        return self.dummy_obs, -1, True, {}
 
         # self.observation_space = Dict({
         #     'node_features':np.array(self.g.ndata),

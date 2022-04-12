@@ -62,6 +62,8 @@ class MeanPool(nn.Module):
     def mp_func(self,edges):
 
         #generate intermediate representations of node and edge features
+        # print(edges.src['z'])
+        # print(edges.data['z'])
         nodes = self.node_layer(edges.src['z'])
         edges = self.edge_layer(edges.data['z'])
 
@@ -74,7 +76,9 @@ class MeanPool(nn.Module):
 
         #generate intermediate representations of the receiving node's node and edge features
         local_node = self.node_layer(nodes.data['z'])
-        local_edge = torch.zeros((1,int(self.out_features_msg/2)))
+
+        #create padded edge feature for each self-node in the batch
+        local_edge = torch.zeros((len(local_node),int(self.out_features_msg/2)))
         local_state = torch.cat((local_node,local_edge),-1)
 
         #reshape local representation so it matches dimensions of received messages (dimension extension)

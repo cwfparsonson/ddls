@@ -34,15 +34,18 @@ env_config = {
         'edge_features_shape':{
             'feat_0':1,
             'feat_1':(5,2)
-        }
+        },
+        'graph_features':4
     }
 
 model_config = {
-        'in_features_node':11,
-        'in_features_edge':19,
+        'in_features_node':19,
+        'in_features_edge':11,
         'out_features_msg':8,
         'out_features_hidden':16,
         'out_features':4,
+        'in_features_graph':4,
+        'out_features_graph':4,
         'num_layers':1,
         'aggregator_type':'mean'
     }
