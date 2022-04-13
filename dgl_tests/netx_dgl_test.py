@@ -70,29 +70,42 @@ def stack_features(g,**kwargs):
     return g
     
 
+if __name__ == '__main__':
+    g_tmp = nx.complete_graph(10)
+    g = nx.DiGraph()
+    g.add_nodes_from(g_tmp.nodes())
+    g.add_edges_from(g_tmp.edges())
 
-g_tmp = nx.complete_graph(10)
-g = nx.DiGraph()
-g.add_nodes_from(g_tmp.nodes())
-g.add_edges_from(g_tmp.edges())
+    
 
-for node in g.nodes():
-    g.nodes[node]['feat_0'] = rnd.uniform(0,1)
-    g.nodes[node]['feat_1'] = np.random.rand(2,5)
+    for node in g.nodes():
+        g.nodes[node]['feat_0'] = np.random.rand(1)
+        g.nodes[node]['feat_1'] = np.random.rand(2,5)
 
-for edge in g.edges():
-    g.edges[edge]['feat_0'] = rnd.uniform(5,10)
-    g.edges[edge]['feat_1'] = np.random.rand(3,6)
+    for edge in g.edges():
+        g.edges[edge]['feat_0'] = np.random.rand(1)
+        g.edges[edge]['feat_1'] = np.random.rand(3,6)
 
-g = dgl.from_networkx(g,node_attrs=['feat_0','feat_1'],edge_attrs=['feat_0','feat_1'])
+    g = dgl.from_networkx(g,node_attrs=['feat_0','feat_1'],edge_attrs=['feat_0','feat_1'])
+    
+    g = stack_features(g)
 
-g = stack_features(g)
-print(g)
+    print(f"EDGES: {g.edges()[0].numpy().shape}")
+    # print(g)
 
-gnn = GNN(in_features_node=11,
-        in_features_edge=19,
-        out_features_msg=8,
-        out_features_hidden=16,
-        out_features=4,
-        num_layers=1)
-print(gnn(g))
+    # model_config = {
+    #     'in_features_node':11,
+    #     'in_features_edge':19,
+    #     'out_features_msg':8,
+    #     'out_features_hidden':16,
+    #     'out_features':4,
+    #     'num_layers':1
+    # }
+
+    # gnn = GNN(in_features_node=11,
+    #         in_features_edge=19,
+    #         out_features_msg=8,
+    #         out_features_hidden=16,
+    #         out_features=4,
+    #         num_layers=1)
+    # print(gnn(g))

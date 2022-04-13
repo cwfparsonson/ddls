@@ -62,6 +62,8 @@ class MeanPool(nn.Module):
     def mp_func(self,edges):
 
         #generate intermediate representations of node and edge features
+        # print(edges.src['z'])
+        # print(edges.data['z'])
         nodes = self.node_layer(edges.src['z'])
         edges = self.edge_layer(edges.data['z'])
 
@@ -74,7 +76,9 @@ class MeanPool(nn.Module):
 
         #generate intermediate representations of the receiving node's node and edge features
         local_node = self.node_layer(nodes.data['z'])
-        local_edge = torch.zeros((1,int(self.out_features_msg/2)))
+
+        #create padded edge feature for each self-node in the batch
+        local_edge = torch.zeros((len(local_node),int(self.out_features_msg/2)))
         local_state = torch.cat((local_node,local_edge),-1)
 
         #reshape local representation so it matches dimensions of received messages (dimension extension)
@@ -117,38 +121,43 @@ class GNN(nn.Module):
     '''
 
     def __init__(self,
-        in_features_node,
-        in_features_edge,
-        out_features_msg,
-        out_features_hidden,
-        out_features,
-        num_layers,
-        aggregator_type='mean'):
+        config
+    ):
+        # in_features_node,
+        # in_features_edge,
+        # out_features_msg,
+        # out_features_hidden,
+        # out_features,
+        # num_layers,
+        # aggregator_type='mean'):
     
+        nn.Module.__init__(self)
         super(GNN, self).__init__()
 
-        if aggregator_type == 'mean':
+        if config['aggregator_type'] == 'mean':
             agg = MeanPool
 
         self.layers = []
         #add first layer
-        self.layers.append(agg(in_features_node=in_features_node,
-                                in_features_edge=in_features_edge,
-                                out_features_msg=out_features_msg,
-                                out_features_reduce=out_features_hidden))
+        self.layers.append(agg(in_features_node=config['in_features_node'],
+                                in_features_edge=config['in_features_edge'],
+                                out_features_msg=config['out_features_msg'],
+                                out_features_reduce=config['out_features_hidden']))
 
         #add hidden layers
-        for _ in range(num_layers-2):
-            self.layers.append(agg(in_features_node=out_features_hidden,
-                                    in_features_edge=in_features_edge,
-                                    out_features_msg=out_features_msg,
-                                    out_features_reduce=out_features_hidden))
+        for _ in range(config['num_layers']-2):
+            self.layers.append(agg(in_features_node=config['out_features_hidden'],
+                                    in_features_edge=config['in_features_edge'],
+                                    out_features_msg=config['out_features_msg'],
+                                    out_features_reduce=config['out_features_hidden']))
 
         #add output layer
-        self.layers.append(agg(in_features_node=out_features_hidden,
-                                in_features_edge=in_features_edge,
-                                out_features_msg=out_features_msg,
-                                out_features_reduce=out_features))
+        self.layers.append(agg(in_features_node=config['out_features_hidden'],
+                                in_features_edge=config['in_features_edge'],
+                                out_features_msg=config['out_features_msg'],
+                                out_features_reduce=config['out_features']))
+        
+        self.layers = nn.ModuleList(self.layers)
 
     def forward(self,graph):
         
@@ -157,7 +166,7 @@ class GNN(nn.Module):
 
             #generate node embeddings    
             output = layer(graph)
-            
+
             #set node features as embeddings
             graph.ndata['z'] = output
 
