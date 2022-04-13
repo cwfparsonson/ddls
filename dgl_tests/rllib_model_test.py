@@ -67,17 +67,15 @@ class GNNPolicy(TorchModelV2, nn.Module):
         
         self.gnn = GNN(self.config)
 
-        self.graph_layer = FC(
-                    Box(-1, 1, shape=(self.config['in_features_graph'],)),
-                    action_space,
-                    1,
-                    model_config,
-                    name + "_action_embed",
-                )
+        self.graph_layer = nn.Linear(self.config['in_features_graph'],self.config['out_features_graph'])
 
-        self.logit_layer = nn.Linear(
-            self.config['out_features'],
-            2)
+        self.logit_layer = FC(
+            Box(-1,1,shape=(self.config['out_features_graph']+self.config['out_features'],)),
+            action_space,
+            2,
+            model_config,
+            name + "_logits"
+        )
 
         
 
@@ -158,15 +156,16 @@ class GNNPolicy(TorchModelV2, nn.Module):
                                     emb_nodes.shape[-1])
         )
         emb_nodes = torch.mean(emb_nodes,1)
-        emb_graph, _ = self.graph_layer({
-            'obs':input_dict['obs']['graph_features']
-        })
+        emb_graph = self.graph_layer(input_dict['obs']['graph_features'])
         
         #ignoring graph embedding in final embedding for now
-        final_emb = emb_nodes #torch.cat((emb_nodes,emb_graph),dim=1)
-        logits = self.logit_layer(final_emb)
+        final_emb = torch.cat((emb_nodes,emb_graph),dim=1)
+
+        logits, _ = self.logit_layer({
+            'obs':final_emb
+        })
 
         return logits, state
 
     def value_function(self):
-        return self.graph_layer.value_function()
+        return self.logit_layer.value_function()
