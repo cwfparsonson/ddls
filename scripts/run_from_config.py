@@ -31,20 +31,11 @@ def run(cfg: DictConfig):
     if 'seed' in cfg.experiment:
         seed_stochastic_modules_globally(cfg.experiment.seed)
 
-    # env
-    env = hydra.utils.instantiate(cfg.environment)
-
-    # agent
-    agent = hydra.utils.instantiate(cfg.agent)
-
-    # env loop for running episodes
-    env_loop = EnvLoop(env, agent)
-
-    # TODO: epoch loop for running epochs
-    epoch_loop = None
+    # epoch loop for running epochs
+    epoch_loop = hydra.utils.instantiate(cfg.epoch_loop)
 
     # launcher for running the experiment
-    launcher = Launcher(env_loop=env_loop, epoch_loop=epoch_loop, **cfg.launcher)
+    launcher = Launcher(epoch_loop=epoch_loop, **cfg.launcher)
 
     # logger for saving experiment results
     logger = Logger(path_to_save=save_dir, **cfg.logger)

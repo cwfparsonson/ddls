@@ -30,6 +30,8 @@ class Launcher:
 
         if (epoch_loop is None and env_loop is None):
             raise Exception(f'Must provide env_loop or epoch_loop.')
+        if not isinstance(epoch_batch_size, int):
+            raise Exception(f'epoch_batch_size must be int but is {epoch_batch_size}.')
 
         self.num_episodes = num_episodes
         self.num_epochs = num_epochs 

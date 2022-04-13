@@ -1,6 +1,6 @@
 defaults:
-    - environment: job_placing_all_nodes_environment 
-    - agent: random_job_placing_agent
+    - epoch_loop: heuristic
+    #- epoch_loop: rllib
 
 experiment:
     name: job_placing
@@ -13,7 +13,7 @@ launcher:
      num_actor_steps: null
      num_eval_episodes: null
      eval_freq: null
-     epoch_batch_size: null
+     epoch_batch_size: 1
 
 logger:
     actor_step_log_freq: null

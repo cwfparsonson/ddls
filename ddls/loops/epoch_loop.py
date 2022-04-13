@@ -1,3 +1,4 @@
+import numpy as np
 import time
 from collections import defaultdict
 
@@ -14,7 +15,8 @@ class EpochLoop:
         results['epoch_stats'] = self._init_epoch_stats()
         results['episode_stats'] = self._init_episode_stats()
         for batch in range(batch_size):
-            _episode_stats = self.env_loop.run_episode()['episode_stats']
+            print(f'env loop: {type(self.env_loop)} {self.env_loop}')
+            _episode_stats = self.env_loop.run()['episode_stats']
 
             # batched episode finished, update trackers
             results['episode_stats']['batch'].append(batch)
