@@ -1,4 +1,5 @@
 from ddls.environments.ddls_reward_function import DDLSRewardFunction
+from ddls.environments.cluster.cluster_environment import ClusterEnvironment
 
 import numpy as np
 
@@ -7,18 +8,14 @@ class MeanJobCompletionTime(DDLSRewardFunction):
     def __init__(self, sign: int = -1):
         self.sign = sign
 
-    def reset(self):
-        self.started = False
+    def reset(self, cluster: ClusterEnvironment):
+        pass
 
-    def extract(self, cluster, done):
-        if not self.started:
-            self.started = True
-            reward = 0
+    def extract(self, cluster: ClusterEnvironment, done: bool):
+        num_jobs_completed = cluster.step_stats['num_jobs_completed']
+        if num_jobs_completed != 0:
+            reward = np.mean(cluster.sim_log['job_completion_time'][-num_jobs_completed:])
         else:
-            num_jobs_completed = cluster.step_stats['num_jobs_completed']
-            if num_jobs_completed != 0:
-                reward = np.mean(cluster.sim_log['job_completion_time'][-num_jobs_completed:])
-            else:
-                reward = 0
+            reward = 0
         return self.sign * reward
 

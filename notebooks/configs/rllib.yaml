@@ -1,0 +1,22 @@
+seed: 0
+
+env:
+    corridor # access registered 'corridor' custom environment
+env_config:
+    name: corridor
+    left_end: 1
+    right_end: 10
+    reward_function: default
+
+model:
+    custom_model: my_model
+    vf_share_layers: True
+
+lr: 0.001
+
+num_gpus: 1
+num_workers: 1
+framework: torch
+
+
+

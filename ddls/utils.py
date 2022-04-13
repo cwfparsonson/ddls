@@ -7,6 +7,7 @@ import time
 import json
 import networkx as nx
 import random
+import pathlib
 
 
 def seed_stochastic_modules_globally(default_seed=0, 
@@ -252,8 +253,34 @@ def flatten_list(t):
     return [item for sublist in t for item in sublist]
 
 
+def get_class_from_path(path):
+    '''
+    Path must be the path to the ddls class **without** the .py extension.
+
+    E.g. ddls.module_name.ModuleClass
+    '''
+    ClassName = path.split('.')[-1]
+    path_to_class = '.'.join(path.split('.')[:-1])
+    module = __import__(path_to_class, fromlist=[ClassName])
+    return getattr(module, ClassName)
 
 
+def gen_unique_experiment_folder(path_to_save, experiment_name):
+    # init highest level folder
+    path = path_to_save + '/' + experiment_name + '/'
+    pathlib.Path(path).mkdir(parents=True, exist_ok=True)
+
+    # init folder for this experiment
+    path_items = glob.glob(path+'*')
+    ids = sorted([int(el.split('_')[-1]) for el in path_items])
+    if len(ids) > 0:
+        _id = ids[-1] + 1
+    else:
+        _id = 0
+    foldername = f'{experiment_name}_{_id}/'
+    pathlib.Path(path+foldername).mkdir(parents=True, exist_ok=False)
+
+    return path + foldername
 
 
 

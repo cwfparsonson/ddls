@@ -8,18 +8,21 @@ from ddls.demands.jobs.job import Job
 from ddls.distributions.distribution import Distribution
 from ddls.utils import flatten_list
 
-from typing import Union
+import gym
 import numpy as np
+
+from typing import Union
 from itertools import cycle
 import pprint
 
 
-class JobPlacingAllNodesEnvironment:
+class JobPlacingAllNodesEnvironment(gym.Env):
     def __init__(self,
                  topology_config: dict,
                  node_config: dict,
-                 jobs: list[Job], 
-                 job_interarrival_time_dist: Distribution,
+                 # jobs: list[Job], 
+                 jobs_config: dict,
+                 continuous_action_mode: bool = False,
                  worker_selection: Union['random'] = 'random',
                  op_allocation: Union['random', 'sequential'] = 'sequential',
                  job_scheduler: Union['srpt_job_scheduler'] = 'srpt_job_scheduler',
@@ -27,9 +30,8 @@ class JobPlacingAllNodesEnvironment:
                  information_function: Union['default'] = 'default',
                  reward_function: Union['worker_compute_utilisation', 'mean_job_completion_time', 'total_job_completion_time'] = 'mean_job_completion_time',
                  max_cluster_simulation_run_time: Union[int, float] = float('inf'),
-                 job_sampling_mode: str = 'remove_and_repeat',
                  job_queue_capacity: int = 10,
-                 name: str = 'job_placing',
+                 name: str = 'job_placing_all_nodes',
                  cluster_name: str = 'cluster',
                  path_to_save: str = None,
                  save_cluster_data: bool = False,
@@ -40,6 +42,9 @@ class JobPlacingAllNodesEnvironment:
         therefore there are $$n \times m$$ workers in total.
 
         Args:
+            continuous_action_mode: If True, $$0 <= \text{action} <= 1$$ specifies 
+                the fraction of cluster workers to use. If False, $$0 <= \text{action} <= \text{num_workers}$$
+                specifies the integer number of workers to use.
             worker_selection: Given a number of workers to use in the cluster,
                 how to select the set of workers.
             op_allocation: Given a set of workers to use, how to allocate the ops
@@ -63,15 +68,12 @@ class JobPlacingAllNodesEnvironment:
         '''
         self.topology_config = topology_config
         self.node_config = node_config
-        self.jobs = jobs
-        self.job_interarrival_time_dist = job_interarrival_time_dist
+        self.jobs_config = jobs_config
+        self.continuous_action_mode = continuous_action_mode
         self.worker_selection = worker_selection
         self.op_allocation = op_allocation
         self.max_cluster_simulation_run_time = max_cluster_simulation_run_time
-        self.job_sampling_mode = job_sampling_mode
-        self.job_interarrival_time_dist = job_interarrival_time_dist
         self.max_cluster_simulation_run_time = max_cluster_simulation_run_time
-        self.job_sampling_mode = job_sampling_mode
         self.job_queue_capacity = job_queue_capacity
         self.cluster_name = cluster_name
         self.path_to_save = path_to_save
@@ -79,17 +81,32 @@ class JobPlacingAllNodesEnvironment:
         self.save_freq = save_freq
         self.use_sqlite_database = use_sqlite_database
 
+        # init ddls cluster simulator
+        self._init_cluster()
+
+        # init obs
         self.observation_function_str = observation_function
         if observation_function == 'default':
             self.observation_function = JobPlacingAllNodesObservation()
         else:
             raise Exception(f'Unrecognised observation_function {self.observation_function_str}')
+        self.observation_space = self.observation_function.observation_space
+
+        # init action space
+        if self.continuous_action_mode:
+            self.action_space = gym.spaces.Box(low=0, high=1, dtype=np.float32)
+        else:
+            self.action_space = gym.spaces.Discrete(self.cluster.topology.graph.graph['num_workers'] + 1)
+
+        # init info
         self.information_function_str = information_function
         if information_function == 'default':
             # TODO: Not implemented
             pass
         else:
             raise Exception(f'Unrecognised information_function {self.information_function_str}')
+
+        # init reward
         self.reward_function_str = reward_function
         if reward_function == 'worker_compute_utilisation':
             self.reward_function = WorkerComputeUtilisation()
@@ -106,7 +123,6 @@ class JobPlacingAllNodesEnvironment:
         else:
             raise Exception(f'Unrecognised job_scheduler {self.job_scheduler_str}')
 
-        self._init_cluster()
 
     def _init_cluster(self):
         self.cluster =  ClusterEnvironment(topology_config=self.topology_config,
@@ -117,9 +133,7 @@ class JobPlacingAllNodesEnvironment:
                                            use_sqlite_database=self.use_sqlite_database)
 
     def _reset_cluster(self, seed: int = None):
-        _ = self.cluster.reset(jobs=self.jobs,
-                               job_sampling_mode=self.job_sampling_mode,
-                               job_interarrival_time_dist=self.job_interarrival_time_dist,
+        _ = self.cluster.reset(jobs_config=self.jobs_config,
                                max_simulation_run_time=self.max_cluster_simulation_run_time,
                                job_queue_capacity=self.job_queue_capacity,
                                seed=seed,
@@ -133,16 +147,13 @@ class JobPlacingAllNodesEnvironment:
         self._reset_cluster(seed=seed)
 
         # reset the reward and observation function
-        self.observation_function.reset()
-        self.reward_function.reset()
+        self.observation_function.reset(self.cluster)
+        self.reward_function.reset(self.cluster)
 
         # extract current MDP info and save so can access for next env.step() call
         self.obs = self._get_observation() # encoded obs of job to place
-        self.reward = self._get_reward()
-        self.done = self._is_done()
-        self.info = self._get_info()
 
-        return self.obs, self.reward, self.done, self.info
+        return self.obs
 
     def _conv_frac_workers_to_int(self, frac):
         '''Converts a fraction of cluster works to an integer number of workers.'''
@@ -164,7 +175,9 @@ class JobPlacingAllNodesEnvironment:
 
     def step(self, action: int):
         # check the action passed to env
-        if 0 < action < 1:
+        if isinstance(action, float):
+            if action > 1:
+                raise Exception(f'Float action must be 0 <= action <= 1 but is {action}')
             # action is a fraction of workers -> convert to integer number of workers
             processed_action = self._conv_frac_workers_to_int(action)
         else:

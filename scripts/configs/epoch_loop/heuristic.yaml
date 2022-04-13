@@ -1,0 +1,6 @@
+_target_: ddls.loops.epoch_loop.EpochLoop
+
+defaults:
+    - env_loop: default_env_loop
+    - env_loop/actor: random_job_placing_agent
+    - env_loop/env: job_placing_all_nodes_environment
