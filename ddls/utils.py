@@ -252,6 +252,9 @@ def flatten_list(t):
     '''Flattens a list of lists t.'''
     return [item for sublist in t for item in sublist]
 
+def flatten_numpy_array(a, dtype=object):
+    return np.hstack(np.array(a, dtype=dtype).flatten())
+
 
 def get_class_from_path(path):
     '''

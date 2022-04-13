@@ -90,7 +90,6 @@ class JobPlacingAllNodesEnvironment(gym.Env):
             self.observation_function = JobPlacingAllNodesObservation()
         else:
             raise Exception(f'Unrecognised observation_function {self.observation_function_str}')
-        self.observation_space = self.observation_function.observation_space
 
         # init action space
         if self.continuous_action_mode:
@@ -124,6 +123,7 @@ class JobPlacingAllNodesEnvironment(gym.Env):
             raise Exception(f'Unrecognised job_scheduler {self.job_scheduler_str}')
 
 
+
     def _init_cluster(self):
         self.cluster =  ClusterEnvironment(topology_config=self.topology_config,
                                            node_config=self.node_config,
@@ -146,8 +146,11 @@ class JobPlacingAllNodesEnvironment(gym.Env):
         # reset the cluster environment
         self._reset_cluster(seed=seed)
 
-        # reset the reward and observation function
+        # reset the observation function
         self.observation_function.reset(self.cluster)
+        self.observation_space = self.observation_function.observation_space
+
+        # reset the reward function
         self.reward_function.reset(self.cluster)
 
         # extract current MDP info and save so can access for next env.step() call
@@ -183,23 +186,28 @@ class JobPlacingAllNodesEnvironment(gym.Env):
         else:
             # action already an integer number of workers
             processed_action = action
-        if processed_action not in self.obs.action_set[self.obs.action_mask]:
-            raise Exception(f'Action {action} (processed as {processed_action}) is invalid for observation with valid actions {self.obs.action_set[self.obs.action_mask]}')
+        # if processed_action not in self.obs.action_set[self.obs.action_mask]:
+            # raise Exception(f'Action {action} (processed as {processed_action}) is invalid for observation with valid actions {self.obs.action_set[self.obs.action_mask]}')
 
-        # select a set of processed_action workers to use in the cluster
-        workers = self._get_worker_set(processed_action)
-
-        # get job to place
-        # TEMPORARY: Just assume placing 1st job in queue
-        job = list(self.cluster.job_queue.jobs.values())[0] # assume event-driven where only ever have one job to queue
-
-        # generate per-op placement on the selected workers
-        op_to_worker = self._get_op_to_worker(job, workers)
-
-        # create control plane mappings for cluster simulator
         control_plane = {}
-        control_plane['job_placement'] = {job.job_id: op_to_worker}
-        control_plane['job_schedule'] = self.job_scheduler.get_schedule(new_placements=control_plane['job_placement'], cluster=self.cluster)
+        if processed_action != 0:
+            # select a set of processed_action workers to use in the cluster
+            workers = self._get_worker_set(processed_action)
+
+            # get job to place
+            # TEMPORARY: Just assume placing 1st job in queue
+            job = list(self.cluster.job_queue.jobs.values())[0] # assume event-driven where only ever have one job to queue
+
+            # generate per-op placement on the selected workers
+            op_to_worker = self._get_op_to_worker(job, workers)
+
+            # create control plane mappings for cluster simulator
+            control_plane['job_placement'] = {job.job_id: op_to_worker}
+            control_plane['job_schedule'] = self.job_scheduler.get_schedule(new_placements=control_plane['job_placement'], cluster=self.cluster)
+        else:
+            # not placing job
+            control_plane['job_placement'] = {}
+            control_plane['job_schedule'] = {}
 
         # step the cluster
         self.cluster.step(actions=control_plane)
@@ -218,7 +226,8 @@ class JobPlacingAllNodesEnvironment(gym.Env):
         if not self.done:
             self.obs = self._get_observation() # encoded obs of job to place
         else:
-            self.obs = None
+            # done, just return last create self.obs
+            pass
         self.info = self._get_info()
 
         return self.obs, self.reward, self.done, self.info
@@ -227,9 +236,9 @@ class JobPlacingAllNodesEnvironment(gym.Env):
         # extract obs node and edge features
         obs = self.observation_function.extract(cluster=self.cluster, done=self._is_done())
 
-        # set obs action info
-        obs.action_set = self._get_action_set()
-        obs.action_mask = self._get_action_mask()
+        # # set obs action info
+        # obs.action_set = self._get_action_set()
+        # obs.action_mask = self._get_action_mask()
 
         return obs
 
@@ -262,7 +271,7 @@ class JobPlacingAllNodesEnvironment(gym.Env):
         return np.array(action_mask)
 
     def _get_info(self):
-        return None
+        return {}
 
     def _get_workers_available_memory(self, 
                                       cluster: ClusterEnvironment, 
