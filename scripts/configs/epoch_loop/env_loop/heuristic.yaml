@@ -1,5 +1,0 @@
-_target_: ddls.loops.env_loop.EnvLoop
-
-defaults:
-    - actor: random_job_placing_agent
-    - env: job_placing_all_nodes_environment
