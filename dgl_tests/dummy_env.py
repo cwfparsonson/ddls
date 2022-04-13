@@ -4,6 +4,7 @@ from gym.spaces import Discrete, Box, Dict
 import networkx as nx
 import dgl
 from netx_dgl_test import stack_features
+import random
 
 class DummyEnv(gym.Env):
 
@@ -39,30 +40,38 @@ class DummyNetworkEnv(gym.Env):
         super(DummyNetworkEnv, self).__init__()
         
         #init graph and convert to DGL with single features
+        self.config = env_config
+        self.reset()
 
-        g_tmp = nx.complete_graph(env_config['num_nodes'])
+    def reset(self):
+        
+
+        # g_tmp = nx.complete_graph(self.config['num_nodes'])
+        num_nodes = random.randint(2,3)
+        print('NUMBER OF NODES: {}'.format(num_nodes))
+        g_tmp = nx.complete_graph(num_nodes)
         g = nx.DiGraph()
         g.add_nodes_from(g_tmp.nodes())
         g.add_edges_from(g_tmp.edges())
 
         for node in g.nodes():
-            g.nodes[node]['feat_0'] = np.random.rand(env_config['node_features_shape']['feat_0'])
+            g.nodes[node]['feat_0'] = np.random.rand(self.config['node_features_shape']['feat_0'])
             g.nodes[node]['feat_1'] = np.random.rand(
-                env_config['node_features_shape']['feat_1'][0],
-                env_config['node_features_shape']['feat_1'][1]
+                self.config['node_features_shape']['feat_1'][0],
+                self.config['node_features_shape']['feat_1'][1]
             )
 
         for edge in g.edges():
-            g.edges[edge]['feat_0'] = np.random.rand(env_config['edge_features_shape']['feat_0'])
+            g.edges[edge]['feat_0'] = np.random.rand(self.config['edge_features_shape']['feat_0'])
             g.edges[edge]['feat_1'] = np.random.rand(
-                env_config['edge_features_shape']['feat_1'][0],
-                env_config['edge_features_shape']['feat_1'][1]
+                self.config['edge_features_shape']['feat_1'][0],
+                self.config['edge_features_shape']['feat_1'][1]
             )
 
         g = dgl.from_networkx(
             g,
-            node_attrs=list(env_config['node_features_shape'].keys()),
-            edge_attrs=list(env_config['edge_features_shape'].keys())
+            node_attrs=list(self.config['node_features_shape'].keys()),
+            edge_attrs=list(self.config['edge_features_shape'].keys())
         )
 
         self.g = stack_features(g)
@@ -76,7 +85,7 @@ class DummyNetworkEnv(gym.Env):
         self.observation_space = Dict({
             'node_features':Box(0,1,shape=np.array(self.g.ndata['z']).shape),
             'edge_features':Box(0,1,shape=np.array(self.g.edata['z']).shape),
-            'graph_features':Box(0,1,shape=(env_config['graph_features'],)),
+            'graph_features':Box(0,1,shape=(self.config['graph_features'],)),
             'edges_src':Box(0,max(edges_src)+1,shape=edges_src.shape),
             'edges_dst':Box(0,max(edges_dst)+1,shape=edges_dst.shape)
         })
@@ -84,17 +93,10 @@ class DummyNetworkEnv(gym.Env):
         self.dummy_obs = {
             'node_features':np.array(self.g.ndata['z']),
             'edge_features':np.array(self.g.edata['z']),
-            'graph_features':np.random.rand(env_config['graph_features']).astype(np.float32),
+            'graph_features':np.random.rand(self.config['graph_features']).astype(np.float32),
             'edges_src':edges_src,
             'edges_dst':edges_dst
         }
-
-
-        # self.dummy_obs = np.ones((3,))
-        # self.observation_space = Box(-1,1,shape=(3,))
-
-    def reset(self):
-        
         
         #if loading a new graph with different size, need to re-define the obs spaces (right?)
         # print('reset obs: {}'.format(self.dummy_obs))
@@ -111,7 +113,7 @@ class DummyNetworkEnv(gym.Env):
 
 if __name__ == '__main__':
 
-    # env_config = {
+    # self.config = {
     #             'obs_0':{
     #                 'upper':-1,
     #                 'lower':1,
@@ -122,9 +124,9 @@ if __name__ == '__main__':
     #             }                        
     # }
 
-    # env = DummyEnv(env_config)
+    # env = DummyEnv(self.config)
 
-    env_config = {
+    config = {
         'num_nodes':10,
         'node_features_shape':{
             'feat_0':1,
@@ -136,4 +138,4 @@ if __name__ == '__main__':
         }
     }
 
-    env = DummyNetworkEnv(env_config)
+    env = DummyNetworkEnv(config)

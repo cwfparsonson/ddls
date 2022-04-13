@@ -83,7 +83,7 @@ class GNNPolicy(TorchModelV2, nn.Module):
         self.initialised = False
 
     def forward(self, input_dict, state, seq_lens):
-
+        # print('OBSERVATION: {}'.format(input_dict['obs']['node_features'].shape))
         src_nodes = input_dict['obs']['edges_src']
         dst_nodes = input_dict['obs']['edges_dst']
         node_features = input_dict['obs']['node_features']
