@@ -3,6 +3,7 @@ from ddls.launchers.launcher import Launcher
 from ddls.loops.env_loop import EnvLoop
 from ddls.loops.eval_loop import EvalLoop
 from ddls.loops.epoch_loop import EpochLoop
+from ddls.loggers.logger import Logger
 
 
 import hydra
@@ -36,40 +37,23 @@ def run(cfg: DictConfig):
     # agent
     agent = hydra.utils.instantiate(cfg.agent)
 
-    # # run agent in env
-    # step_counter = 0
-    # obs, reward, done, info = env.reset()
-    # while not done:
-        # action = agent.select_action(obs)
-        # prev_obs = obs # save
-        # obs, reward, done, info = env.step(action)
-        # print(f'\nStep {step_counter}\nObs: {prev_obs}\nAction: {action}\nReward: {reward}\nDone: {done}\nInfo: {info}')
-        # step_counter += 1
-
     # env loop for running episodes
     env_loop = EnvLoop(env, agent)
 
-    # epoch loop for running epochs
+    # TODO: epoch loop for running epochs
     epoch_loop = None
 
-    # launcher
-    launcher = Launcher(env_loop=env_loop,
-                        epoch_loop=epoch_loop,
-                        **cfg.launcher)
-                        # **OmegaConf.to_container(cfg.launcher, resolve=False))
+    # launcher for running the experiment
+    launcher = Launcher(env_loop=env_loop, epoch_loop=epoch_loop, **cfg.launcher)
 
+    # logger for saving experiment results
+    logger = Logger(path_to_save=save_dir, **cfg.logger)
 
-    # logger
+    # TODO: checkpointer for saving agent checkpoints
+    checkpointer = None
 
-
-
-
-    # launcher.run
-    launcher.run()
-
-
-
-
+    # run the experiment
+    launcher.run(logger=logger, checkpointer=checkpointer)
 
 
 

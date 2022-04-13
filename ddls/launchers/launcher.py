@@ -1,12 +1,17 @@
 from ddls.loops.env_loop import EnvLoop
 from ddls.loops.epoch_loop import EpochLoop
+from ddls.loggers.logger import Logger
 
 import numpy as np
 import time
 from collections import defaultdict
 
-class Logger:
-    pass
+
+
+
+
+
+
 
 class Checkpointer:
     pass
@@ -56,11 +61,35 @@ class Launcher:
         results = {}
 
         # run launcher
-        while not self._check_if_stop():
+        while not self._check_if_should_stop():
             # step the launcher
             results.update(self.step())
 
-    def _check_if_stop(self):
+            # check if should write log data
+            if logger is not None:
+                if self._check_if_should_log(logger):
+                    # save in-memory results
+                    logger.write(results)
+                    # reset in-memory results
+                    results = {}
+
+    def _check_if_should_log(self, logger):
+        should_log = False
+        if logger.actor_step_log_freq is not None:
+            if self.actor_step_counter % logger.actor_step_log_freq == 0:
+                should_log = True
+        elif logger.episode_log_freq is not None:
+            if self.episode_counter % logger.episode_log_freq == 0:
+                should_log = True
+        elif logger.epoch_log_freq is not None:
+            if self.epoch_counter % logger.epoch_log_freq == 0:
+                should_log = True
+        else:
+            raise Exception('Unrecognised logging condition.')
+        return should_log
+
+
+    def _check_if_should_stop(self):
         stop = False
         if self.num_episodes is None and self.num_epochs is None and self.num_actor_steps is None:
             # never finish

@@ -14,3 +14,10 @@ launcher:
      num_eval_episodes: null
      eval_freq: null
      epoch_batch_size: null
+
+logger:
+    actor_step_log_freq: null
+    episode_log_freq: 1
+    epoch_log_freq: null
+    use_sqlite_database: True
+
