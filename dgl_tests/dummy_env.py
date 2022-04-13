@@ -157,8 +157,8 @@ class DummyNetworkEnv(gym.Env):
         max_nodes = self.config['num_nodes']
         max_edges = int(self.config['num_nodes']*(self.config['num_nodes']-1)/2) #number of edges in a fully connected graph
 
-        src_padding = torch.ones((max_edges-len(edges_src),))*-1
-        dst_padding = torch.ones((max_edges-len(edges_dst),))*-1
+        src_padding = torch.zeros((max_edges-len(edges_src),))
+        dst_padding = torch.zeros((max_edges-len(edges_dst),))
 
         edges_src = torch.cat((edges_src,src_padding),dim=0).numpy().astype(np.float32)
         edges_dst = torch.cat((edges_dst,dst_padding),dim=0).numpy().astype(np.float32)
