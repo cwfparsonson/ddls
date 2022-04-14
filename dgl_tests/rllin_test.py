@@ -46,7 +46,7 @@ model_config = {
         'out_features':4,
         'in_features_graph':4,
         'out_features_graph':4,
-        'num_layers':1,
+        'num_layers':3,
         'aggregator_type':'mean'
     }
 
