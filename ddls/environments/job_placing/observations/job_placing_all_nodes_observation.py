@@ -13,6 +13,11 @@ class JobPlacingAllNodesObservation(DDLSObservationFunction):
         # init obs space
         self._observation_space = None
 
+        # init any hard-coded feature min and max values
+        self.node_features_low, self.node_features_high = 0, 1
+        self.edge_features_low, self.edge_features_high = 0, 1
+        self.graph_features_low, self.graph_features_high = 0, 1
+
     def reset(self, 
               cluster: ClusterEnvironment,
               flatten: bool = True):
@@ -24,9 +29,9 @@ class JobPlacingAllNodesObservation(DDLSObservationFunction):
 
         # use the encoded obs to initialise the observation space
         self.observation_space = gym.spaces.Dict({
-                'node_features': gym.spaces.Box(low=0, high=1, shape=obs['node_features'].shape),
-                'edge_features': gym.spaces.Box(low=0, high=1, shape=obs['edge_features'].shape),
-                'global_features': gym.spaces.Box(low=0, high=1, shape=obs['global_features'].shape),
+                'node_features': gym.spaces.Box(low=self.node_features_low, high=self.node_features_high, shape=obs['node_features'].shape),
+                'edge_features': gym.spaces.Box(low=self.edge_features_low, high=self.edge_features_high, shape=obs['edge_features'].shape),
+                'graph_features': gym.spaces.Box(low=self.graph_features_low, high=self.graph_features_high, shape=obs['graph_features'].shape),
                 'edges_src': gym.spaces.Box(low=0, high=max(obs['edges_src'])+1, shape=obs['edges_src'].shape),
                 'edges_dst': gym.spaces.Box(low=0, high=max(obs['edges_dst'])+1, shape=obs['edges_dst'].shape),
             })
@@ -91,7 +96,6 @@ class JobPlacingAllNodesObservation(DDLSObservationFunction):
         return self._encode_obs(self._get_job_to_encode(cluster), cluster, flatten=flatten)
 
 
-
     @property
     def observation_space(self):
         return self._observation_space
@@ -113,7 +117,7 @@ class JobPlacingAllNodesObservation(DDLSObservationFunction):
         return  {
                 'node_features': np.array(self._extract_node_features(job, cluster), dtype=np.float32),
                 'edge_features': np.array(self._extract_edge_features(job, cluster), dtype=np.float32),
-                'global_features': np.array(self._extract_global_features(job, cluster), dtype=np.float32),
+                'graph_features': np.array(self._extract_graph_features(job, cluster), dtype=np.float32),
                 'edges_src': np.array(edges_src, dtype=np.float32),
                 'edges_dst': np.array(edges_dst, dtype=np.float32),
                 }
@@ -123,12 +127,12 @@ class JobPlacingAllNodesObservation(DDLSObservationFunction):
 
     def _extract_edge_features(self, job, cluster):
         # TODO: Encode edge features with useful info
-        return [1 for _ in job.computation_graph.edges]
+        return [np.array([1]) for _ in job.computation_graph.edges]
 
-    def _extract_global_features(self, job, cluster):
+    def _extract_graph_features(self, job, cluster):
         return flatten_list([self._get_job_features(job), 
                              self._get_network_worker_features(job, cluster), 
-                             self._get_network_global_features(job, cluster)
+                             self._get_network_graph_features(job, cluster)
                             ])
 
     def _extract_edges_src_dst(self, job):
@@ -173,13 +177,13 @@ class JobPlacingAllNodesObservation(DDLSObservationFunction):
             network_worker_features = flatten_numpy_array(network_worker_features)
         return network_worker_features
 
-    def _get_network_global_features(self, job, cluster, flatten=True):
-        network_global_features = []
+    def _get_network_graph_features(self, job, cluster, flatten=True):
+        network_graph_features = []
         num_active_workers = cluster.num_active_workers / len(list(cluster.topology.graph.graph['worker_to_node'].keys()))
-        network_global_features.append(np.array(num_active_workers, dtype=object))
+        network_graph_features.append(np.array(num_active_workers, dtype=object))
         if flatten:
-            network_global_features = flatten_numpy_array(network_global_features)
-        return network_global_features
+            network_graph_features = flatten_numpy_array(network_graph_features)
+        return network_graph_features
 
     def _get_op_features(self, op, job, cluster, flatten=True):
         op_features = []
