@@ -9,19 +9,43 @@ import networkx as nx
 import random
 import pathlib
 import math
+import importlib
+import torch
+import dgl
 
 
 def seed_stochastic_modules_globally(default_seed=0, 
                                      numpy_seed=None, 
-                                     random_seed=None):
+                                     random_seed=None,
+                                     torch_seed=None,
+                                     dgl_seed=None):
     '''Seeds any stochastic modules so get reproducible results.'''
     if numpy_seed is None:
         numpy_seed = default_seed
     if random_seed is None:
         random_seed = default_seed
-    
+
+    if numpy_seed is None:
+        numpy_seed = default_seed
+    if random_seed is None:
+        random_seed = default_seed
+    if torch_seed is None:
+        torch_seed = default_seed
+    if dgl_seed is None:
+        dgl_seed = default_seed
+
     np.random.seed(numpy_seed)
+
     random.seed(random_seed)
+
+    torch.manual_seed(torch_seed)
+    torch.cuda.manual_seed(torch_seed)
+    torch.cuda.manual_seed_all(torch_seed)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+
+    dgl.seed(dgl_seed)
+
 
 class Sampler:
     def __init__(self, 
@@ -256,10 +280,18 @@ def flatten_list(t):
 def flatten_numpy_array(a, dtype=object):
     return np.hstack(np.array(a, dtype=dtype).flatten())
 
+def get_module_from_path(path):
+    '''
+    Path must be the path to the module **without** the .py extension.
+
+    E.g. ddls.module_name
+    '''
+    return importlib.import_module(path)
+     
 
 def get_class_from_path(path):
     '''
-    Path must be the path to the ddls class **without** the .py extension.
+    Path must be the path to the class **without** the .py extension.
 
     E.g. ddls.module_name.ModuleClass
     '''

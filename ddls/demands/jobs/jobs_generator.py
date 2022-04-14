@@ -10,6 +10,7 @@ class JobsGenerator:
     def __init__(self, 
                  path_to_files: str, 
                  job_interarrival_time_dist: Distribution,
+                 # job_interarrival_time_dist: Union[Distribution, str], # either a Distribution object or a path leading to the distbution path
                  max_files: str = None, 
                  job_sampling_mode: Union['replace', 'remove', 'remove_and_repeat'] = 'remove_and_repeat'):
         # get file paths

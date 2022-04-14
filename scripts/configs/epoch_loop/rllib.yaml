@@ -1,0 +1,43 @@
+_target_: ddls.loops.rllib_epoch_loop.RLlibEpochLoop
+
+# define string path to the environment you want to use
+path_to_env_cls: ddls.environments.job_placing.job_placing_all_nodes_environment.JobPlacingAllNodesEnvironment
+
+# define string path to the rllib trainer you want to use
+path_to_rllib_trainer_cls: ray.rllib.agents.ppo.PPOTrainer
+
+# define the rllib config as usual
+rllib_config:
+    env: job_placing_all_nodes_environment
+
+    env_config:
+        node_config:
+            type_1:
+                num_nodes: 16
+                workers_config:
+                    - num_workers: 4
+                      worker: ddls.devices.processors.gpus.A100.A100
+
+        topology_config:
+            type: torus
+            kwargs:
+                x_dims: 4
+                y_dims: 4
+
+        jobs_config:
+            path_to_files: /scratch/datasets/ddls/jobs/tensorflow_synthetic_graphs/valid
+            max_files: 1
+            job_sampling_mode: remove
+            job_interarrival_time_dist:
+                _target_: ddls.distributions.uniform.Uniform
+                min_val: 1
+                max_val: 1000
+
+        reward_function: mean_job_completion_time
+
+    
+    batch_mode: complete_episodes
+    train_batch_size: 128
+    sgd_minibatch_size: 128
+
+    framework: torch

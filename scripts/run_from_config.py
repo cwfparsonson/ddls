@@ -1,3 +1,11 @@
+import warnings
+warnings.filterwarnings(action='ignore',
+                        category=FutureWarning,
+                        module='tensorboard')  # noqa
+warnings.filterwarnings(action='ignore',
+                        category=FutureWarning,
+                        module='ray')  # noqa
+
 from ddls.utils import seed_stochastic_modules_globally, gen_unique_experiment_folder
 from ddls.launchers.launcher import Launcher
 from ddls.loops.env_loop import EnvLoop
@@ -14,6 +22,10 @@ import shutil
 
 @hydra.main(config_path='configs', config_name='config.yaml')
 def run(cfg: DictConfig):
+    # seeding
+    if 'seed' in cfg.experiment:
+        seed_stochastic_modules_globally(cfg.experiment.seed)
+
     # create dir for saving data
     save_dir = gen_unique_experiment_folder(path_to_save=cfg.experiment.path_to_save, experiment_name=cfg.experiment.name)
 
@@ -27,9 +39,6 @@ def run(cfg: DictConfig):
     print(f'Config:\n{OmegaConf.to_yaml(cfg)}')
     print(f'~'*80)
     
-    # seeding
-    if 'seed' in cfg.experiment:
-        seed_stochastic_modules_globally(cfg.experiment.seed)
 
     # epoch loop for running epochs
     epoch_loop = hydra.utils.instantiate(cfg.epoch_loop)

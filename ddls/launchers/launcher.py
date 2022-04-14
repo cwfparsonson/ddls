@@ -26,7 +26,8 @@ class Launcher:
                  eval_freq: int = None,
                  env_loop: EnvLoop = None,
                  epoch_loop: EpochLoop = None,
-                 epoch_batch_size: int = 1):
+                 epoch_batch_size: int = 1,
+                 verbose: bool = False):
 
         if (epoch_loop is None and env_loop is None):
             raise Exception(f'Must provide env_loop or epoch_loop.')
@@ -43,12 +44,20 @@ class Launcher:
         self.epoch_loop = epoch_loop
         self.epoch_batch_size = epoch_batch_size
 
-    def step(self):
+        self.verbose = verbose
+
+    def _step(self):
         if self.epoch_loop is not None:
             _results = self.epoch_loop.run(self.epoch_batch_size)
             self.epoch_counter += 1
-            self.episode_counter += self.epoch_batch_size
-            self.actor_step_counter += sum(_results['episode_stats']['num_actor_steps'])
+            if 'rllib_results' in _results:
+                # using rllib epoch loop
+                self.episode_counter += _results['rllib_results']['episodes_this_iter']
+                self.actor_step_counter += _results['rllib_results']['timesteps_this_iter']
+            else:
+                # using custom epoch loop
+                self.episode_counter += self.epoch_batch_size
+                self.actor_step_counter += sum(_results['episode_stats']['num_actor_steps'])
         else:
             _results = self.env_loop.run()
             self.episode_counter += 1
@@ -58,14 +67,22 @@ class Launcher:
     def run(self, 
             logger: Logger = None,
             checkpointer: Checkpointer = None):
+        if self.verbose:
+            print(f'Launching...')
+
         # init trackers
         self.epoch_counter, self.episode_counter, self.actor_step_counter = 0, 0, 0
-        results = {}
+        start_time = time.time()
+        results = {'launcher_stats': {'total_run_time': [0]}}
 
         # run launcher
         while not self._check_if_should_stop():
             # step the launcher
-            results.update(self.step())
+            results.update(self._step())
+            results['launcher_stats']['total_run_time'].append(time.time() - start_time)
+
+            if self.verbose:
+                print(f'ELAPSED: Epochs: {self.epoch_counter} | Episodes: {self.episode_counter} | Actor steps: {self.actor_step_counter} | Run time: {results["launcher_stats"]["total_run_time"][-1]:.3f} s')
 
             # check if should write log data
             if logger is not None:
@@ -74,6 +91,7 @@ class Launcher:
                     logger.write(results)
                     # reset in-memory results
                     results = {}
+
 
     def _check_if_should_log(self, logger):
         should_log = False
