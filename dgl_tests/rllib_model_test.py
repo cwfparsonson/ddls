@@ -83,11 +83,13 @@ class GNNPolicy(TorchModelV2, nn.Module):
         self.initialised = False
 
     def forward(self, input_dict, state, seq_lens):
-        # print('OBSERVATION: {}'.format(input_dict['obs']['node_features'].shape))
+
         src_nodes = input_dict['obs']['edges_src']
         dst_nodes = input_dict['obs']['edges_dst']
         node_features = input_dict['obs']['node_features']
         edge_features = input_dict['obs']['edge_features']
+        node_splits = input_dict['obs']['node_split']
+        edge_splits = input_dict['obs']['edge_split']
 
         og_node_feature_shape = node_features.shape
 
@@ -112,6 +114,12 @@ class GNNPolicy(TorchModelV2, nn.Module):
         Otherwise it just uses the normal edge features etc. 
         '''
         self.initialising = (torch.sum(src_nodes) == 0)
+        '''
+        If initialising (regardless of padding or not etc) create a fully connected graph
+        to be used only for Rllib initialisation. This requires making each src/dst node 
+        not have a value of 0 otherwise there are multiple node and edge features but 
+        only a single node. This is not done for other scenarios, only the dummy 
+        '''
         if self.initialising:
             n_nodes = node_features.shape[1]
 
@@ -131,36 +139,74 @@ class GNNPolicy(TorchModelV2, nn.Module):
             edge_feature_shape = list(edge_features.shape)
             edge_features = edge_features[0][0].tolist()
             edge_features = torch.Tensor([edge_features]*edge_feature_shape[0]*edge_feature_shape[1])
-        else:
-            #reshape edge features if they're batched to make a single set (so can apply to a batched DGL graph)
-            edge_features = torch.reshape(edge_features,(edge_features.shape[0]*edge_features.shape[1],edge_features.shape[2]))
 
-        graphs = []
 
-        for i in range(node_features.shape[0]):
+            #if initialising, then just batch all fake graphs and do one big pass through
+            #this is possible becuase no care has to be taken about taking the mean of the
+            #node embeddings etc since they all have the same (maximum) size
 
-            graph = dgl.graph((np.array(src_nodes[i]).astype(int),np.array(dst_nodes[i]).astype(int)))
-            graphs.append(graph)
+            graphs = []
 
-        graph = dgl.batch(graphs)
+            for i in range(node_features.shape[0]):
 
-        node_features = torch.reshape(node_features,(node_features.shape[0]*node_features.shape[1],node_features.shape[2]))
+                graph = dgl.graph((np.array(src_nodes[i]).astype(int),np.array(dst_nodes[i]).astype(int)))
+                graphs.append(graph)
 
-        graph.ndata['z'] = torch.Tensor(node_features)
-        graph.edata['z'] = torch.Tensor(edge_features)
+            graph = dgl.batch(graphs)
 
-        emb_nodes = self.gnn(graph)
-        emb_nodes = torch.reshape(emb_nodes,
-                                    (int(emb_nodes.shape[0]/og_node_feature_shape[1]),
-                                    og_node_feature_shape[1],
-                                    emb_nodes.shape[-1])
-        )
-        emb_nodes = torch.mean(emb_nodes,1)
-        emb_graph = self.graph_layer(input_dict['obs']['graph_features'])
+            node_features = torch.reshape(node_features,(node_features.shape[0]*node_features.shape[1],node_features.shape[2]))
+
+            graph.ndata['z'] = torch.Tensor(node_features)
+            graph.edata['z'] = torch.Tensor(edge_features)
+
+            emb_nodes = self.gnn(graph)
+
+
+            emb_nodes = torch.reshape(emb_nodes,
+                                        (int(emb_nodes.shape[0]/og_node_feature_shape[1]),
+                                        og_node_feature_shape[1],
+                                        emb_nodes.shape[-1])
+            )
+            emb_nodes = torch.mean(emb_nodes,1)
         
-        #ignoring graph embedding in final embedding for now
+        else:
+            emb_nodes = []
+
+            # print('node feat shape: {}'.format(n s))
+            for batch_id in range(node_features.shape[0]):
+
+                #chop off the padding nodes
+                node_ft = node_features[batch_id]
+                node_split = int(node_splits[batch_id])
+                node_ft_reduced, node_pads = torch.split(node_ft,[node_split,node_ft.shape[0]-node_split],dim=0)
+
+                #chop off the padding edges
+                edge_ft = edge_features[batch_id]
+                edge_split = int(edge_splits[batch_id])
+                edge_ft_reduced, edge_pads = torch.split(edge_ft,[edge_split,edge_ft.shape[0]-edge_split],dim=0)
+
+                src = src_nodes[batch_id]
+                src, src_pads = torch.split(src,[edge_split,edge_ft.shape[0]-edge_split],dim=0)
+
+                dst = dst_nodes[batch_id]
+                dst, dst_pads = torch.split(dst,[edge_split,edge_ft.shape[0]-edge_split],dim=0)
+
+                #construct a graph and get its embeddings
+                graph = dgl.graph((src.numpy(),dst.numpy()))
+                graph.ndata['z'] = node_ft_reduced
+                graph.edata['z'] = edge_ft_reduced
+
+                #take the element-wise mean of the embeddings in that graph
+                embs = self.gnn(graph)
+                emb_nodes.append(torch.mean(embs,0))
+
+            emb_nodes = torch.stack(emb_nodes)
+
+        #concatenate graph-averaged node embeddings and graph feature embeddings
+        emb_graph = self.graph_layer(input_dict['obs']['graph_features'])
         final_emb = torch.cat((emb_nodes,emb_graph),dim=1)
 
+        #calculate logits/output from this final representation
         logits, _ = self.logit_layer({
             'obs':final_emb
         })
