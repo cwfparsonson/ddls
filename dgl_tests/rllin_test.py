@@ -11,8 +11,8 @@ from ray.tune.registry import register_env
 
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
-from dummy_env import DummyEnv, DummyNetworkEnv
-from rllib_model_test import GNNPolicy 
+from ddls.dgl_tests.dummy_env import DummyEnv, DummyNetworkEnv
+from ddls.dgl_tests.rllib_model_test import GNNPolicy 
 
 # env_config = {
 #             'obs_0':{
