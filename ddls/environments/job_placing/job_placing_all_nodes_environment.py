@@ -95,7 +95,8 @@ class JobPlacingAllNodesEnvironment(gym.Env):
         if self.continuous_action_mode:
             self.action_space = gym.spaces.Box(low=0, high=1, dtype=np.float32)
         else:
-            self.action_space = gym.spaces.Discrete(self.cluster.topology.graph.graph['num_workers'] + 1)
+            # self.action_space = gym.spaces.Discrete(self.cluster.topology.graph.graph['num_workers'] + 1)
+            self.action_space = gym.spaces.Discrete(self.cluster.topology.graph.graph['num_workers'])
 
         # init info
         self.information_function_str = information_function
@@ -184,8 +185,8 @@ class JobPlacingAllNodesEnvironment(gym.Env):
             # action is a fraction of workers -> convert to integer number of workers
             processed_action = self._conv_frac_workers_to_int(action)
         else:
-            # action already an integer number of workers
-            processed_action = action
+            # action already an integer number of workers, convert from 0-num_workers idx to a valid non-zero action
+            processed_action = action + 1
         # if processed_action not in self.obs.action_set[self.obs.action_mask]:
             # raise Exception(f'Action {action} (processed as {processed_action}) is invalid for observation with valid actions {self.obs.action_set[self.obs.action_mask]}')
 

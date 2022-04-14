@@ -8,6 +8,7 @@ import json
 import networkx as nx
 import random
 import pathlib
+import math
 
 
 def seed_stochastic_modules_globally(default_seed=0, 
@@ -284,6 +285,9 @@ def gen_unique_experiment_folder(path_to_save, experiment_name):
     pathlib.Path(path+foldername).mkdir(parents=True, exist_ok=False)
 
     return path + foldername
+
+def transform_with_log(val):
+    return math.copysign(1, val) * math.log(1 + abs(val), 10)
 
 
 

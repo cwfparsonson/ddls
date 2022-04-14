@@ -10,8 +10,8 @@ import numpy as np
 
 class JobPlacingAllNodesObservation(DDLSObservationFunction):
     def __init__(self):
+        # init obs space
         self._observation_space = None
-
 
     def reset(self, 
               cluster: ClusterEnvironment,
@@ -19,7 +19,7 @@ class JobPlacingAllNodesObservation(DDLSObservationFunction):
         # get job which is going to be encoded in obs
         job = self._get_job_to_encode(cluster)
     
-        # encode the obs
+        # encode the initial obs
         obs = self._encode_obs(job, cluster, flatten=flatten)
 
         # use the encoded obs to initialise the observation space
@@ -88,13 +88,7 @@ class JobPlacingAllNodesObservation(DDLSObservationFunction):
                 ambiguous_node_feature_dims changes for each node.
 
         '''
-        if not done:
-            # get job to be placed
-            job = self._get_job_to_encode(cluster)
-        else:
-            job = None
-
-        return self._encode_obs(job, cluster, flatten=flatten)
+        return self._encode_obs(self._get_job_to_encode(cluster), cluster, flatten=flatten)
 
 
 
@@ -115,24 +109,14 @@ class JobPlacingAllNodesObservation(DDLSObservationFunction):
                     job: Job, 
                     cluster: ClusterEnvironment, 
                     flatten: bool = True):
-        if job is not None:
-            edges_src, edges_dst = self._extract_edges_src_dst(job)
-            encoded_obs =  {
-                    'node_features': np.array(self._extract_node_features(job, cluster), dtype=np.float32),
-                    'edge_features': np.array(self._extract_edge_features(job, cluster), dtype=np.float32),
-                    'global_features': np.array(self._extract_global_features(job, cluster), dtype=np.float32),
-                    'edges_src': np.array(edges_src, dtype=np.float32),
-                    'edges_dst': np.array(edges_dst, dtype=np.float32),
-                    }
-        else:
-            encoded_obs =  {
-                    'node_features': np.array(np.zeros(shape=self.observation_space['node_features'].shape), dtype=np.float32),
-                    'edge_features': np.array(np.zeros(shape=self.observation_space['edge_features'].shape), dtype=np.float32),
-                    'global_features': np.array(np.zeros(shape=self.observation_space['global_features'].shape), dtype=np.float32),
-                    'edges_src': np.array(np.zeros(shape=self.observation_space['edges_src'].shape), dtype=np.float32),
-                    'edges_dst': np.array(np.zeros(shape=self.observation_space['edges_dst'].shape), dtype=np.float32),
-                    }
-        return encoded_obs
+        edges_src, edges_dst = self._extract_edges_src_dst(job)
+        return  {
+                'node_features': np.array(self._extract_node_features(job, cluster), dtype=np.float32),
+                'edge_features': np.array(self._extract_edge_features(job, cluster), dtype=np.float32),
+                'global_features': np.array(self._extract_global_features(job, cluster), dtype=np.float32),
+                'edges_src': np.array(edges_src, dtype=np.float32),
+                'edges_dst': np.array(edges_dst, dtype=np.float32),
+                }
 
     def _extract_node_features(self, job, cluster):
         return [self._get_op_features(node, job, cluster) for node in job.computation_graph.nodes]
