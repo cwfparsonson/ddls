@@ -26,6 +26,7 @@ class JobPlacingAllNodesEnvironment(gym.Env):
                  worker_selection: Union['random'] = 'random',
                  op_allocation: Union['random', 'sequential'] = 'sequential',
                  job_scheduler: Union['srpt_job_scheduler'] = 'srpt_job_scheduler',
+                 pad_obs_kwargs: dict = None,
                  observation_function: Union['default'] = 'default',
                  information_function: Union['default'] = 'default',
                  reward_function: Union['worker_compute_utilisation', 'mean_job_completion_time', 'total_job_completion_time'] = 'mean_job_completion_time',
@@ -53,6 +54,12 @@ class JobPlacingAllNodesEnvironment(gym.Env):
                         and allocates sequentially. When reach end of workers, starts
                         at first worker again. Repeat until all ops allocated.
                     random: Choose random workers from set for each op.
+            pad_obs_kwargs: If not None will look at jobs_config, get max number of nodes and
+                edges across all jobs, and pad each obs to ensure dimensionality of
+                each obs is consistent even for observations with varying graph sizes.
+                pad_obs_kwargs must be dict of {'max_nodes': <int>, 'max_edges': <int>}
+                UPDATE: Only needs to be {'max_nodes': <int>}, will then calc max edges
+                by assuming fully connected graph of max_nodes.
 
         MDP:
             state: Job computation graph which is requesting to be placed on the
@@ -80,6 +87,7 @@ class JobPlacingAllNodesEnvironment(gym.Env):
         self.save_cluster_data = save_cluster_data
         self.save_freq = save_freq
         self.use_sqlite_database = use_sqlite_database
+        self.pad_obs_kwargs = pad_obs_kwargs
 
         # init ddls cluster simulator
         self._init_cluster()
@@ -87,7 +95,7 @@ class JobPlacingAllNodesEnvironment(gym.Env):
         # init obs
         self.observation_function_str = observation_function
         if observation_function == 'default':
-            self.observation_function = JobPlacingAllNodesObservation()
+            self.observation_function = JobPlacingAllNodesObservation(pad_obs_kwargs=self.pad_obs_kwargs)
         else:
             raise Exception(f'Unrecognised observation_function {self.observation_function_str}')
 

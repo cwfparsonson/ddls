@@ -12,7 +12,11 @@ from ddls.loops.env_loop import EnvLoop
 from ddls.loops.eval_loop import EvalLoop
 from ddls.loops.epoch_loop import EpochLoop
 from ddls.loggers.logger import Logger
+from ddls.checkpointers.checkpointer import Checkpointer
 
+import ray
+ray.shutdown()
+ray.init()
 
 import hydra
 from hydra.core.hydra_config import HydraConfig
@@ -38,19 +42,22 @@ def run(cfg: DictConfig):
     print(f'Initialised experiment save dir {save_dir}')
     print(f'Config:\n{OmegaConf.to_yaml(cfg)}')
     print(f'~'*80)
-    
 
     # epoch loop for running epochs
     epoch_loop = hydra.utils.instantiate(cfg.epoch_loop)
+    print(f'Initialised {epoch_loop}.')
 
     # launcher for running the experiment
     launcher = Launcher(epoch_loop=epoch_loop, **cfg.launcher)
+    print(f'Initialised {launcher}.')
 
     # logger for saving experiment results
     logger = Logger(path_to_save=save_dir, **cfg.logger)
+    print(f'Initialised {logger}.')
 
-    # TODO: checkpointer for saving agent checkpoints
-    checkpointer = None
+    # checkpointer for saving agent checkpoints
+    checkpointer = Checkpointer(path_to_save=save_dir, **cfg.checkpointer)
+    print(f'Initialised {checkpointer}.')
 
     # run the experiment
     launcher.run(logger=logger, checkpointer=checkpointer)

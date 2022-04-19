@@ -1,3 +1,5 @@
+from ddls.ml_models.models import GNN
+
 from typing import Sequence
 import gym
 from ray.rllib.models.torch.misc import SlimFC
@@ -7,7 +9,6 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ModelConfigDict 
 from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as FC
 
-from sage import GNN
 import dgl
 import numpy as np
 import torch.nn as nn
@@ -93,6 +94,9 @@ class GNNPolicy(TorchModelV2, nn.Module):
 
         og_node_feature_shape = node_features.shape
 
+        # get device of tensors
+        self.device = node_features.device
+
         '''
         Note on initialisation section:
 
@@ -133,31 +137,28 @@ class GNNPolicy(TorchModelV2, nn.Module):
             src_nodes_tmp = [src_nodes_tmp]*src_nodes.shape[0]
             dst_nodes_tmp = [dst_nodes_tmp]*dst_nodes.shape[0]
 
-            src_nodes = torch.Tensor(src_nodes_tmp)
-            dst_nodes = torch.Tensor(dst_nodes_tmp)
+            src_nodes = torch.LongTensor(src_nodes_tmp).to(self.device)
+            dst_nodes = torch.LongTensor(dst_nodes_tmp).to(self.device)
 
             edge_feature_shape = list(edge_features.shape)
             edge_features = edge_features[0][0].tolist()
-            edge_features = torch.Tensor([edge_features]*edge_feature_shape[0]*edge_feature_shape[1])
+            edge_features = torch.tensor([edge_features]*edge_feature_shape[0]*edge_feature_shape[1], device=self.device)
 
 
             #if initialising, then just batch all fake graphs and do one big pass through
             #this is possible becuase no care has to be taken about taking the mean of the
             #node embeddings etc since they all have the same (maximum) size
-
             graphs = []
-
             for i in range(node_features.shape[0]):
-
-                graph = dgl.graph((np.array(src_nodes[i]).astype(int),np.array(dst_nodes[i]).astype(int)))
+                # graph = dgl.graph((np.array(src_nodes[i]).astype(int),np.array(dst_nodes[i]).astype(int))).to(self.device)
+                graph = dgl.graph((src_nodes[i],dst_nodes[i])).to(self.device)
                 graphs.append(graph)
-
-            graph = dgl.batch(graphs)
 
             node_features = torch.reshape(node_features,(node_features.shape[0]*node_features.shape[1],node_features.shape[2]))
 
-            graph.ndata['z'] = torch.Tensor(node_features)
-            graph.edata['z'] = torch.Tensor(edge_features)
+            graph = dgl.batch(graphs).to(self.device)
+            graph.ndata['z'] = node_features
+            graph.edata['z'] = edge_features
 
             emb_nodes = self.gnn(graph)
 

@@ -33,6 +33,10 @@ class EpochLoop:
         results['epoch_stats']['run_time'] = time.time() - start_time
 
         return results
+
+    def save_agent_checkpoint(self):
+        '''Not implemented.'''
+        pass
         
     def _init_epoch_stats(self):
         return defaultdict(lambda: 0)

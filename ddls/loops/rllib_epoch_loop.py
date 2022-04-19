@@ -7,6 +7,8 @@ ray.init()
 from ray.rllib.agents import ppo
 from ray.tune.registry import register_env
 
+from ray.rllib.models import ModelCatalog
+
 from omegaconf import OmegaConf
 import time
 import hydra
@@ -25,11 +27,17 @@ class RLlibEpochLoop:
     def __init__(self,
                  path_to_env_cls: str, # e.g. 'ddls.environments.job_placing.job_placing_all_nodes_environment.JobPlacingAllNodesEnvironment'
                  path_to_rllib_trainer_cls: str, # e.g. 'ray.rllib.agents.ppo.PPOTrainer'
-                 rllib_config: dict):
+                 rllib_config: dict,
+                 path_to_model_cls: str = None):
         rllib_config = OmegaConf.to_container(rllib_config, resolve=False)
 
-        # register env with ray
-        register_env(rllib_config['env'], lambda env_config: get_class_from_path(path_to_env_cls)(**env_config))
+        if path_to_model_cls is not None:
+            # register model with rllib
+            ModelCatalog.register_custom_model(rllib_config['model']['custom_model'], get_class_from_path(path_to_model_cls))
+
+        if 'env' in rllib_config:
+            # register env with ray
+            register_env(rllib_config['env'], lambda env_config: get_class_from_path(path_to_env_cls)(**env_config))
 
         # merge rllib trainer's default config with specified config
         path_to_agent = '.'.join(path_to_rllib_trainer_cls.split('.')[:-1])
@@ -42,3 +50,6 @@ class RLlibEpochLoop:
     def run(self, *args, **kwargs):
         '''Run one epoch.'''
         return {'rllib_results': self.trainer.train()}
+
+    def save_agent_checkpoint(self, path_to_save):
+        self.trainer.save(path_to_save)

@@ -5,11 +5,25 @@ from ddls.demands.jobs.job import Job
 from ddls.utils import flatten_list, flatten_numpy_array
 
 import gym
+import torch
 import networkx as nx
 import numpy as np
+import copy
 
 class JobPlacingAllNodesObservation(DDLSObservationFunction):
-    def __init__(self):
+    def __init__(self,
+                 pad_obs_kwargs: dict = None):
+        '''
+        Args:
+            pad_obs_kwargs: If not None will look at jobs_config, get max number of nodes and
+                edges across all jobs, and pad each obs to ensure dimensionality of
+                each obs is consistent even for observations with varying graph sizes.
+                pad_obs_kwargs must be dict of {'max_nodes': <int>, 'max_edges': <int>}
+                UPDATE: Only needs to be {'max_nodes': <int>}, will then calc max edges
+                by assuming fully connected graph of max_nodes.
+        '''
+        self.pad_obs_kwargs = pad_obs_kwargs
+
         # init obs space
         self._observation_space = None
 
@@ -27,6 +41,12 @@ class JobPlacingAllNodesObservation(DDLSObservationFunction):
         # encode the initial obs
         obs = self._encode_obs(job, cluster, flatten=flatten)
 
+        if self.pad_obs_kwargs is not None:
+            max_nodes =  self.pad_obs_kwargs['max_nodes']
+            max_edges = int(max_nodes*(max_nodes-1)/2) #number of edges in a fully connected graph
+        else:
+            max_nodes, max_edges = 0, 0
+
         # use the encoded obs to initialise the observation space
         self.observation_space = gym.spaces.Dict({
                 'node_features': gym.spaces.Box(low=self.node_features_low, high=self.node_features_high, shape=obs['node_features'].shape),
@@ -34,6 +54,8 @@ class JobPlacingAllNodesObservation(DDLSObservationFunction):
                 'graph_features': gym.spaces.Box(low=self.graph_features_low, high=self.graph_features_high, shape=obs['graph_features'].shape),
                 'edges_src': gym.spaces.Box(low=0, high=max(obs['edges_src'])+1, shape=obs['edges_src'].shape),
                 'edges_dst': gym.spaces.Box(low=0, high=max(obs['edges_dst'])+1, shape=obs['edges_dst'].shape),
+                'node_split': gym.spaces.Box(low=0, high=max_nodes, shape=(1,)),
+                'edge_split': gym.spaces.Box(low=0, high=max_edges, shape=(1,))
             })
 
 
@@ -96,6 +118,7 @@ class JobPlacingAllNodesObservation(DDLSObservationFunction):
         return self._encode_obs(self._get_job_to_encode(cluster), cluster, flatten=flatten)
 
 
+
     @property
     def observation_space(self):
         return self._observation_space
@@ -109,18 +132,62 @@ class JobPlacingAllNodesObservation(DDLSObservationFunction):
         # TODO: Implement where get given job and do per-job encoding?
         return list(cluster.job_queue.jobs.values())[0] # assume event-driven where only ever have one job to queue
 
+    def _pad_obs(self, obs):
+        padded_obs = copy.deepcopy(obs)
+
+        edges_src = torch.Tensor(obs['edges_src'])
+        edges_dst = torch.Tensor(obs['edges_dst'])
+        node_features = torch.Tensor(obs['node_features'])
+        edge_features = torch.Tensor(obs['edge_features'])
+
+        max_nodes = self.pad_obs_kwargs['max_nodes']
+        max_edges = int(max_nodes*(max_nodes-1)/2) #number of edges in a fully connected graph
+
+        src_padding = torch.zeros((max_edges-len(edges_src),))
+        dst_padding = torch.zeros((max_edges-len(edges_dst),))
+
+        edges_src = torch.cat((edges_src,src_padding),dim=0)
+        edges_dst = torch.cat((edges_dst,dst_padding),dim=0)
+
+        edge_feature_padding = torch.zeros(
+            max_edges-edge_features.shape[0],
+            edge_features.shape[1]
+        )
+        edge_features = torch.cat((edge_features,edge_feature_padding),dim=0)
+
+        node_feature_padding = torch.zeros(
+            max_nodes-node_features.shape[0],
+            node_features.shape[1]
+        )
+
+        node_features = torch.cat((node_features,node_feature_padding),dim=0)
+
+        padded_obs['node_features'] = node_features.numpy().astype(np.float32)
+        padded_obs['edge_features'] = edge_features.numpy().astype(np.float32)
+        padded_obs['edges_src'] = edges_src.numpy().astype(np.float32)
+        padded_obs['edges_dst'] = edges_dst.numpy().astype(np.float32)
+        padded_obs['node_split'] = np.array([len(obs['node_features'])], dtype=np.float32)
+        padded_obs['edge_split'] = np.array([len(obs['edge_features'])], dtype=np.float32)
+
+        return padded_obs
+
     def _encode_obs(self, 
                     job: Job, 
                     cluster: ClusterEnvironment, 
                     flatten: bool = True):
         edges_src, edges_dst = self._extract_edges_src_dst(job)
-        return  {
-                'node_features': np.array(self._extract_node_features(job, cluster), dtype=np.float32),
-                'edge_features': np.array(self._extract_edge_features(job, cluster), dtype=np.float32),
-                'graph_features': np.array(self._extract_graph_features(job, cluster), dtype=np.float32),
-                'edges_src': np.array(edges_src, dtype=np.float32),
-                'edges_dst': np.array(edges_dst, dtype=np.float32),
-                }
+        obs =   {
+                    'node_features': np.array(self._extract_node_features(job, cluster), dtype=np.float32),
+                    'edge_features': np.array(self._extract_edge_features(job, cluster), dtype=np.float32),
+                    'graph_features': np.array(self._extract_graph_features(job, cluster), dtype=np.float32),
+                    'edges_src': np.array(edges_src, dtype=np.float32),
+                    'edges_dst': np.array(edges_dst, dtype=np.float32),
+                    'node_split': None,
+                    'edge_split': None
+                 }
+        if self.pad_obs_kwargs is not None:
+            obs = self._pad_obs(obs)
+        return obs
 
     def _extract_node_features(self, job, cluster):
         return [self._get_op_features(node, job, cluster) for node in job.computation_graph.nodes]

@@ -123,13 +123,6 @@ class GNN(nn.Module):
     def __init__(self,
         config
     ):
-        # in_features_node,
-        # in_features_edge,
-        # out_features_msg,
-        # out_features_hidden,
-        # out_features,
-        # num_layers,
-        # aggregator_type='mean'):
     
         nn.Module.__init__(self)
         super(GNN, self).__init__()
@@ -160,10 +153,7 @@ class GNN(nn.Module):
         self.layers = nn.ModuleList(self.layers)
 
     def forward(self,graph):
-        
-        
         for layer in self.layers:
-
             #generate node embeddings    
             output = layer(graph)
 
