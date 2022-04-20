@@ -49,8 +49,15 @@ class MeanPool(nn.Module):
         self.reduce_layer = nn.Linear(out_features_msg,out_features_reduce)
         self.activation = nn.ReLU()
 
+    def to(self, device):
+        '''Mount torch model(s) onto device.'''
+        self.node_layer = self.node_layer.to(device)
+        self.edge_layer = self.edge_layer.to(device)
+        self.reduce_layer = self.reduce_layer.to(device)
+        self.activation = self.activation.to(device)
     
     def forward(self,graph):
+        self.to(graph.device)
 
         graph.update_all(
             message_func=self.mp_func,
@@ -62,8 +69,6 @@ class MeanPool(nn.Module):
     def mp_func(self,edges):
 
         #generate intermediate representations of node and edge features
-        # print(edges.src['z'])
-        # print(edges.data['z'])
         nodes = self.node_layer(edges.src['z'])
         edges = self.edge_layer(edges.data['z'])
 
@@ -73,12 +78,13 @@ class MeanPool(nn.Module):
         return {'m':msg}
 
     def reduce_func(self,nodes):
+        device = nodes.data['z'].device 
 
         #generate intermediate representations of the receiving node's node and edge features
         local_node = self.node_layer(nodes.data['z'])
 
         #create padded edge feature for each self-node in the batch
-        local_edge = torch.zeros((len(local_node),int(self.out_features_msg/2)))
+        local_edge = torch.zeros((len(local_node),int(self.out_features_msg/2)), device=device)
         local_state = torch.cat((local_node,local_edge),-1)
 
         #reshape local representation so it matches dimensions of received messages (dimension extension)

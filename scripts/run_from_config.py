@@ -22,10 +22,14 @@ import hydra
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 import shutil
+import os
 
 
 @hydra.main(config_path='configs', config_name='config.yaml')
 def run(cfg: DictConfig):
+    if 'cuda_visible_devices' in cfg.experiment:
+        os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(str(gpu) for gpu in cfg.experiment.cuda_visible_devices)
+
     # seeding
     if 'seed' in cfg.experiment:
         seed_stochastic_modules_globally(cfg.experiment.seed)

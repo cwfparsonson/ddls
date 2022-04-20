@@ -95,7 +95,7 @@ class GNNPolicy(TorchModelV2, nn.Module):
         og_node_feature_shape = node_features.shape
 
         # get device of tensors
-        self.device = node_features.device
+        device = node_features.device
 
         '''
         Note on initialisation section:
@@ -137,12 +137,15 @@ class GNNPolicy(TorchModelV2, nn.Module):
             src_nodes_tmp = [src_nodes_tmp]*src_nodes.shape[0]
             dst_nodes_tmp = [dst_nodes_tmp]*dst_nodes.shape[0]
 
-            src_nodes = torch.LongTensor(src_nodes_tmp).to(self.device)
-            dst_nodes = torch.LongTensor(dst_nodes_tmp).to(self.device)
+            # src_nodes = torch.LongTensor(src_nodes_tmp).to(device)
+            # dst_nodes = torch.LongTensor(dst_nodes_tmp).to(device)
+            src_nodes = torch.LongTensor(src_nodes_tmp)
+            dst_nodes = torch.LongTensor(dst_nodes_tmp)
 
             edge_feature_shape = list(edge_features.shape)
             edge_features = edge_features[0][0].tolist()
-            edge_features = torch.tensor([edge_features]*edge_feature_shape[0]*edge_feature_shape[1], device=self.device)
+            # edge_features = torch.tensor([edge_features]*edge_feature_shape[0]*edge_feature_shape[1], device=device)
+            edge_features = torch.tensor([edge_features]*edge_feature_shape[0]*edge_feature_shape[1])
 
 
             #if initialising, then just batch all fake graphs and do one big pass through
@@ -150,15 +153,16 @@ class GNNPolicy(TorchModelV2, nn.Module):
             #node embeddings etc since they all have the same (maximum) size
             graphs = []
             for i in range(node_features.shape[0]):
-                # graph = dgl.graph((np.array(src_nodes[i]).astype(int),np.array(dst_nodes[i]).astype(int))).to(self.device)
-                graph = dgl.graph((src_nodes[i],dst_nodes[i])).to(self.device)
+                graph = dgl.graph((src_nodes[i],dst_nodes[i])).to(device)
+                # graph = dgl.graph((src_nodes[i],dst_nodes[i]))
                 graphs.append(graph)
 
             node_features = torch.reshape(node_features,(node_features.shape[0]*node_features.shape[1],node_features.shape[2]))
 
-            graph = dgl.batch(graphs).to(self.device)
-            graph.ndata['z'] = node_features
-            graph.edata['z'] = edge_features
+            graph = dgl.batch(graphs).to(device)
+            # graph = dgl.batch(graphs)
+            graph.ndata['z'] = node_features.to(device)
+            graph.edata['z'] = edge_features.to(device)
 
             emb_nodes = self.gnn(graph)
 
@@ -193,7 +197,7 @@ class GNNPolicy(TorchModelV2, nn.Module):
                 dst, dst_pads = torch.split(dst,[edge_split,edge_ft.shape[0]-edge_split],dim=0)
 
                 #construct a graph and get its embeddings
-                graph = dgl.graph((src.numpy(),dst.numpy()))
+                graph = dgl.graph((src.cpu().numpy(),dst.cpu().numpy())).to(device)
                 graph.ndata['z'] = node_ft_reduced
                 graph.edata['z'] = edge_ft_reduced
 

@@ -44,7 +44,7 @@ def seed_stochastic_modules_globally(default_seed=0,
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
-    dgl.seed(dgl_seed)
+    # dgl.seed(dgl_seed)
 
 
 class Sampler:
