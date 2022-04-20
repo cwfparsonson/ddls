@@ -6,10 +6,15 @@ experiment:
     name: job_placing
     seed: 0
     path_to_save: '/scratch/datasets/ddls/sims'
+    cuda_visible_devices:
+        #- 0
+        - 1
+        - 2
+        - 3
 
 launcher:
-     num_epochs: null
-     num_episodes: 1
+     num_epochs: 10
+     num_episodes: null
      num_actor_steps: null
      num_eval_episodes: null
      eval_freq: null
@@ -22,3 +27,5 @@ logger:
     epoch_log_freq: null
     use_sqlite_database: True
 
+checkpointer:
+    epoch_checkpoint_freq: 1

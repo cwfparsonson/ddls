@@ -72,14 +72,17 @@ class Launcher:
 
         # init trackers
         self.epoch_counter, self.episode_counter, self.actor_step_counter = 0, 0, 0
-        start_time = time.time()
-        results = {'launcher_stats': {'total_run_time': [0]}}
+        self.start_time = time.time()
+        results = self._init_results_dict()
+        if self.epoch_loop is not None:
+            # save initial agent checkpoint
+            checkpointer.write(self.epoch_loop)
 
         # run launcher
         while not self._check_if_should_stop():
             # step the launcher
             results.update(self._step())
-            results['launcher_stats']['total_run_time'].append(time.time() - start_time)
+            results['launcher_stats']['total_run_time'].append(time.time() - self.start_time)
 
             if self.verbose:
                 print(f'ELAPSED: Epochs: {self.epoch_counter} | Episodes: {self.episode_counter} | Actor steps: {self.actor_step_counter} | Run time: {results["launcher_stats"]["total_run_time"][-1]:.3f} s')
@@ -90,7 +93,15 @@ class Launcher:
                     # save in-memory results
                     logger.write(results)
                     # reset in-memory results
-                    results = {}
+                    results = self._init_results_dict()
+
+            # check if should save checkpoint
+            if checkpointer is not None and self.epoch_loop is not None:
+                if self.epoch_counter % checkpointer.epoch_checkpoint_freq == 0:
+                    checkpointer.write(self.epoch_loop)
+
+    def _init_results_dict(self):
+        return {'launcher_stats': {'total_run_time': [0]}}
 
 
     def _check_if_should_log(self, logger):

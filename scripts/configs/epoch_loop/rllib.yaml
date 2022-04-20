@@ -1,5 +1,8 @@
 _target_: ddls.loops.rllib_epoch_loop.RLlibEpochLoop
 
+# define string path to the model you want to use
+path_to_model_cls: ddls.ml_models.policies.GNNPolicy
+
 # define string path to the environment you want to use
 path_to_env_cls: ddls.environments.job_placing.job_placing_all_nodes_environment.JobPlacingAllNodesEnvironment
 
@@ -35,9 +38,31 @@ rllib_config:
 
         reward_function: mean_job_completion_time
 
-    
+        pad_obs_kwargs:
+            max_nodes: 200 
+
+
+    model:
+        fcnet_hiddens:
+            - 8
+        fcnet_activation: relu
+        custom_model: my_model
+        custom_model_config:
+            in_features_node: 5
+            in_features_edge: 1
+            out_features_msg: 8
+            out_features_hidden: 16
+            out_features: 4
+            in_features_graph: 130
+            out_features_graph: 4
+            num_layers: 1
+            aggregator_type: mean
+
     batch_mode: complete_episodes
     train_batch_size: 128
     sgd_minibatch_size: 128
+
+    num_workers: 64 # num parallel cpu workers
+    num_gpus: 2 # num gpus available for RLlib
 
     framework: torch
