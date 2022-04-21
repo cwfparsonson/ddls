@@ -1,20 +1,12 @@
 from ddls.loops.env_loop import EnvLoop
 from ddls.loops.epoch_loop import EpochLoop
 from ddls.loggers.logger import Logger
+from ddls.checkpointers.checkpointer import Checkpointer
 
 import numpy as np
 import time
 from collections import defaultdict
 
-
-
-
-
-
-
-
-class Checkpointer:
-    pass
 
 
 class Launcher:
@@ -64,6 +56,34 @@ class Launcher:
             self.actor_step_counter += _results['episode_stats']['num_actor_steps']
         return _results
 
+    def update_results_log(self, old_results, new_results):
+        for log_name, log in new_results.items():
+            if log_name not in old_results:
+                # initialise log
+                # print(f'Initialising old_results {log_name}')
+                old_results[log_name] = {}
+                for key, val in log.items():
+                    # print(f'new_results key: {key} val: {val}')
+                    if not isinstance(val, list):
+                        val = [val]
+                    old_results[log_name][key] = val
+                    # print(f'initialised old_results key: {key} val: {old_results[log_name][key]}')
+            else:
+                # extend log
+                # print(f'Extending old_results {log_name}')
+                for key, val in log.items():
+                    # print(f'new_results key: {key} val: {val}')
+                    if not isinstance(val, list):
+                        val = [val]
+                    if key in old_results[log_name]:
+                        # extend log key
+                        old_results[log_name][key] += val
+                    else:
+                        # initialise log key
+                        old_results[log_name][key] = val
+                    # print(f'extended old_results key: {key} val: {old_results[log_name][key]}')
+        return old_results
+
     def run(self, 
             logger: Logger = None,
             checkpointer: Checkpointer = None):
@@ -73,7 +93,7 @@ class Launcher:
         # init trackers
         self.epoch_counter, self.episode_counter, self.actor_step_counter = 0, 0, 0
         self.start_time = time.time()
-        results = self._init_results_dict()
+        results = {'launcher_stats': {'total_run_time': [0]}}
         if self.epoch_loop is not None:
             # save initial agent checkpoint
             checkpointer.write(self.epoch_loop)
@@ -81,8 +101,13 @@ class Launcher:
         # run launcher
         while not self._check_if_should_stop():
             # step the launcher
-            results.update(self._step())
+            # results.update(self._step())
+            # print(f'\n\n\nresults before update')
+            # print(results)
+            results = self.update_results_log(results, self._step())
             results['launcher_stats']['total_run_time'].append(time.time() - self.start_time)
+            # print(f'\nresults after update')
+            # print(results)
 
             if self.verbose:
                 print(f'ELAPSED: Epochs: {self.epoch_counter} | Episodes: {self.episode_counter} | Actor steps: {self.actor_step_counter} | Run time: {results["launcher_stats"]["total_run_time"][-1]:.3f} s')
@@ -93,16 +118,12 @@ class Launcher:
                     # save in-memory results
                     logger.write(results)
                     # reset in-memory results
-                    results = self._init_results_dict()
+                    results = {'launcher_stats': {'total_run_time': []}}
 
             # check if should save checkpoint
             if checkpointer is not None and self.epoch_loop is not None:
                 if self.epoch_counter % checkpointer.epoch_checkpoint_freq == 0:
                     checkpointer.write(self.epoch_loop)
-
-    def _init_results_dict(self):
-        return {'launcher_stats': {'total_run_time': [0]}}
-
 
     def _check_if_should_log(self, logger):
         should_log = False
