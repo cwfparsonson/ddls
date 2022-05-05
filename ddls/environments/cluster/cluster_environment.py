@@ -123,9 +123,6 @@ class ClusterEnvironment:
 
         self.jobs_generator = JobsGenerator(**jobs_config)
 
-        # self.job_sampler = Sampler(pool=jobs, sampling_mode=job_sampling_mode)
-        # self.job_interarrival_time_dist = job_interarrival_time_dist 
-
         self.max_simulation_run_time = max_simulation_run_time 
         self.seed = seed
         if seed is not None:
