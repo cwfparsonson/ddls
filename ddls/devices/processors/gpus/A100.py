@@ -24,7 +24,6 @@ class A100(Processor):
 
         self.reset()
         
-        
     def __str__(self):
         return f'{self.device_type}_{self.processor_id}'
 

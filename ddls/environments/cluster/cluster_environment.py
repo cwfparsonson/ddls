@@ -466,7 +466,7 @@ class ClusterEnvironment:
     def _partition_jobs(self):
         pass
 
-    def _place_jobs(self, job_placement, verbose):
+    def _place_jobs(self, job_placement, verbose=False):
         if verbose:
             if len(job_placement) > 0:
                 print('New job(s) to place on cluster. Placing...')

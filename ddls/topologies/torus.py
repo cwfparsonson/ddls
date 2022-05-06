@@ -1,8 +1,10 @@
 from ddls.topologies.topology import Topology
+from ddls.devices.channels.channel import Channel
 
 import networkx as nx
 from collections import defaultdict
 import matplotlib.pyplot as plt
+import copy
     
 
 class Torus(Topology):
@@ -11,12 +13,12 @@ class Torus(Topology):
                  y_dims: int = 1,
                  z_dims: int = 1,
                  num_channels: int = 1,
-                 channel_capacity: int = int(1.25e9)):
+                 channel_bandwidth: int = int(1.25e9)):
         self.x_dims = x_dims
         self.y_dims = y_dims
         self.z_dims = z_dims
         self.num_channels = num_channels
-        self.channel_capacity = channel_capacity
+        self.channel_bandwidth = channel_bandwidth
         
         self.graph = nx.Graph()
         self._build_topology()
@@ -51,15 +53,23 @@ class Torus(Topology):
         # initialise node workers as being empty
         for node in self.graph.nodes:
             self.graph.nodes[node]['workers'] = dict()
-            
-    def _init_link_channels(self):
-        '''Initialise link channels where each direction has 50% of total channel capacity.'''
-        channel_names = [f'channel_{channel}' for channel in range(self.num_channels)]
+
+        # initialise link channels
+        channel_id = 0
         for link in self.graph.edges:
-            self.graph.edges[link[0], link[1]][f'{link[0]}_to_{link[1]}'] = {channel: self.channel_capacity/2 for channel in channel_names}
-            self.graph.edges[link[1], link[0]][f'{link[1]}_to_{link[0]}'] = {channel: self.channel_capacity/2 for channel in channel_names}
-        self.graph.graph['channel_names'] = channel_names
-        self.graph.graph['channel_capacity'] = self.channel_capacity
+            for _ in range(self.num_channels):
+                channel = Channel(channel_id=copy.deepcopy(channel_id), channel_bandwidth=self.channel_bandwidth)
+                self.graph.edges[link]['channels'][channel.channel_id] = channel
+                channel_id += 1
+            
+    # def _init_link_channels(self):
+        # '''Initialise link channels where each direction has 50% of total channel capacity.'''
+        # channel_names = [f'channel_{channel}' for channel in range(self.num_channels)]
+        # for link in self.graph.edges:
+            # self.graph.edges[link[0], link[1]][f'{link[0]}_to_{link[1]}'] = {channel: self.channel_capacity/2 for channel in channel_names}
+            # self.graph.edges[link[1], link[0]][f'{link[1]}_to_{link[0]}'] = {channel: self.channel_capacity/2 for channel in channel_names}
+        # self.graph.graph['channel_names'] = channel_names
+        # self.graph.graph['channel_capacity'] = self.channel_capacity
                          
     def _connect_nodes_in_dim(self, dim, dim_to_nodes):
         for idx in range(len(dim_to_nodes[dim][:-1])):
