@@ -26,7 +26,7 @@ class RandomJobScheduler(JobScheduler):
             pass
 
         # combine current cluster placement status with new placement decisions so can schedule ops
-        placement = copy.deepcopy(cluster.placement)
+        placement = copy.deepcopy(cluster.job_op_placement)
         for job_id in new_placements.keys():
             placement[job_id] = new_placements[job_id]
 

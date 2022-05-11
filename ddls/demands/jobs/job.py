@@ -147,7 +147,19 @@ class Job:
         
     def _init_edge_info(self):
         for edge in self.computation_graph.edges:
-            self.computation_graph[edge[0]][edge[1]][edge[2]]['job_id'] = self.job_id
+            u, v, k = edge
+
+            self.computation_graph[u][v][k]['job_id'] = self.job_id
+
+            # TEMPORARY TODO: Assume init run time is just size of edge since don't have data for this yet
+            self.computation_graph[u][v][k]['init_run_time'] = copy.deepcopy(self.computation_graph[u][v][k]['size'])
+
+            if 'remaining_run_time' not in self.computation_graph[u][v][k]:
+                # not yet mounted this dep
+                self.computation_graph[u][v][k]['remaining_run_time'] = None
+            else:
+                # have already mounted this dep and resetting ready for another training step
+                self.reset_dep_remaining_run_time(edge)
 
     def _init_graph_info(self):
         if len(list(self.computation_graph.predecessors(0))) != 0:
@@ -171,6 +183,10 @@ class Job:
         '''Given that an op has just been mounted on a device, reset the remaining run time for each op.'''
         self.computation_graph.nodes[op_id]['remaining_run_time'] = copy.deepcopy(self.computation_graph.nodes[op_id]['compute_cost'][device_type])
         self.computation_graph.nodes[op_id]['mounted_device_type'] = device_type
+
+    def reset_dep_remaining_run_time(self, dep_id):
+        u, v, k = dep_id
+        self.computation_graph[u][v][k]['remaining_run_time'] = copy.deepcopy(self.computation_graph[u][v][k]['init_run_time'])
 
     def is_job_complete(self):
         return self.training_step_counter == self.num_training_steps
@@ -213,7 +229,11 @@ class Job:
         return descr
     
     def render(self, scaling_factor=3, title='computation_graph', show_fig=True, verbose=False):
-        return plot_computation_graph(graph, scaling_factor=scaling_factor, title=title, show_fig=show_fig, verbose=verbose)
+        return plot_computation_graph(self.computation_graph, 
+                                      scaling_factor=scaling_factor, 
+                                      title=title, 
+                                      show_fig=show_fig, 
+                                      verbose=verbose)
     
     
 

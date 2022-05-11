@@ -116,7 +116,7 @@ class RampClusterEnvironment:
                 node_id = next(node_ids)
                 topology.graph.nodes[node_id]['workers'] = dict()
                 for worker_config in node_config[node_type]['workers_config']:
-                    for _ in range(worker_config['num_workers']):
+                    for i in range(worker_config['num_workers']):
                         # instantiate a worker and add to this node/server
                         if isinstance(worker_config['worker'], str):
                             # get worker class from str
@@ -125,7 +125,7 @@ class RampClusterEnvironment:
                             # is already a class
                             Worker = worker_config['worker']
                         # instantiate class as an object
-                        worker = Worker()
+                        worker = Worker(processor_id=f'node_{node_id}_worker_{i}')
                         # update topology details
                         topology.graph.nodes[node_id]['workers'][worker.processor_id] = worker
                         topology.graph.graph['worker_to_node'][worker.processor_id] = node_id
@@ -187,8 +187,11 @@ class RampClusterEnvironment:
         self.time_next_job_to_arrive = 0
         self.job_queue.add(self._get_next_job())
 
-        # initialise current job placement (which job ops are on which workers). Maps job id -> op id -> worker id
-        self.placement = defaultdict(dict)
+        # initialise current job op placement (which job ops are on which workers). Maps job id -> op id -> worker id
+        self.job_op_placement = defaultdict(dict)
+
+        # initialise current job dep placement (which job deps are on which channels)> Maps job id -> dep id -> worked id
+        self.job_dep_placement = defaultdict(dict)
 
         obs = None
 
@@ -294,9 +297,13 @@ class RampClusterEnvironment:
 
 
     def step(self,
-             actions,
+             job_placement = None,
+             job_schedule = None,
+             flow_placement = None,
+             flow_schedule = None,
              verbose=False):
-        # TODO
+        if job_placement is None and job_schedule is None and flow_placement is None and flow_schedule is None:
+            raise Exception(f'>=1 action must != None.')
         if self.path_to_save is not None and self.use_sqlite_database and self.step_counter % self.save_freq == 0:
             # saved logs at end of previous step, can reset in-memory logs for this step
             self._reset_sim_log()
@@ -378,7 +385,7 @@ class RampClusterEnvironment:
                         print(f'Op ID {op_id} of job index {job.details["job_idx"]} placed on node ID {node_id} worker ID {worker_id}')
             self._register_running_job(job)
             # update cluster tracking of current job placement
-            self.placement[job_id] = job_placement[job_id]
+            self.job_op_placement[job_id] = job_placement[job_id]
 
     def _schedule_jobs(self, job_schedule, verbose=False):
         '''Sets scheduling priority for mounted ops on each worker.'''
@@ -417,7 +424,7 @@ class RampClusterEnvironment:
             self.num_mounted_ops -= 1
             del self.job_op_to_worker[f'{job.details["job_idx"]}_{job.job_id}_{op_id}']
         # clear job from current cluster placement tracker
-        del self.placement[job.job_id]
+        del self.job_op_placement[job.job_id]
         self.step_stats['num_jobs_completed'] += 1
             
     def _register_blocked_job(self, job):

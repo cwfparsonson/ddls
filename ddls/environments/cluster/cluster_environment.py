@@ -162,7 +162,7 @@ class ClusterEnvironment:
         self.job_queue.add(self._get_next_job())
 
         # initialise current job placement (which job ops are on which workers). Maps job id -> op id -> worker id
-        self.placement = defaultdict(dict)
+        self.job_op_placement = defaultdict(dict)
 
         obs = None
 
@@ -209,7 +209,7 @@ class ClusterEnvironment:
             self.num_mounted_ops -= 1
             del self.job_op_to_worker[f'{job.details["job_idx"]}_{job.job_id}_{op_id}']
         # clear job from current cluster placement tracker
-        del self.placement[job.job_id]
+        del self.job_op_placement[job.job_id]
         self.step_stats['num_jobs_completed'] += 1
             
     def _register_blocked_job(self, job):
@@ -487,7 +487,7 @@ class ClusterEnvironment:
                     print(f'Op ID {op_id} of job index {job.details["job_idx"]} placed on node ID {node_id} worker ID {worker_id}')
             self._register_running_job(job)
             # update cluster tracking of current job placement
-            self.placement[job_id] = job_placement[job_id]
+            self.job_op_placement[job_id] = job_placement[job_id]
 
     def _schedule_jobs(self, job_schedule, verbose=False):
         '''Sets scheduling priority for mounted ops on each worker.'''

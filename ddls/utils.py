@@ -321,7 +321,15 @@ def gen_unique_experiment_folder(path_to_save, experiment_name):
 def transform_with_log(val):
     return math.copysign(1, val) * math.log(1 + abs(val), 10)
 
+def gen_channel_id(src, dst, channel_number):
+    '''
+    src and dst are the two server nodes between which the channel exists on a link, 
+    channel_number is the global channel number of the channel.
+    '''
+    return f'src_{src}_dst_{dst}_channel_{channel_number}'
 
+def init_nested_hash():
+    return defaultdict(init_nested_hash)
 
 
 

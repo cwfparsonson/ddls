@@ -48,33 +48,26 @@ class Torus(Topology):
             for z_dim in range(1, self.z_dims+1):
                 self._connect_nodes_in_dim(z_dim, z_dim_to_nodes)
                 
-        self._init_link_channels()
-        
         # initialise node workers as being empty
         for node in self.graph.nodes:
             self.graph.nodes[node]['workers'] = dict()
 
         # initialise link channels
-        channel_id = 0
         for link in self.graph.edges:
-            for _ in range(self.num_channels):
-                channel = Channel(channel_id=copy.deepcopy(channel_id), channel_bandwidth=self.channel_bandwidth)
-                self.graph.edges[link]['channels'][channel.channel_id] = channel
-                channel_id += 1
+            u, v = link
+            for channel_num in range(self.num_channels):
+                # initialise separate link channel object for each direction
+                channel_one = Channel(u, v, channel_num, channel_bandwidth=self.channel_bandwidth)
+                self.graph[u][v]['channels'][channel_one.channel_id] = channel_one
+                channel_two = Channel(v, u, channel_num, channel_bandwidth=self.channel_bandwidth)
+                self.graph[v][u]['channels'][channel_two.channel_id] = channel_two
             
-    # def _init_link_channels(self):
-        # '''Initialise link channels where each direction has 50% of total channel capacity.'''
-        # channel_names = [f'channel_{channel}' for channel in range(self.num_channels)]
-        # for link in self.graph.edges:
-            # self.graph.edges[link[0], link[1]][f'{link[0]}_to_{link[1]}'] = {channel: self.channel_capacity/2 for channel in channel_names}
-            # self.graph.edges[link[1], link[0]][f'{link[1]}_to_{link[0]}'] = {channel: self.channel_capacity/2 for channel in channel_names}
-        # self.graph.graph['channel_names'] = channel_names
-        # self.graph.graph['channel_capacity'] = self.channel_capacity
-                         
     def _connect_nodes_in_dim(self, dim, dim_to_nodes):
         for idx in range(len(dim_to_nodes[dim][:-1])):
-            self.graph.add_edge(dim_to_nodes[dim][idx], dim_to_nodes[dim][idx+1])
-        self.graph.add_edge(dim_to_nodes[dim][-1], dim_to_nodes[dim][0])
+            u, v = dim_to_nodes[dim][idx], dim_to_nodes[dim][idx+1]
+            self.graph.add_edge(u, v, channels={u: {v: {}}, v: {u: {}}})
+        u, v = dim_to_nodes[dim][-1], dim_to_nodes[dim][0]
+        self.graph.add_edge(u, v, channels={u: {v: {}}, v: {u: {}}})
                 
     def render(self, 
                label_node_names=False, 
