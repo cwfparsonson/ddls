@@ -1,7 +1,7 @@
 from ddls.managers.schedulers.job_scheduler import JobScheduler
 from ddls.demands.jobs.job import Job
 from ddls.environments.ramp_cluster.ramp_cluster_environment import RampClusterEnvironment
-from ddls.environments.ramp_cluster.actions.job_schedule import JobSchedule
+from ddls.environments.ramp_cluster.actions.op_schedule import OpSchedule
 
 import numpy as np
 from collections import defaultdict
@@ -10,10 +10,10 @@ import copy
 class SRPTOpScheduler:
 
     def get(self, 
-            job_placement,
+            op_placement,
             cluster: RampClusterEnvironment):
         # get new placements made by job placer
-        new_placements = job_placement.placement
+        new_placements = op_placement.action
 
         # initialise job op schedule for each worker
         worker_to_job_to_op_to_priority = defaultdict(lambda: defaultdict(dict))
@@ -49,7 +49,7 @@ class SRPTOpScheduler:
                     job.reset_op_remaining_run_time(op_id, device_type=worker_to_type[worker_id])
         
         # schedule ops on each worker
-        for worker_id, ops in job_placement.worker_to_ops.items():
+        for worker_id, ops in op_placement.worker_to_ops.items():
             # get cost of each op
             job_op_to_cost = {f'{op["job_id"]}_{op["op_id"]}': job_id_to_job[op['job_id']].computation_graph.nodes[op['op_id']]['remaining_run_time'] for op in ops}
             # sort ops in descending order of cost
@@ -59,7 +59,7 @@ class SRPTOpScheduler:
                 job_id, op_id = [int(i) for i in job_op.split('_')]
                 worker_to_job_to_op_to_priority[worker_id][job_id][op_id] = priority
 
-        return JobSchedule(worker_to_job_to_op_to_priority)
+        return OpSchedule(worker_to_job_to_op_to_priority)
 
 
 

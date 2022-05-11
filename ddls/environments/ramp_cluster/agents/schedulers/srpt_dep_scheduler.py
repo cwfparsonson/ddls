@@ -12,7 +12,7 @@ class SRPTDepScheduler:
     def get(self, 
             dep_placement: dict, # flow dep placements
             cluster: RampClusterEnvironment):
-        new_placements = dep_placement.placement
+        new_placements = dep_placement.action
 
         # initialise flow dep schedule for each channel mapping channel_id -> job_id -> dep_id -> priority
         channel_to_job_to_dep_to_priority = defaultdict(lambda: defaultdict(dict))

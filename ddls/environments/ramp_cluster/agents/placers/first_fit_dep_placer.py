@@ -19,9 +19,9 @@ class FirstFitDepPlacer(Placer):
         pass
 
     def get(self,
-            job_placement: dict,
+            op_placement: dict,
             cluster: RampClusterEnvironment):
-        new_job_op_placements = job_placement.placement
+        new_job_op_placements = op_placement.action
 
         # initialise job -> dep -> path -> channel_num assignment
         job_to_dep_to_path_to_channel_num = dict()

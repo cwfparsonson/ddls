@@ -1,7 +1,7 @@
 from ddls.managers.placers.placer import Placer
 from ddls.demands.jobs.job import Job
 from ddls.environments.ramp_cluster.ramp_cluster_environment import RampClusterEnvironment
-from ddls.environments.ramp_cluster.actions.job_placement import JobPlacement
+from ddls.environments.ramp_cluster.actions.op_placement import OpPlacement
 
 import numpy as np
 import copy
@@ -53,7 +53,7 @@ class RandomOpPlacer(Placer):
             for worker in _workers_used:
                 workers_used.add(worker)
                 
-        return JobPlacement(job_to_operation_to_worker)
+        return OpPlacement(job_to_operation_to_worker)
 
     def _get_valid_placements(self, job, op, cluster, worker_to_available_memory, workers_used):
         # cannot exceed worker available memory

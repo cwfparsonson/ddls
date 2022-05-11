@@ -1,21 +1,26 @@
 import numpy as np
 
-class JobSchedule:
+class OpSchedule:
     def __init__(self,
-                 schedule: dict):
+                 action: dict):
         '''
         Args:
-            schedule: Mapping of worker_id -> job_id -> op_id -> priority.
+            action: Mapping of worker_id -> job_id -> op_id -> priority.
         '''
-        self.schedule = schedule 
+        self.action = action 
+
+        self.job_ids = set()
+        for worker_id in self.action.keys():
+            job_id = list(self.action[worker_id].keys())[0]
+            self.job_ids.add(job_id)
 
     def __str__(self):
         descr = ''
-        for worker_id in self.schedule.keys():
+        for worker_id in self.action.keys():
             descr += f'\n\tWorker ID: {worker_id}'
             jobs, ops, priorities = [], [], []
-            for job_id in self.schedule[worker_id].keys():
-                for op_id, priority in self.schedule[worker_id][job_id].items():
+            for job_id in self.action[worker_id].keys():
+                for op_id, priority in self.action[worker_id][job_id].items():
                     jobs.append(job_id)
                     ops.append(op_id)
                     priorities.append(priority)
