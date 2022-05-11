@@ -7,7 +7,7 @@ import numpy as np
 from collections import defaultdict
 import copy
 
-class SRPTJobScheduler(JobScheduler):
+class SRPTOpScheduler:
 
     def get(self, 
             job_placement,

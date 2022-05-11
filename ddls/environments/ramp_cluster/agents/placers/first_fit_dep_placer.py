@@ -13,7 +13,7 @@ import json
 
 
 
-class FirstFitFlowPlacer(Placer):
+class FirstFitDepPlacer(Placer):
     '''Use first fit to shortest paths to decide route through network for job dependencies.'''
     def __init__(self):
         pass

@@ -9,7 +9,7 @@ from collections import defaultdict
 import random
 
 
-class RandomJobPlacer(Placer):
+class RandomOpPlacer(Placer):
     def __init__(self):
         pass
 

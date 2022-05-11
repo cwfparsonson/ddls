@@ -7,7 +7,7 @@ from collections import defaultdict
 import copy
 import json
 
-class SRPTFlowScheduler:
+class SRPTDepScheduler:
 
     def get(self, 
             dep_placement: dict, # flow dep placements
@@ -70,15 +70,6 @@ class SRPTFlowScheduler:
         # sort deps in descending order of cost
         sorted_jobdep_to_cost = sorted(jobdep_to_cost, key=jobdep_to_cost.get, reverse=True)
 
-        # # highest cost deps have lowest priority
-        # for priority, jobdep in enumerate(list(sorted_jobdep_to_cost)):
-            # # job_id, dep_id = [int(i) for i in job_dep.split('_')]
-            # job_id, dep_id = jobdep.split('_')
-            # job_id = json.loads(job_id)
-            # dep_id = tuple(json.loads(dep_id))
-            # channel_id = dep_placement.jobdep_to_channel[jobdep]
-            # channel_to_job_to_dep_to_priority[channel_id][job_id][dep_id] = priority
-
         # highest cost deps have lowest priority
         for priority, jobdep in enumerate(list(sorted_jobdep_to_cost)):
             job_id, dep_id = jobdep.split('_')
@@ -86,38 +77,6 @@ class SRPTFlowScheduler:
             dep_id = tuple(json.loads(dep_id))
             for channel_id in dep_placement.jobdep_to_channels[jobdep]:
                 channel_to_job_to_dep_to_priority[channel_id][job_id][dep_id] = priority
-
-
-
-
-        
-        # # assign priorities to flow dependencies across whole network
-        # for channel_id, deps in channel_to_deps.items():
-            # # get cost of each dep 
-            # # job_dep_to_cost = {f'{dep["job_id"]}_{dep["dep_id"]}': job_id_to_job[dep['job_id']].computation_graph.edges[dep[0]][dep[1]][dep[2]]['remaining_run_time'] for dep in deps}
-            # job_dep_to_cost = {}
-            # for dep in deps:
-                # job_id, dep_id = dep.split('_')
-                # job_id = json.loads(job_id)
-                # dep_id = json.loads(dep_id)
-                
-                # job = job_id_to_job[job_id]
-                # u, v, k = dep_id
-
-                # job_dep_to_cost[dep] = job.computation_graph[u][v][k]['remaining_run_time']
-
-            # # sort deps in descending order of cost
-            # sorted_job_dep_to_cost = sorted(job_dep_to_cost, key=job_dep_to_cost.get, reverse=True)
-
-            # # highest cost deps have lowest priority
-            # for priority, dep in enumerate(list(sorted_job_dep_to_cost)):
-                # # job_id, dep_id = [int(i) for i in job_dep.split('_')]
-                # job_id, dep_id = dep.split('_')
-                # job_id = json.loads(job_id)
-                # dep_id = tuple(json.loads(dep_id))
-                # channel_to_job_to_dep_to_priority[channel_id][job_id][dep_id] = priority
-
-
 
         return DepSchedule(channel_to_job_to_dep_to_priority)
 
