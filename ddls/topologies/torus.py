@@ -53,14 +53,18 @@ class Torus(Topology):
             self.graph.nodes[node]['workers'] = dict()
 
         # initialise link channels
+        self.channel_id_to_channel = {}
         for link in self.graph.edges:
             u, v = link
             for channel_num in range(self.num_channels):
                 # initialise separate link channel object for each direction
                 channel_one = Channel(u, v, channel_num, channel_bandwidth=self.channel_bandwidth)
                 self.graph[u][v]['channels'][channel_one.channel_id] = channel_one
+                self.channel_id_to_channel[channel_one.channel_id] = channel_one
+
                 channel_two = Channel(v, u, channel_num, channel_bandwidth=self.channel_bandwidth)
                 self.graph[v][u]['channels'][channel_two.channel_id] = channel_two
+                self.channel_id_to_channel[channel_two.channel_id] = channel_two
             
     def _connect_nodes_in_dim(self, dim, dim_to_nodes):
         for idx in range(len(dim_to_nodes[dim][:-1])):

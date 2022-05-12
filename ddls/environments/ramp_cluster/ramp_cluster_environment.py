@@ -6,6 +6,7 @@ from ddls.demands.jobs.job import Job
 from ddls.demands.jobs.jobs_generator import JobsGenerator
 from ddls.distributions.distribution import Distribution
 from ddls.utils import seed_stochastic_modules_globally, Stopwatch, get_class_from_path
+from ddls.environments.ramp_cluster.ramp_rules import check_if_ramp_op_placement_rules_broken, check_if_ramp_dep_placement_rules_broken
 
 from typing import Any, Union
 from collections import defaultdict
@@ -170,12 +171,15 @@ class RampClusterEnvironment:
         # initialise trackers
         self.num_jobs_arrived = 0
         self.num_mounted_ops = 0
+        self.num_mounted_deps = 0
         self.num_active_workers = 0
+        self.num_active_channels = 0
         self.jobs_running = {}
         self.jobs_completed = {}
         self.jobs_blocked = {}
 
         self.job_op_to_worker = {}
+        self.job_dep_to_channels = defaultdict(set)
 
         self.job_idx_to_job_id = {}
         self.job_id_to_job_idx = {}
@@ -188,10 +192,10 @@ class RampClusterEnvironment:
         self.job_queue.add(self._get_next_job())
 
         # initialise current job op placement (which job ops are on which workers). Maps job id -> op id -> worker id
-        self.job_op_placement = defaultdict(dict)
+        self.job_op_placement = {}
 
         # initialise current job dep placement (which job deps are on which channels)> Maps job id -> dep id -> worked id
-        self.job_dep_placement = defaultdict(dict)
+        self.job_dep_placement = {}
 
         obs = None
 
@@ -233,14 +237,15 @@ class RampClusterEnvironment:
         self.num_jobs_arrived += 1
         return job
 
-    def _perform_lookahead_job_completion_time(self, op_placement, verbose=False):
+    def _perform_lookahead_job_completion_time(self, action, verbose=False):
         # do a lookahead to see how long each placed job will take to complete, and update job details accordingly
         if verbose:
-            if len(op_placement) > 0:
+            if len(action.job_ids) > 0:
                 print('New job(s) to perform job completion time lookahead for. Performing lookahead...')
             else:
                 print(f'No new jobs to perform lookahead for.')
-        for job_id in actions['op_placement']:
+
+        for job_id in action.job_ids:
             job = self.jobs_running.job_id_to_job_idx[job_id]
             if verbose:
                 print(f'Job ID: {job_id} | Job idx: {job.details["job_idx"]} | Time arrived: {job.details["time_arrived"]}')
@@ -297,12 +302,9 @@ class RampClusterEnvironment:
 
 
     def step(self,
-             op_placement = None,
-             op_schedule = None,
-             dep_placement = None,
-             dep_schedule = None,
+             action,
              verbose=False):
-        if op_placement is None and op_schedule is None and dep_placement is None and dep_schedule is None:
+        if action.actions['op_placement'] is None and action.actions['op_schedule'] is None and action.actions['dep_placement'] is None and action.actions['dep_schedule'] is None:
             raise Exception(f'>=1 action must != None.')
         if self.path_to_save is not None and self.use_sqlite_database and self.step_counter % self.save_freq == 0:
             # saved logs at end of previous step, can reset in-memory logs for this step
@@ -318,21 +320,22 @@ class RampClusterEnvironment:
         # execute control plane decisions
         # self._prioritise_jobs() # TODO
         # self._partition_jobs() # TODO
-        if op_placement is not None:
-            self._place_jobs(op_placement,
+        if action.actions['op_placement'] is not None:
+            self._place_ops(action.actions['op_placement'],
                              verbose=verbose)
-        if op_schedule is not None:
-            self._schedule_jobs(actions['op_schedule'],
+        if action.actions['op_schedule'] is not None:
+            self._schedule_ops(action.actions['op_schedule'],
                                 verbose=verbose)
-        if dep_placement is not None:
-            self._place_deps(actions['dep_placement'],
+        if action.actions['dep_placement'] is not None:
+            self._place_deps(action.actions['dep_placement'],
                              verbose=verbose)
-        if dep_schedule is not None:
-            self._schedule_deps(actions['dep_schedule'],
+        if action.actions['dep_schedule'] is not None:
+            self._schedule_deps(action.actions['dep_schedule'],
                                 verbose=verbose)
+        raise Exception()
 
         # given control plane decisions, perform job completion time lookahead
-        self._perform_lookahead_job_completion_time(actions['op_placement'])
+        self._perform_lookahead_job_completion_time(action)
 
 
 
@@ -349,26 +352,13 @@ class RampClusterEnvironment:
 
 
 
-
-
-    def _check_ramp_placement_rules_broken(self, job, op_id, worker):
-        '''Checks whether an op placement obeys the rules of Ramp.'''
-        rules_broken = []
-
-        # Ramp Rule 1: No worker can have ops from more than one job.
-        if job.details['job_idx'] not in worker.mounted_job_idx_to_ops:
-            if len(worker.mounted_job_idx_to_ops.keys()) > 0:
-                # already have another job mounted on this worker
-                rules_broken.append('one_job_per_worker')
-
-        return rules_broken
-
-    def _place_jobs(self, op_placement, verbose=False):
+    def _place_ops(self, action, verbose=False):
+        op_placement = action.action
         if verbose:
             if len(op_placement) > 0:
-                print('New job(s) to place on cluster. Placing...')
+                print('New job op(s) to place on cluster. Placing...')
             else:
-                print(f'No new jobs to place on cluster.')
+                print(f'No new job ops to place on cluster.')
         for job_id in op_placement:
             job = self.job_queue.jobs[job_id]
             if verbose:
@@ -377,7 +367,7 @@ class RampClusterEnvironment:
                 worker_id = op_placement[job_id][op_id]
                 node_id = self.topology.graph.graph['worker_to_node'][worker_id]
                 worker = self.topology.graph.nodes[node_id]['workers'][worker_id]
-                rules_broken = self._check_ramp_placement_rules_broken(job, op_id, worker)
+                rules_broken = check_if_ramp_op_placement_rules_broken(worker, job)
                 if len(rules_broken) > 0:
                     raise Exception(f'Placement for job index {job.details["job_idx"]} job ID {job_id} op ID {op_id} worker ID {worker_id} breaks the following Ramp rules: {rules_broken}')
                 else:
@@ -391,8 +381,39 @@ class RampClusterEnvironment:
             # update cluster tracking of current job placement
             self.job_op_placement[job_id] = op_placement[job_id]
 
-    def _schedule_jobs(self, op_schedule, verbose=False):
+    def _place_deps(self, action, verbose=False):
+        dep_placement = action.action
+        if verbose:
+            if len(dep_placement) > 0:
+                print('New job dep(s) to place on cluster. Placing...')
+            else:
+                print(f'No new job deps to place on cluster.')
+        for job_id in dep_placement:
+            job_idx = self.job_id_to_job_idx[job_id]
+            job = self.jobs_running[job_idx]
+            if verbose:
+                print(f'Job ID: {job_id} | Job idx: {job.details["job_idx"]} | Time arrived: {job.details["time_arrived"]}')
+            for dep_id in dep_placement[job_id].keys():
+                for channel_id in dep_placement[job_id][dep_id]:
+                    channel = self.topology.channel_id_to_channel[channel_id]
+                    rules_broken = check_if_ramp_dep_placement_rules_broken(channel, job)
+                    if len(rules_broken) > 0:
+                        raise Exception(f'Dep placement for job index {job.details["job_idx"]} job ID {job_id} dep ID {dep_id} channel ID {channel_id} breaks the following Ramp rules: {rules_broken}')
+                    else:
+                        channel.mount(job, dep_id)
+                        job.reset_dep_remaining_run_time(dep_id)
+                        self.job_dep_to_channels[f'{job.details["job_idx"]}_{job.job_id}_{dep_id}'].add(channel_id)
+                        self.num_mounted_deps += 1
+                        if verbose:
+                            print(f'Dep ID {dep_id} of job index {job.details["job_idx"]} placed on channel ID {channel_id}')
+
+            # update cluster tracking of current job placement
+            self.job_dep_placement[job_id] = dep_placement[job_id]
+
+
+    def _schedule_ops(self, action, verbose=False):
         '''Sets scheduling priority for mounted ops on each worker.'''
+        op_schedule = action.action
         for worker_id in op_schedule.keys():
             node_id = self.topology.graph.graph['worker_to_node'][worker_id]
             worker = self.topology.graph.nodes[node_id]['workers'][worker_id]
@@ -400,6 +421,16 @@ class RampClusterEnvironment:
                 job = self.jobs_running[job_idx]
                 for op_id in worker.mounted_job_idx_to_ops[job_idx]:
                     worker.mounted_job_op_to_priority[f'{job_idx}_{job.job_id}_{op_id}'] = op_schedule[worker_id][job.job_id][op_id]
+
+    def _schedule_deps(self, action, verbose=False):
+        '''Sets scheduling priority for mounted deps on each channel.'''
+        dep_schedule = action.action
+        for channel_id in dep_schedule.keys():
+            channel = self.topology.channel_id_to_channel[channel_id]
+            for job_idx in channel.mounted_job_idx_to_deps.keys():
+                job = self.jobs_running[job_idx]
+                for dep_id in channel.mounted_job_idx_to_deps[job_idx]:
+                    channel.mounted_job_dep_to_priority[f'{job_idx}_{job.job_id}_{dep_id}'] = dep_schedule[channel_id][job.job_id][dep_id]
 
     def _register_running_job(self, job):
         job.register_job_running(time_started=self.stopwatch.time())

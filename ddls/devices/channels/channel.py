@@ -29,10 +29,10 @@ class Channel:
         self.mounted_job_dep_to_priority = dict() # job flow schedule for mounted flows
 
     def mount(self, job, dep):
-        self.mounted_job_idx_to_deps[job.details['job_idx']].add(str(dep))
+        self.mounted_job_idx_to_deps[job.details['job_idx']].add(dep)
 
     def unmount(self, job, dep):
-        self.mounted_job_idx_to_deps[job.details['job_idx']].remove(str(dep))
+        self.mounted_job_idx_to_deps[job.details['job_idx']].remove(dep)
         del self.mounted_job_dep_to_priority[f'{job.details["job_idx"]}_{job.job_id}_{dep}']
         if len(self.mounted_job_idx_to_deps[job.details['job_idx']]) == 0:
             del self.mounted_job_idx_to_deps[job.details['job_idx']]

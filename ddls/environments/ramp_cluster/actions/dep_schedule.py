@@ -17,7 +17,7 @@ class DepSchedule:
     def __str__(self):
         descr = ''
         for channel_id in self.action.keys():
-            descr += f'\n\tChannel ID: {channel_id}'
+            descr += f'\nChannel ID: {channel_id}'
             jobs, deps, priorities = [], [], []
             for job_id in self.action[channel_id].keys():
                 for dep_id, priority in self.action[channel_id][job_id].items():
@@ -27,5 +27,5 @@ class DepSchedule:
             sorted_idxs = np.argsort(priorities)
             jobs, deps, priorities = np.array(jobs)[sorted_idxs], np.array(deps)[sorted_idxs], np.array(priorities)[sorted_idxs]
             for job, dep, priority in zip(jobs, deps, priorities):
-                descr += f'\n\t\tJob ID {job} Dep ID {dep} -> Priority {priority}'
+                descr += f'\n\tJob ID {job} Dep ID {dep} -> Priority {priority}'
         return descr

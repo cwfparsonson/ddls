@@ -19,10 +19,10 @@ class OpPlacement:
     def __str__(self):
         descr = ''
         for job_id in self.action.keys():
-            descr += f'\n\tJob ID: {job_id}'
+            descr += f'\nJob ID: {job_id}'
             for op_id in self.action[job_id].keys():
                 worker_id = self.action[job_id][op_id]
-                descr += f'\n\t\tOp ID {op_id} -> Worker ID {worker_id}'
+                descr += f'\n\tOp ID {op_id} -> Worker ID {worker_id}'
         return descr
 
 
