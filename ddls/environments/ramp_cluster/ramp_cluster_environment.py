@@ -12,6 +12,7 @@ from typing import Any, Union
 from collections import defaultdict
 import copy
 import math
+import json
 import numpy as np
 
 import threading
@@ -172,8 +173,6 @@ class RampClusterEnvironment:
         self.num_jobs_arrived = 0
         self.num_mounted_ops = 0
         self.num_mounted_deps = 0
-        self.num_active_workers = 0
-        self.num_active_channels = 0
         self.jobs_running = {}
         self.jobs_completed = {}
         self.jobs_blocked = {}
@@ -241,21 +240,24 @@ class RampClusterEnvironment:
         # do a lookahead to see how long each placed job will take to complete, and update job details accordingly
         if verbose:
             if len(action.job_ids) > 0:
-                print('New job(s) to perform job completion time lookahead for. Performing lookahead...')
+                print('\nNew job(s) to perform job completion time lookahead for. Performing lookahead...')
             else:
                 print(f'No new jobs to perform lookahead for.')
 
         for job_id in action.job_ids:
-            job = self.jobs_running.job_id_to_job_idx[job_id]
+            job_idx = self.job_id_to_job_idx[job_id]
+            job = self.jobs_running[job_idx]
             if verbose:
                 print(f'Job ID: {job_id} | Job idx: {job.details["job_idx"]} | Time arrived: {job.details["time_arrived"]}')
 
-            # do internal lookahead simulation until job is completed
             tmp_stopwatch = Stopwatch()
             tmp_stopwatch.reset()
-            step_done = False
-            while not step_done:
-                # run step until an op and/or a flow is completed
+            # do internal lookahead simulation until job is completed
+            while True:
+                # run step tick until an op and/or a dep is completed
+                if verbose:
+                    print('-'*80)
+                    print(f'Performing lookahead tick. Temporary stopwatch time at start of tick: {tmp_stopwatch.time()}')
 
                 # COMPUTATION
                 # find: 1) highest priority op on each worker for this job; and 2) the shortest remaining run time of each highest priority op on all workers for this job
@@ -275,31 +277,235 @@ class RampClusterEnvironment:
                             if job.computation_graph.nodes[op_id]['remaining_run_time'] < shortest_remaining_run_time:
                                 # update shortest_remaining_run_time
                                 shortest_remaining_run_time = job.computation_graph.nodes[op_id]['remaining_run_time']
+                        else:
+                            # no op(s) ready or mounted on this worker
+                            pass
                     else:
                         # this job has no op(s) mounted on this worker
                         pass
 
+                # NON-FLOW DEPENDENCIES
+                # find any ready deps which never became flows and therefore have 0 run time
+                non_flow_deps = set()
+                for dep_id in job.computation_graph.graph['deps_ready']:
+                    u, v, k = dep_id
+                    src_job_op = f'{job_idx}_{job.job_id}_{u}'
+                    dst_job_op = f'{job_idx}_{job.job_id}_{v}'
+                    src_worker = self.job_op_to_worker[src_job_op]
+                    dst_worker = self.job_op_to_worker[dst_job_op]
+                    if job.computation_graph[u][v][k]['size'] == 0:
+                        # 0 data transferred -> not a flow
+                        non_flow_deps.add(dep_id)
+                    elif self.topology.graph.graph['worker_to_node'][src_worker] == self.topology.graph.graph['worker_to_node'][dst_worker]:
+                        # src == dst server node -> not a flow
+                        non_flow_deps.add(dep_id)
+                    else:
+                        # is a flow
+                        pass
+
                 # COMMUNICATION
-                # TODO find: 1) highest priority flow on each link for this job; and 2) the shortest remaining communication time of each highest priority flow on all links for this job
-                shortest_remaining_communication_time = float('inf')
-                link_to_priority_job_flow = {}
-                
+                priority_job_deps = set()
+                channel_to_priority_job_dep = {}
+                priority_job_dep_to_priority = {}
+                priority_job_dep_to_channels = defaultdict(set)
+                if len(non_flow_deps) == 0:
+                    # no non-flow deps to tick -> need to consider communication overhead this tick
+                    # 1) Find highest priority flow on each channel for this job
+                    for channel_id, channel in self.topology.channel_id_to_channel.items():
+                        if job.details['job_idx'] in channel.mounted_job_idx_to_deps.keys():
+                            # get highest priority ready dep on this channel
+                            priority_job_dep = self._get_highest_priority_job_dep(channel=channel)
+                            if priority_job_dep is not None:
+                                # record priority dep and corresponding priority for this channel
+                                priority_job_deps.add(priority_job_dep)
+                                channel_to_priority_job_dep[channel_id] = priority_job_dep
+                                priority_job_dep_to_priority[priority_job_dep] = channel.mounted_job_dep_to_priority[priority_job_dep]
+                                priority_job_dep_to_channels[priority_job_dep].add(channel_id)
+                            else:
+                                # no dep(s) ready or mounted on this channel
+                                pass
+                        else:
+                            # this job has no dep(s) mounted on this channel
+                            pass
 
+                    # 2) Find any highest priority flows contending for same channel(s) -> only use highest priority flows
+                    for job_dep in priority_job_deps:
+                        # check if any of this dep's channels are contending with other dep(s)
+                        contending_deps = set([job_dep])
+                        for channel_id in priority_job_dep_to_channels[job_dep]:
+                            _job_dep = channel_to_priority_job_dep[channel_id]
+                            if _job_dep != job_dep:
+                                # contention found
+                                contending_deps.add(_job_dep)
+                        if len(contending_deps) > 1:
+                            # contention(s) found, resolve
+                            winner = max(priority_job_dep_to_priority, key=priority_job_dep_to_priority.get)
+                            losers = [contender for contender in contending_deps if contender != winner]
+                            # remove losers
+                            for loser in losers:
+                                loser_channels = priority_job_dep_to_channels[loser]
+                                for loser_channel in loser_channels:
+                                    del channel_to_priority_job_dep[loser_channel]
+                                del priority_job_dep_to_priority[loser]
+                                del priority_job_dep_to_channels[loser]
+                    
+                    # 3) Find the shortest remaining communication time of each remaining highest priority dep on all channels for this job
+                    shortest_remaining_communication_time = float('inf')
+                    for job_dep in channel_to_priority_job_dep.values():
+                        # check if should update shortest remaining communication time of all priority job deps
+                        job_idx, job_id, dep_id = self._load_job_dep_str(job_dep)
+                        job = self.jobs_running[job_idx]
+                        u, v, k = dep_id
+                        if job.computation_graph[u][v][k]['remaining_run_time'] < shortest_remaining_communication_time:
+                            # update shortest_remaining_communication_time
+                            shortest_remaining_communication_time = job.computation_graph[u][v][k]['remaining_run_time']
+                else:
+                    # have non-flow dependencies to tick which have 0 communication overhead -> no need to consider overheads this tick
+                    shortest_remaining_communication_time = 0
 
-                
+                # PERFORM TICK
+                # tick highest priority mounted ready ops and deps on each worker and channel and record any ops or deps which are completed
                 tick = min(shortest_remaining_run_time, shortest_remaining_communication_time)
 
+                # tick ops mounted on workers
+                job_idx_to_completed_op_ids = defaultdict(list)
+                for worker_id, priority_job_op in worker_to_priority_job_op.items():
+                    if priority_job_op is not None:
+                        node_id = self.topology.graph.graph['worker_to_node'][worker_id]
+                        worker = self.topology.graph.nodes[node_id]['workers'][worker_id]
+                        job_idx, job_id, op_id = [int(i) for i in priority_job_op.split('_')]
+                        job = self.jobs_running[job_idx]
+                        if verbose:
+                            remaining_run_time = job.computation_graph.nodes[op_id]['remaining_run_time']
+                            print(f'Ticking op {op_id} with remaining run time {remaining_run_time} of job index {job_idx} on node {node_id} worker {worker_id} by amount {tick}')
+                        job.tick_op(op_id, tick=tick)
+                        if op_id in job.computation_graph.graph['ops_completed']:
+                            # op was completed
+                            job_idx_to_completed_op_ids[job_idx].append(op_id)
+                            if verbose:
+                                print(f'Op {op_id} of job index {job_idx} completed')
 
-                # TODO: tick highest priority ops and flows by amount <tick> and track which op(s) and/or flow(s) are completed
+                # tick non-flow deps
+                for dep_id in non_flow_deps:
+                    u, v, k = dep_id
+                    if verbose:
+                        remaining_run_time = job.computation_graph[u][v][k]['remaining_run_time']
+                        print(f'Ticking dep {dep_id} with remaining run time {remaining_run_time} of job index {job_idx} on channel {channel_id} by amount {tick}')
+                    job.tick_dep(dep_id, tick=tick)
+                    if dep_id in job.computation_graph.graph['deps_completed']:
+                        # dep was completed
+                        job_idx_to_completed_dep_ids[job_idx].append(dep_id)
+                        if verbose:
+                            print(f'Dep {dep_id} of job index {job_idx} completed')
 
+                # tick flows mounted on channels
+                job_idx_to_completed_dep_ids = defaultdict(list)
+                for channel_id, priority_job_dep in channel_to_priority_job_dep.items():
+                    if priority_job_dep is not None:
+                        channel = self.topology.channel_id_to_channel[channel_id]
+                        job_idx, job_id, dep_id = self._load_job_dep_str(priority_job_dep)
+                        job = self.jobs_running[job_idx]
+                        u, v, k = dep_id
+                        if verbose:
+                            remaining_run_time = job.computation_graph[u][v][k]['remaining_run_time']
+                            print(f'Ticking dep {dep_id} with remaining run time {remaining_run_time} of job index {job_idx} on channel {channel_id} by amount {tick}')
+                        job.tick_dep(dep_id, tick=tick)
+                        if dep_id in job.computation_graph.graph['deps_completed']:
+                            # dep was completed
+                            job_idx_to_completed_dep_ids[job_idx].append(dep_id)
+                            if verbose:
+                                print(f'Dep {dep_id} of job index {job_idx} completed')
 
+                # tick stopwatch
+                tmp_stopwatch.tick(tick)
 
+                if job.is_training_step_complete():
+                    # finished lookahead, reset whole job ready for actual simulation and record lookahead job completion time
+                    job.reset_job(details={'lookahead_job_completion_time': tmp_stopwatch.time() * job.num_training_steps})
+                    for dep_id in job.computation_graph.edges:
+                        self.set_dep_init_run_time(job, dep_id)
+                    if verbose:
+                        print(f'Lookahead completed -> Job ID {job_id} Job idx {job.details["job_idx"]} lookahead training step time: {tmp_stopwatch.time() * job.num_training_steps}')
+                    break
+                else:
+                    # not yet finished training step lookahead, continue
+                    pass
 
+                if verbose:
+                    print(f'Finished lookahead tick. Temporary stopwatch time at end of tick: {tmp_stopwatch.time()}')
 
+            if verbose:
+                print(f'Finished all new job lookaheads.')
 
+    def set_dep_init_run_time(self, job, dep_id):
+        u, v, k = dep_id
+        job_idx = self.job_id_to_job_idx[job.job_id]
+        src_job_op = f'{job_idx}_{job.job_id}_{u}'
+        dst_job_op = f'{job_idx}_{job.job_id}_{v}'
+        src_worker = self.job_op_to_worker[src_job_op]
+        dst_worker = self.job_op_to_worker[dst_job_op]
+        if self.topology.graph.graph['worker_to_node'][src_worker] == self.topology.graph.graph['worker_to_node'][dst_worker]:
+            # src == dst server node -> not a flow
+            run_time = 0
+        elif job.computation_graph[u][v][k]['size'] == 0:
+            # 0 data transferred -> not a flow
+            run_time = 0
+        else:
+            # TEMPORARY TODO: Assume size is run time
+            run_time = job.computation_graph[u][v][k]['size']
+        job.set_dep_init_run_time(dep_id, run_time)
 
+    def _get_highest_priority_job_op(self, worker):
+        '''
+        Takes a worker processor object and returns a string identifying which operation
+        which is ready to run on the worker has the highest priority. If no
+        operation is available to run, will return None.
+        '''
+        priority_job_op = None
+        for job_idx in worker.mounted_job_idx_to_ops.keys():
+            job = self.jobs_running[job_idx]
+            for op_id in worker.mounted_job_idx_to_ops[job_idx]:
+                if op_id in job.computation_graph.graph['ops_ready']:
+                    # op is ready to run
+                    job_op = f'{job_idx}_{job.job_id}_{op_id}'
+                    if priority_job_op is None:
+                        # not yet considered any other ops, set this op as priority op
+                        priority_job_op = job_op
+                    else:
+                        # check if op has higher priority than current highest priority op found so far
+                        if worker.mounted_job_op_to_priority[job_op] > worker.mounted_job_op_to_priority[priority_job_op]:
+                            # op has higher priority, update priority job op
+                            priority_job_op = job_op
+                else:
+                    # op not yet ready to run
+                    pass
+        return priority_job_op
 
-
+    def _get_highest_priority_job_dep(self, channel):
+        '''
+        Takes a channel object and returns a string identifying which dependency
+        which is ready to run on the channel has the highest priority. If no
+        channel is available to run, will return None.
+        '''
+        priority_job_dep = None
+        for job_idx in channel.mounted_job_idx_to_deps.keys():
+            job = self.jobs_running[job_idx]
+            for dep_id in channel.mounted_job_idx_to_deps[job_idx]:
+                if dep_id in job.computation_graph.graph['deps_ready']:
+                    # dep is ready to run
+                    job_dep = self._gen_job_dep_str(job_idx, job.job_id, dep_id)
+                    if priority_job_dep is None:
+                        # not yet considered any other deps, set this dep as priority dep
+                        priority_job_dep = job_dep
+                    else:
+                        # check if dep has higher priority than current highest priority dep found so far
+                        if channel.mounted_job_dep_to_priority[job_dep] > channel.mounted_job_dep_to_priority[priority_job_dep]:
+                            # dep has higher priority, update priority job dep
+                            priority_job_dep = job_dep
+                else:
+                    # dep not yet ready to run
+                    pass
+        return priority_job_dep
 
     def step(self,
              action,
@@ -317,6 +523,14 @@ class RampClusterEnvironment:
             print('-'*80)
             print(f'Step: {self.step_counter}')
 
+        # register any blocked jobs (jobs which were in queue at last step but not handled by action)
+        for job_id, job in self.job_queue.jobs.items():
+            if job_id not in action.job_ids:
+                # job was blocked
+                self._register_blocked_job(job)
+                if verbose:
+                    print(f'Job with job_idx {job.details["job_idx"]} was blocked.')
+
         # execute control plane decisions
         # self._prioritise_jobs() # TODO
         # self._partition_jobs() # TODO
@@ -332,25 +546,90 @@ class RampClusterEnvironment:
         if action.actions['dep_schedule'] is not None:
             self._schedule_deps(action.actions['dep_schedule'],
                                 verbose=verbose)
-        raise Exception()
 
-        # given control plane decisions, perform job completion time lookahead
-        self._perform_lookahead_job_completion_time(action)
+        # given control plane decisions, perform job completion time lookahead for new mounted jobs
+        self._perform_lookahead_job_completion_time(action, verbose=verbose)
 
+        # run step until next job arrives, a job is completed, or the simulation is completed
+        step_done = False
+        self.step_stats['num_jobs_running'] = len(self.jobs_running)
+        while not step_done:
+            if verbose:
+                print('-'*80)
+                print(f'Performing cluster tick. Stopwatch time at start of tick: {self.stopwatch.time()}')
 
+            # tick simulator stopwatch until a job is completed, a new job arrives, or the simulation finishes
+            tick = min(self.time_next_job_to_arrive - self.stopwatch.time(), self.max_simulation_run_time - self.stopwatch.time())
+            for job in self.jobs_running.values():
+                elapsed_run_time = self.stopwatch.time() - job.details['time_started']
+                remaining_run_time = job.details['lookahead_job_completion_time'] - elapsed_run_time
+                tick = min(tick, remaining_run_time)
+            self.stopwatch.tick(tick)
 
+            if verbose:
+                print(f'Finished cluster tick. Stopwatch time at end of tick: {self.stopwatch.time()}')
 
+            # register any jobs completed this tick
+            jobs_completed = []
+            for job in self.jobs_running.values():
+                elapsed_run_time = self.stopwatch.time() - job.details['time_started']
+                remaining_run_time = job.details['lookahead_job_completion_time'] - elapsed_run_time
+                if tick >= remaining_run_time:
+                    # this completed this tick
+                    jobs_completed.append(job)
+            for job in jobs_completed:
+                self._register_completed_job(job)
+                step_done = True
+                if verbose:
+                    print(f'Job with job_idx {job.details["job_idx"]} completed. Time arrived: {job.details["time_arrived"]} | Time completed: {job.details["time_completed"]}')
 
+            # check if next job should arrive
+            if len(self.jobs_generator) > 0:
+                if verbose:
+                    print(f'Time next job due to arrive: {self.time_next_job_to_arrive}')
+                if self.stopwatch.time() > self.time_next_job_to_arrive:
+                    raise Exception(f'Stopwatch time is {self.stopwatch.time()} but next job should have arrived at {self.time_next_job_to_arrive}')
+                elif self.stopwatch.time() == self.time_next_job_to_arrive:
+                    next_job = self._get_next_job()
+                    self.step_stats['num_jobs_arrived'] += 1
+                    if verbose:
+                        print(f'Next job with job_idx {next_job.details["job_idx"]} arrived. Added to queue.')
+                    if self.job_queue.can_fit(next_job):
+                        self.job_queue.add(next_job)
+                    else:
+                        self._register_blocked_job(next_job)
+                    step_done = True
+                else:
+                    pass
+            else:
+                # no more jobs to sample
+                self.time_next_job_to_arrive = float('inf')
 
-        # # run step until next job arrives, a job is complete, or the simulation is done
-        # step_done = False
-        # self.step_stats['num_jobs_running'] = len(self.jobs_running)
-        # while not step_done:
-            # if verbose:
-                # print('-'*80)
-                # print(f'Performing cluster tick. Stopwatch time at start of tick: {self.stopwatch.time()}')
+            # check if simulation finished
+            if self.is_done(verbose=verbose):
+                step_done = True
 
+        # log step-level data
+        self.step_stats['step_end_time'] = self.stopwatch.time()
+        self.step_stats['mean_num_active_workers'] = np.mean(self.step_stats['mean_num_active_workers'])
+        self.step_stats['mean_worker_compute_utilisation'] = self.step_stats['mean_num_active_workers'] / len(list(self.topology.graph.graph['worker_to_node']))
+        self.step_stats['job_queue_length'] = len(self.job_queue)
+        self._update_steps_log(copy.deepcopy(self.step_stats))
 
+        # move to next step
+        self.step_counter += 1
+
+        # save logs
+        if self.path_to_save is not None:
+            if self.step_counter % self.save_freq == 0 or self.is_done():
+                self.save()
+                if self.is_done():
+                    self.save_thread.join()
+
+        # TEMPORARY
+        obs, action_set, reward, done, info = None, None, None, self.is_done(), None
+
+        return obs, action_set, reward, done, info
 
     def _place_ops(self, action, verbose=False):
         op_placement = action.action
@@ -401,15 +680,14 @@ class RampClusterEnvironment:
                         raise Exception(f'Dep placement for job index {job.details["job_idx"]} job ID {job_id} dep ID {dep_id} channel ID {channel_id} breaks the following Ramp rules: {rules_broken}')
                     else:
                         channel.mount(job, dep_id)
-                        job.reset_dep_remaining_run_time(dep_id)
-                        self.job_dep_to_channels[f'{job.details["job_idx"]}_{job.job_id}_{dep_id}'].add(channel_id)
                         self.num_mounted_deps += 1
+                        job.reset_dep_remaining_run_time(dep_id)
+                        self.job_dep_to_channels[self._gen_job_dep_str(job_idx, job.job_id, dep_id)].add(channel_id)
                         if verbose:
                             print(f'Dep ID {dep_id} of job index {job.details["job_idx"]} placed on channel ID {channel_id}')
 
             # update cluster tracking of current job placement
             self.job_dep_placement[job_id] = dep_placement[job_id]
-
 
     def _schedule_ops(self, action, verbose=False):
         '''Sets scheduling priority for mounted ops on each worker.'''
@@ -430,12 +708,23 @@ class RampClusterEnvironment:
             for job_idx in channel.mounted_job_idx_to_deps.keys():
                 job = self.jobs_running[job_idx]
                 for dep_id in channel.mounted_job_idx_to_deps[job_idx]:
-                    channel.mounted_job_dep_to_priority[f'{job_idx}_{job.job_id}_{dep_id}'] = dep_schedule[channel_id][job.job_id][dep_id]
+                    channel.mounted_job_dep_to_priority[self._gen_job_dep_str(job_idx, job.job_id, dep_id)] = dep_schedule[channel_id][job.job_id][dep_id]
+
+    def _gen_job_dep_str(self, job_idx, job_id, dep_id):
+        return f'{json.dumps(job_idx)}_{json.dumps(job_id)}_{json.dumps(dep_id)}'
+
+    def _load_job_dep_str(self, job_dep):
+        job_dep = job_dep.split('_')
+        job_idx, job_id, dep_id = job_dep
+        return int(json.loads(job_idx)), int(json.loads(job_id)), tuple(json.loads(dep_id))
 
     def _register_running_job(self, job):
         job.register_job_running(time_started=self.stopwatch.time())
         self.jobs_running[job.details['job_idx']] = job
         self.job_queue.remove(job)
+        # set dependency run times
+        for dep_id in job.computation_graph.edges:
+            self.set_dep_init_run_time(job, dep_id)
 
     def _register_completed_job(self, job):
         # record completion time
@@ -450,20 +739,34 @@ class RampClusterEnvironment:
         self.sim_log['jobs_completed_total_operation_memory_cost'].append(job.job_total_operation_memory_cost)
         self.sim_log['jobs_completed_total_dependency_size'].append(job.job_total_dependency_size)
 
-        # update sim
+        # update simulator workers and channels
         del self.jobs_running[job.details['job_idx']]
         for op_id in job.computation_graph.nodes:
             worker_id = self.job_op_to_worker[f'{job.details["job_idx"]}_{job.job_id}_{op_id}']
             node_id = self.topology.graph.graph['worker_to_node'][worker_id]
-            worker = self.topology.graph.nodes[node_id]['workers'][worker_id].unmount(job=job, op_id=op_id)
+            worker = self.topology.graph.nodes[node_id]['workers'][worker_id]
+            worker.unmount(job=job, op_id=op_id)
             self.num_mounted_ops -= 1
             del self.job_op_to_worker[f'{job.details["job_idx"]}_{job.job_id}_{op_id}']
+        for dep_id in job.computation_graph.edges:
+            job_idx = job.details['job_idx']
+            job_dep = self._gen_job_dep_str(job_idx, job.job_id, dep_id)
+            channel_ids = self.job_dep_to_channels[job_dep]
+            for channel_id in channel_ids:
+                channel = self.topology.channel_id_to_channel[channel_id]
+                channel.unmount(job, dep_id)
+                self.num_mounted_deps -= 1
+            del self.job_dep_to_channels[job_dep]
+
         # clear job from current cluster placement tracker
         del self.job_op_placement[job.job_id]
+        del self.job_dep_placement[job.job_id]
         self.step_stats['num_jobs_completed'] += 1
             
     def _register_blocked_job(self, job):
         self.jobs_blocked[job.details['job_idx']] = job
+        if job.job_id in self.job_queue.jobs:
+            self.job_queue.remove(job)
 
         # update loggers
         self.step_stats['num_jobs_blocked'] += 1
@@ -472,6 +775,23 @@ class RampClusterEnvironment:
         self.sim_log['jobs_blocked_total_operation_memory_cost'].append(job.job_total_operation_memory_cost)
         self.sim_log['jobs_blocked_total_dependency_size'].append(job.job_total_dependency_size)
 
+    def is_done(self, verbose=False):
+        '''Checks if simulation has finished.'''
+        done = False
+
+        if self.max_simulation_run_time is not None:
+            if self.stopwatch.time() >= self.max_simulation_run_time:
+                done = True
+                if verbose:
+                    print(f'Maximum simulation run time reached -> done.')
+
+        if len(self.jobs_generator) == 0 and len(self.jobs_running) == 0 and len(self.job_queue) == 0:
+            done = True
+            if verbose:
+                print(f'No more jobs running, in queue, or left to sample -> done.')
+
+        return done
+
     def __str__(self):
         descr = f'Cluster {type(self)}'
         descr += f' | Topology: {type(self.topology)} with {len(self.topology.graph.nodes)} nodes and {len(self.topology.graph.edges)}'
@@ -479,16 +799,36 @@ class RampClusterEnvironment:
         descr += f' | Node config: {self.node_config}'
         return descr
 
+    def _update_steps_log(self, step_stats):
+        for key, val in step_stats.items():
+            self.steps_log[key].append(val)
 
+    def _save_logs(self, logs: dict):
+        start_time = time.time_ns()
+        for log_name, log in logs.items():
+            log_path = self.path_to_save + f'reset_{self.reset_counter}/{log_name}'
+            if self.use_sqlite_database:
+                # update log sqlite database under database folder
+                with SqliteDict(log_path + '.sqlite') as _log:
+                    for key, val in log.items():
+                        if key in _log and type(val) == list:
+                            # extend vals list
+                            _log[key] += val
+                        else:
+                            # create val
+                            _log[key] = val
+                    _log.commit()
+                    _log.close()
+            else:
+                # save log as pkl
+                with gzip.open(log_path + '.pkl', 'wb') as f:
+                    pickle.dump(log, f)
+        print(f'Saved logs to {self.path_to_save}reset_{self.reset_counter}/ in {(time.time_ns() - start_time)*1e-9:.4f} s.')
 
-
-
-
-
-
-
-
-
-
-
-
+    def save(self):
+        if self.save_thread is not None:
+            self.save_thread.join()
+        self.save_thread = threading.Thread(target=self._save_logs, 
+                                            args=({'sim_log': copy.deepcopy(self.sim_log),
+                                                   'steps_log': copy.deepcopy(self.steps_log)},))
+        self.save_thread.start()

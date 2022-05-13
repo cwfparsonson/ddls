@@ -2,6 +2,7 @@ from ddls.utils import gen_channel_id
 
 from collections import defaultdict
 from typing import Union
+import json
 
 class Channel:
     def __init__(self,
@@ -23,8 +24,6 @@ class Channel:
         return f'Channel_{self.channel_id}'
         
     def reset(self):
-        # self.mounted_job_idx_to_deps = {self.src: {self.dst: defaultdict(set)}, self.dst: {self.src: defaultdict(set)}}
-        # self.mounted_job_dep_to_priority = {src: {dst: dict()}, dst: {src: dict()}} # job flow schedule for mounted flows
         self.mounted_job_idx_to_deps = defaultdict(set)
         self.mounted_job_dep_to_priority = dict() # job flow schedule for mounted flows
 
@@ -33,6 +32,9 @@ class Channel:
 
     def unmount(self, job, dep):
         self.mounted_job_idx_to_deps[job.details['job_idx']].remove(dep)
-        del self.mounted_job_dep_to_priority[f'{job.details["job_idx"]}_{job.job_id}_{dep}']
+        del self.mounted_job_dep_to_priority[self._gen_job_dep_str(job.details['job_idx'], job.job_id, dep)]
         if len(self.mounted_job_idx_to_deps[job.details['job_idx']]) == 0:
             del self.mounted_job_idx_to_deps[job.details['job_idx']]
+
+    def _gen_job_dep_str(self, job_idx, job_id, dep_id):
+        return f'{json.dumps(job_idx)}_{json.dumps(job_id)}_{json.dumps(dep_id)}'

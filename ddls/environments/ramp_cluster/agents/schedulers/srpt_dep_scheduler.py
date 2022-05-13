@@ -10,7 +10,7 @@ import json
 class SRPTDepScheduler:
 
     def get(self, 
-            dep_placement: dict, # flow dep placements
+            dep_placement, # flow dep placements
             cluster: RampClusterEnvironment):
         new_placements = dep_placement.action
 
@@ -19,7 +19,7 @@ class SRPTDepScheduler:
 
         if len(new_placements) == 0:
             # no new placements made, flow dep schedule is unchanged
-            return channel_to_job_to_dep_to_priority 
+            return DepSchedule(channel_to_job_to_dep_to_priority)
         else:
             # new dep(s) will be mounted on cluster, need to get new job dep schedule
             pass

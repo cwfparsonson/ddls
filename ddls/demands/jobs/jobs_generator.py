@@ -11,7 +11,7 @@ class JobsGenerator:
                  path_to_files: str, 
                  job_interarrival_time_dist: Distribution,
                  # job_interarrival_time_dist: Union[Distribution, str], # either a Distribution object or a path leading to the distbution path
-                 max_files: str = None, 
+                 max_files: int = None, 
                  job_sampling_mode: Union['replace', 'remove', 'remove_and_repeat'] = 'remove_and_repeat'):
         # get file paths
         file_paths = glob.glob(path_to_files + '/*')
@@ -43,4 +43,8 @@ class JobsGenerator:
         return self.job_sampler.sample()
 
     def sample_interarrival_time(self, size: int = None):
-        return self.job_interarrival_time_dist.sample(size=size)
+        if len(self.job_sampler) == 0:
+            # no more jobs left to sample
+            return float('inf')
+        else:
+            return self.job_interarrival_time_dist.sample(size=size)

@@ -20,7 +20,7 @@ class SRPTOpScheduler:
 
         if len(new_placements) == 0:
             # no new placements made, job op schedule is unchanged
-            return worker_to_job_to_op_to_priority
+            return OpSchedule(worker_to_job_to_op_to_priority)
         else:
             # new job(s) will be mounted on cluster, need to get new job op schedule
             pass

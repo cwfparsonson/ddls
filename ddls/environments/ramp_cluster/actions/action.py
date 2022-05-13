@@ -37,7 +37,7 @@ class Action:
                 action_job_ids = list(action.action[device_id].keys())
                 for action_job_id in action_job_ids:
                     if action_job_id not in self.job_ids:
-                        del action.action[device][action_job_id]
+                        del action.action[device_id][action_job_id]
         else:
             raise Exception(f'Unrecognised action key {key}')
 
