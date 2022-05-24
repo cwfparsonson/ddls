@@ -574,14 +574,14 @@ class RampClusterEnvironment:
             for job in self.jobs_running.values():
                 elapsed_run_time = self.stopwatch.time() - job.details['time_started']
                 remaining_run_time = job.details['lookahead_job_completion_time'] - elapsed_run_time
-                if tick >= remaining_run_time:
-                    # this completed this tick
+                if remaining_run_time == 0:
+                    # job was completed this tick
                     jobs_completed.append(job)
+                    step_done = True
+                    if verbose:
+                        print(f'Job with job_idx {job.details["job_idx"]} completed. Time arrived: {job.details["time_arrived"]} | Time completed: {job.details["time_completed"]}')
             for job in jobs_completed:
                 self._register_completed_job(job)
-                step_done = True
-                if verbose:
-                    print(f'Job with job_idx {job.details["job_idx"]} completed. Time arrived: {job.details["time_arrived"]} | Time completed: {job.details["time_completed"]}')
 
             # check if next job should arrive
             if len(self.jobs_generator) > 0:
@@ -761,7 +761,6 @@ class RampClusterEnvironment:
         # clear job from current cluster placement tracker
         del self.job_op_placement[job.job_id]
         del self.job_dep_placement[job.job_id]
-        self.step_stats['num_jobs_completed'] += 1
             
     def _register_blocked_job(self, job):
         self.jobs_blocked[job.details['job_idx']] = job
