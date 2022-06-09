@@ -2,6 +2,7 @@ from ddls.environments.cluster.job_queue import JobQueue
 from ddls.utils import Sampler, seed_stochastic_modules_globally
 from ddls.topologies.topology import Topology
 from ddls.topologies.torus import Torus
+from ddls.topologies.ramp import Ramp
 from ddls.demands.jobs.job import Job
 from ddls.demands.jobs.jobs_generator import JobsGenerator
 from ddls.distributions.distribution import Distribution
@@ -98,14 +99,16 @@ class RampClusterEnvironment:
     def _init_topology(self, topology_config):
         if topology_config['type'] == 'torus':
             topology = Torus(**topology_config['kwargs'])
+        elif topology_config['type'] == 'ramp':
+            topology = Ramp(**topology_config['kwargs'])
         else:
-            raise Exception(f'Unrecognised topology type {topology_config["type"]}')
+            raise Exception(f'Unrecognised topology type {topology_config["type"]}. May need to implement here.')
         return topology
 
     def _check_topology_node_configs_valid(self, topology, node_config):
         num_node_config_nodes = sum([node_config[node_type]['num_nodes'] for node_type in node_config])
         if num_node_config_nodes != len(topology.graph.nodes):
-            raise Exception(f'topology_config generated a topology with {len(topology.graph.nodes)} nodes, but node_config specified a total of {num_node_config_nodes} nodes, which is incompatible.')
+            raise Exception(f'topology_config generated a topology with {len(topology.graph.nodes)} nodes, but node_config specified a total of {num_node_config_nodes} nodes, which is incompatible. Please either change the number of nodes in node_config OR the implied number of nodes in topology_config so that they are compatible.')
 
     def _populate_topology(self, topology, node_config):
         node_ids = iter(list(topology.graph.nodes))
@@ -793,7 +796,7 @@ class RampClusterEnvironment:
 
     def __str__(self):
         descr = f'Cluster {type(self)}'
-        descr += f' | Topology: {type(self.topology)} with {len(self.topology.graph.nodes)} nodes and {len(self.topology.graph.edges)}'
+        descr += f' | Topology: {type(self.topology)} with {len(self.topology.graph.nodes)} nodes and {len(self.topology.graph.edges)} edges'
         descr += f' | Topology config: {self.topology_config}'
         descr += f' | Node config: {self.node_config}'
         return descr

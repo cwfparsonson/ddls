@@ -257,6 +257,63 @@ def ddls_graph_from_pbtxt_file(file_path: str,
                                        processor_type_profiled=processor_type_profiled, 
                                        verbose=verbose)
 
+def pipedream_graph_from_txt_file(file_path, verbose=False):
+    graph = nx.DiGraph()
+
+    f = list(open(file_path,'r'))
+
+    nodes = []
+    edges = []
+
+    for line in f:
+
+        line = line.split(' -- ')
+        for idx, el in enumerate(line):
+            line[idx] = el.split('\t')[-1]
+
+        #if this line represents a node
+        if len(line) > 2:
+
+            node_features = {}
+
+            #get node id
+            node_id = str(int(line[0][4:]))
+
+            #get op id
+            op_id = line[1].split('(')[0]
+
+            node_features['type'] = op_id
+
+            #get op details
+            op_details = str(line[1].split(op_id)[1][1:-1]).split(', ')
+
+
+            #get compute time and memory details
+            comp_and_memory = line[2].split(', ')
+            comp_memory_feats = ['forward','backward','activation','parameter']
+            for i in range(len(comp_memory_feats)):
+                node_features[comp_memory_feats[i]] = float(comp_and_memory[i].split('=')[1].replace('\n',''))
+
+            nodes.append((node_id,node_features))
+        else:
+
+            src = int(line[0][4:])
+            dst = int(line[1][4:])
+
+            edges.append((str(src),str(dst))) #assume only 1 data channel for now
+
+    # get initial graph
+    graph.add_nodes_from(nodes)
+    graph.add_edges_from(edges)
+
+    return graph
+
+
+def ddls_graph_from_pipedream_txt_file(file_path: str,
+                                       processor_type_profiled: str,
+                                       verbose: bool = False):
+    '''Assumes .txt file follows the convention of the pipedream .txt graph profiles.'''
+    pass
 
 
 
