@@ -2,6 +2,7 @@ from ddls.managers.placers.placer import Placer
 from ddls.demands.jobs.job import Job
 from ddls.environments.ramp_cluster.ramp_cluster_environment import RampClusterEnvironment
 from ddls.environments.ramp_cluster.actions.op_placement import OpPlacement
+from ddls.environments.ramp_cluster.actions.op_partition import OpPartition
 
 import numpy as np
 import copy
@@ -14,6 +15,7 @@ class RandomOpPlacer(Placer):
         pass
 
     def get(self, 
+            op_partition: OpPartition,
             cluster: RampClusterEnvironment):
         '''
         Places operations in a job onto available worker(s) in a cluster, where the clusters
@@ -24,7 +26,7 @@ class RandomOpPlacer(Placer):
         could be found, the job will not be included in the placement mapping.
         '''
         # gather jobs which are requesting to be placed
-        jobs = cluster.job_queue.jobs.values()
+        jobs = op_partition.partitioned_jobs.values()
 
         # check how much memory is available on each worker
         worker_to_available_memory = self._get_workers_available_memory(cluster, sort=True)
@@ -91,58 +93,3 @@ class RandomOpPlacer(Placer):
         if sort:
             worker_to_available_memory = dict(sorted(worker_to_available_memory.items(), key=lambda x:x[1], reverse=True))
         return worker_to_available_memory
-        
-            
-        
-                
-
-        
-
-
-
-
-
-
-
-
-
-
-
-
-# class OldRandomJobPlacer(Placer):
-#     def __init__(self,
-#                  parallelisation: str = 'data_parallelisation'):
-#         self.parallelisation = parallelisation
-#         
-#     def place(self, job, cluster):
-#         '''
-#         Places operations of a job onto workers in a cluster, where the cluster is made up
-#         of nodes/servers which each contain a worker.
-#         '''
-#         # consider all cluster nodes as potential nodes/servers
-#         num_workers = len(cluster.topology.topology.nodes)
-#         
-#         # create workloads from job
-#         local_batch_size = int(job.batch_size / num_workers)
-#         if self.parallelisation == 'data_parallelisation':
-#             workloads = [DataParallelWorkload(workload_id=i, job=job, local_batch_size=local_batch_size) for i in range(num_workers)]
-#         else:
-#             raise Exception(f'Unrecognised parallelisation {self.parallelisation}')
-#             
-#         # map workloads to cluster nodes
-#         nodes = np.array(copy.deepcopy(cluster.topology.topology.nodes))
-#         node_to_workloads = defaultdict(lambda: [])
-#         for workload in workloads:
-#             np.random.shuffle(nodes)
-#             for counter, node in enumerate(nodes):
-#                 device = cluster.topology.topology.nodes[node]['device']
-#                 if device.memory_occupied + workload.get_workload_size() <= device.memory_capacity:
-#                     node_to_workloads[node].append(workload)
-#                 else:
-#                     if counter == len(nodes) - 1:
-#                         # cannot place workload on any node in cluster
-#                         return None
-# 
-#         workloads_manager = DataParallelWorkloadsManager(job, node_to_workloads)
-#                     
-#         return workloads_manager

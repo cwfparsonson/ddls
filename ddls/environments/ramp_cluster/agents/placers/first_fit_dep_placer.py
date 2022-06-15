@@ -2,6 +2,8 @@ from ddls.managers.placers.placer import Placer
 from ddls.demands.jobs.job import Job
 from ddls.environments.ramp_cluster.ramp_cluster_environment import RampClusterEnvironment
 from ddls.environments.ramp_cluster.actions.dep_placement import DepPlacement
+from ddls.environments.ramp_cluster.actions.op_placement import OpPlacement
+from ddls.environments.ramp_cluster.actions.op_partition import OpPartition
 from ddls.utils import gen_channel_id
 
 import networkx as nx
@@ -19,7 +21,8 @@ class FirstFitDepPlacer(Placer):
         pass
 
     def get(self,
-            op_placement,
+            op_partition: OpPartition,
+            op_placement: OpPlacement,
             cluster: RampClusterEnvironment,
             verbose=False):
         new_job_op_placements = op_placement.action
@@ -36,7 +39,7 @@ class FirstFitDepPlacer(Placer):
 
         # make placements
         channel_ids_used_for_other_jobs = set() # track (src, dst, channel_num) channel ids used across jobs
-        for job_id, job in cluster.job_queue.jobs.items():
+        for job_id, job in op_partition.partitioned_jobs.items():
             _channel_ids_used_for_other_jobs = set() # track (src, dst, channel_num) channel ids used for this job
             if job_id in new_job_op_placements:
                 if verbose:

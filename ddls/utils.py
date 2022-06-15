@@ -257,7 +257,12 @@ def ddls_graph_from_pbtxt_file(file_path: str,
                                        processor_type_profiled=processor_type_profiled, 
                                        verbose=verbose)
 
-def pipedream_graph_from_txt_file(file_path, verbose=False):
+def pipedream_graph_from_txt_file(file_path, shift_node_ids_by=0, verbose=False):
+    '''
+    Args:
+        shift_node_ids_by (int): How much to shift all node IDs by. Use to e.g. 
+            ensure node ids start at your desired root ID.
+    '''
     graph = nx.DiGraph()
 
     f = list(open(file_path,'r'))
@@ -277,7 +282,7 @@ def pipedream_graph_from_txt_file(file_path, verbose=False):
             node_features = {}
 
             #get node id
-            node_id = str(int(line[0][4:]))
+            node_id = str(int(line[0][4:]) + shift_node_ids_by)
 
             #get op id
             op_id = line[1].split('(')[0]
@@ -297,8 +302,8 @@ def pipedream_graph_from_txt_file(file_path, verbose=False):
             nodes.append((node_id,node_features))
         else:
 
-            src = int(line[0][4:])
-            dst = int(line[1][4:])
+            src = int(line[0][4:]) + shift_node_ids_by
+            dst = int(line[1][4:]) + shift_node_ids_by
 
             edges.append((str(src),str(dst))) #assume only 1 data channel for now
 
@@ -308,14 +313,146 @@ def pipedream_graph_from_txt_file(file_path, verbose=False):
 
     return graph
 
+def mirror_graph(graph):
+    forward_graph = graph.copy()
+    n = len(forward_graph.nodes())
+
+    backward_nodes = []
+    # for i in range(1,len(forward_graph.nodes())+1):
+    for i in forward_graph.nodes():
+        backward_node_id = str(2*n-(int(i)-1))
+
+        # set extra attrs for backward node
+        forward_graph.nodes[str(i)]['forward_node_id'] = i
+        forward_graph.nodes[str(i)]['backward_node_id'] = None
+        backward_nodes.append((backward_node_id,forward_graph.nodes[str(i)]))
+
+        # update extra attrs for forward node
+        forward_graph.nodes[str(i)]['forward_node_id'] = None
+        forward_graph.nodes[str(i)]['backward_node_id'] = backward_node_id
+
+    backward_edges = list(forward_graph.edges())
+    for i in range(len(backward_edges)):
+        backward_edges[i] = (str(2*n-(int(backward_edges[i][1])-1)),str(2*n-(int(backward_edges[i][0])-1)))
+
+    backward_graph = nx.DiGraph()
+    # for node, node_attrs in zip(nodes, nodes_attrs):
+        # backward_graph.add_node(node, **node_attrs)
+    backward_graph.add_nodes_from(backward_nodes)
+    backward_graph.add_edges_from(backward_edges)
+
+    return forward_graph, backward_graph
+
+def combine_graphs(forward, backward):
+    forward_nodes = list(forward.nodes())
+    backward_nodes = list(backward.nodes())
+
+    for i in list(forward.nodes()):
+        forward.nodes[str(i)]['compute'] = forward.nodes[str(i)]['forward']
+        forward.nodes[str(i)]['pass_type'] = 'forward_pass'
+        del forward.nodes[str(i)]['forward']
+        del forward.nodes[str(i)]['backward']
+
+    for i in list(backward.nodes()):
+        backward.nodes[str(i)]['compute'] = backward.nodes[str(i)]['backward']
+        backward.nodes[str(i)]['pass_type'] = 'backward_pass'
+        backward.nodes[str(i)]['forward_node_id'] = backward.nodes[str(i)]['forward_node_id']
+        del backward.nodes[str(i)]['forward']
+        del backward.nodes[str(i)]['backward']
+
+    join_0, join_1 = max([int(nd) for nd in forward_nodes]),min([int(nd) for nd in backward_nodes])
+    joined = nx.union(forward,backward)
+
+    joined.add_edge(str(join_0),str(join_1))
+
+    for edge in joined.edges():
+        edge = tuple(edge)
+        joined.edges[edge[0],edge[1]]['communication'] = joined.nodes[edge[0]]['activation']
+
+    return joined
+
+def ddls_graph_from_pipedream_graph(pipedream_graph,
+                                    processor_type_profiled: str = 'A100',
+                                    verbose: bool = False):
+    if verbose:
+        print('\n\n~~~ Original Pipedream Graph Nodes ~~~')
+    for node in pipedream_graph.nodes:
+        node_attrs = pipedream_graph.nodes[node]
+        if verbose:
+            print(f'\npipedream node {node} attrs:')
+            print(node_attrs)
+    
+    # get mirrored forward and backward computation graph
+    forward, backward = mirror_graph(pipedream_graph)
+    fb_pipedream_graph = combine_graphs(forward=forward, backward=backward)
+
+    # init ddls graph
+    ddls_graph = nx.MultiDiGraph()
+
+    if verbose:
+        print('\n\n~~~ Adding Nodes from F-B Pipedream Graph to DDLS Graph ~~~')
+    for node in fb_pipedream_graph.nodes:
+        node_attrs = fb_pipedream_graph.nodes[node]
+        if verbose:
+            print(f'\nF-B pipedream node {node} attrs:')
+            print(node_attrs)
+        
+        node = int(node)
+        ddls_graph.add_node(node,
+                            compute_cost={processor_type_profiled: node_attrs['compute'] if 'compute' in node_attrs else 0},
+                            memory_cost=node_attrs['activation'] + node_attrs['parameter'],
+                            pass_type=node_attrs['pass_type'],
+                            forward_node_id=node_attrs['forward_node_id'] if 'forward_node_id' in node_attrs else None,
+                            backward_node_id=node_attrs['backward_node_id'] if 'backward_node_id' in node_attrs else None)
+            
+        if verbose:
+            print(f'DDLS node {node} attrs:')
+            print(ddls_graph.nodes[node])
+
+    if verbose:
+        print('\n\n~~~ Adding Edges from F-B Pipedream Graph to DDLS Graph ~~~')
+    for edge in fb_pipedream_graph.edges:
+        u, v = edge
+        k = 0 # multi-graph key index hardcoded as 0
+        edge_attrs = fb_pipedream_graph[u][v]
+        if verbose:
+            print(f'\nF-B pipedream edge {edge} attrs:')
+            print(edge_attrs)
+            
+        u, v, k = int(u), int(v), int(k)
+        ddls_graph.add_edge(u_for_edge=u,
+                            v_for_edge=v,
+                            key=k,
+                            size=edge_attrs['communication'] if 'communication' in edge_attrs else 0)
+        
+        if verbose:
+            print(f'DDLS edge {edge} attrs:')
+            print(ddls_graph[u][v][k])
+            
+    if verbose:
+        print(f'\nNum nodes: {len(ddls_graph.nodes)}')
+        print(f'Num edges: {len(ddls_graph.edges)}')
+    
+    return ddls_graph
+    
+
 
 def ddls_graph_from_pipedream_txt_file(file_path: str,
                                        processor_type_profiled: str,
                                        verbose: bool = False):
     '''Assumes .txt file follows the convention of the pipedream .txt graph profiles.'''
-    pass
+    pipedream_computation_graph = pipedream_graph_from_txt_file(file_path, verbose=verbose)
+    return ddls_graph_from_pipedream_graph(pipedream_computation_graph, 
+                                           processor_type_profiled=processor_type_profiled, 
+                                           verbose=verbose)
 
-
+def get_forward_graph(computation_graph):
+    '''Removes nodes and edges from a graph which originally contains both the forward and backward pass.'''
+    forward_graph = copy.deepcopy(computation_graph)
+    for node in computation_graph.nodes():
+        if computation_graph.nodes[node]['pass_type'] == 'backward_pass':
+            forward_graph.remove_node(node)
+    return forward_graph 
 
 class Stopwatch:
     def __init__(self):
@@ -388,7 +525,15 @@ def gen_channel_id(src, dst, channel_number):
 def init_nested_hash():
     return defaultdict(init_nested_hash)
 
+def gen_job_dep_str(job_idx, job_id, dep_id):
+    return json.dumps(job_idx) + '_' + json.dumps(job_id) + '_' + json.dumps(dep_id)
 
+def load_job_dep_str(job_dep, conv_lists_to_tuples=True):
+    job_idx, job_id, dep_id = [json.loads(i) for i in job_dep.split('_')]
+    if isinstance(dep_id, list) and conv_lists_to_tuples:
+        # is an edge dependency, convert to hashable type tuple as in networkx (json has no concept of tuples so was mistakenly json'd as list rather than tuple)
+        dep_id = tuple(dep_id)
+    return job_idx, job_id, dep_id
 
 
 

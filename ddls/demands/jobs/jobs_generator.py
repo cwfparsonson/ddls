@@ -1,6 +1,6 @@
 from ddls.utils import Sampler
 from ddls.distributions.distribution import Distribution
-from ddls.utils import ddls_graph_from_pbtxt_file
+from ddls.utils import ddls_graph_from_pbtxt_file, ddls_graph_from_pipedream_txt_file
 from ddls.demands.jobs.job import Job
 
 import glob
@@ -14,18 +14,33 @@ class JobsGenerator:
                  max_files: int = None, 
                  job_sampling_mode: Union['replace', 'remove', 'remove_and_repeat'] = 'remove_and_repeat'):
         # get file paths
-        file_paths = glob.glob(path_to_files + '/*')
+        _file_paths = glob.glob(path_to_files + '/*')
+
+        # only use valid file types for loading graphs
+        valid_types, file_paths = set(['pbtxt', 'txt']), []
+        for f in _file_paths:
+            _type = f.split('.')[-1]
+            if _type in valid_types:
+                file_paths.append(f)
+
+        # get file reader
+        if file_paths[0].split('.')[-1] == 'pbtxt':
+            file_reader = ddls_graph_from_pbtxt_file
+        if file_paths[0].split('.')[-1] == 'txt':
+            file_reader = ddls_graph_from_pipedream_txt_file
+        else:
+            raise Exception(f'Unsure how to read file in {file_paths[0]}')
 
         # create ddls graphs
         if max_files is None:
             # use all files
-            ddls_computation_graphs = [ddls_graph_from_pbtxt_file(file_path, processor_type_profiled='A100', verbose=False) for file_path in file_paths]
+            ddls_computation_graphs = [file_reader(file_path, processor_type_profiled='A100', verbose=False) for file_path in file_paths]
         else:
             # only use up to max_files
             if len(file_paths) > max_files:
-                ddls_computation_graphs = [ddls_graph_from_pbtxt_file(file_path, processor_type_profiled='A100', verbose=False) for file_path in file_paths[:max_files]]
+                ddls_computation_graphs = [file_reader(file_path, processor_type_profiled='A100', verbose=False) for file_path in file_paths[:max_files]]
             else:
-                ddls_computation_graphs = [ddls_graph_from_pbtxt_file(file_path, processor_type_profiled='A100', verbose=False) for file_path in file_paths]
+                ddls_computation_graphs = [file_reader(file_path, processor_type_profiled='A100', verbose=False) for file_path in file_paths]
 
         # create ddls jobs
         jobs = [Job(computation_graph=graph, num_training_steps=2) for graph in ddls_computation_graphs]

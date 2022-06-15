@@ -4,6 +4,7 @@ import networkx as nx
 import copy
 from typing import Union
 from collections import defaultdict
+import json
 
 
 class Job:
@@ -38,7 +39,6 @@ class Job:
             self.job_id = id(self)
         else:
             self.job_id = job_id 
-
 
         self.job_type = job_type
 
@@ -83,18 +83,24 @@ class Job:
                     max_compute_cost[device_type] = copy.deepcopy(compute_cost)
             # check if update max memory info
             if self.computation_graph.nodes[node]['memory_cost'] > max_memory_cost:
-                max_memory_node[device_type] = copy.deepcopy(node)
-                max_memory_cost[device_type] = copy.deepcopy(self.computation_graph.nodes[node]['memory_cost'])
+                max_memory_node = copy.deepcopy(node)
+                max_memory_cost = copy.deepcopy(self.computation_graph.nodes[node]['memory_cost'])
             # check if update max depth info
-            node_depth = len(nx.shortest_path(self.computation_graph, source=0, target=node))
+            try:
+                node_depth = len(nx.shortest_path(self.computation_graph, source=self.computation_graph.graph['source_nodes'][0], target=node))
+            except nx.NetworkXNoPath:
+                # sibling nodes have no directional path to oneanother
+                node_depth = 0
             if node_depth > max_depth:
                 max_depth_node = copy.deepcopy(node)
                 max_depth = copy.deepcopy(node_depth)
         return max_compute_node, max_compute_cost, max_memory_node, max_memory_cost, max_depth_node, max_depth
 
+    def reset_job(self, details, computation_graph=None):
+        '''Resets whole job. If computation_graph is not None, will update job's computation graph.'''
+        if computation_graph is not None:
+            self.computation_graph = computation_graph
 
-    def reset_job(self, details):
-        '''Resets whole job.'''
         self.job_total_operation_memory_cost = self._init_job_total_operation_memory_cost()
         self.job_total_dependency_size = self._init_job_total_dependecy_size()
         
@@ -177,16 +183,28 @@ class Job:
         self.computation_graph[u][v][k]['remaining_run_time'] = run_time
 
     def _init_graph_info(self):
-        if len(list(self.computation_graph.predecessors(0))) != 0:
-            raise Exception(f'Source node of computation graph must have id 0.')
+        # if 0 not in self.computation_graph.nodes:
+            # raise Exception(f'Source node of computation graph must have node ID 0.')
+        # else:
+            # if len(list(self.computation_graph.predecessors(0))) != 0:
+                # raise Exception(f'Source node of computation graph must have node ID 0.')
+
+        # get source/root node of DAG
+        self.computation_graph.graph['source_nodes'] = []
+        for node in self.computation_graph.nodes:
+            if self.computation_graph.in_degree(node) == 0:
+                self.computation_graph.graph['source_nodes'].append(node)
+
         # init source node as being ready to run
-        self.computation_graph.graph['ops_ready'] = {list(nx.topological_sort(self.computation_graph))[0]}
+        # self.computation_graph.graph['ops_ready'] = {list(nx.topological_sort(self.computation_graph))[0]}
+        self.computation_graph.graph['ops_ready'] = {source_node for source_node in self.computation_graph.graph['source_nodes']}
         self.computation_graph.graph['ops_completed'] = set()
         self.computation_graph.graph['deps_ready'] = set()
         self.computation_graph.graph['deps_completed'] = set()
 
     def check_if_op_ready(self, op_id):
-        return len(self.computation_graph.in_edges(op_id)) == self.computation_graph.nodes[op_id]['parent_deps_completed']
+        # return len(self.computation_graph.in_edges(op_id)) == self.computation_graph.nodes[op_id]['parent_deps_completed']
+        return len(self.get_op_parents(op_id)) == self.computation_graph.nodes[op_id]['parent_deps_completed']
 
     def register_ready_op(self, op_id):
         self.computation_graph.graph['ops_ready'].add(op_id)
@@ -194,9 +212,11 @@ class Job:
     def register_completed_op(self, op_id):
         self.computation_graph.graph['ops_completed'].add(op_id)
         self.computation_graph.graph['ops_ready'].remove(op_id)
+
         for child_dep in self.computation_graph.out_edges(op_id):
             # parent op completed, child dependency is ready to be executed
             self.register_ready_dep(child_dep)
+
         if self.is_training_step_complete():
             self.training_step_counter += 1
 
@@ -205,13 +225,30 @@ class Job:
             dep_id = (dep_id[0], dep_id[1], 0) # multi graph requires u, v, k edge
         self.computation_graph.graph['deps_ready'].add(dep_id)
 
+    def get_op_parents(self, op_id):
+        '''
+        Op A is only a parent of op B if A has an edge going to B and B does not have an edge going to A.
+
+        If op B is both a child and a parent of op A (i.e. have edges A -> B and B -> A), then edges
+        A -> B and B -> A are treated as children of ops A and B rather than parents, and will
+        be executed after each have been completed. This is because if A -> B and B -> A are treated
+        as parents of B and A respectively, then there's an infinite loop where A and B can never
+        start since their parent dependencies can never start.
+        '''
+        parent_ids = set()
+        for parent_id in self.computation_graph.predecessors(op_id):
+            if parent_id not in self.computation_graph.successors(op_id):
+                parent_ids.add(parent_id)
+
+        return parent_ids
+
     def register_completed_dep(self, dep_id):
         if dep_id not in self.computation_graph.graph['deps_completed']:
             self.computation_graph.graph['deps_completed'].add(dep_id)
             self.computation_graph.graph['deps_ready'].remove(dep_id)
             child = dep_id[1]
             self.computation_graph.nodes[child]['parent_deps_completed'].add(dep_id)
-            if len(self.computation_graph.nodes[child]['parent_deps_completed']) == len(self.computation_graph.in_edges(child)):
+            if len(self.computation_graph.nodes[child]['parent_deps_completed']) == len(self.get_op_parents(child)):
                 # all parent dependencies completed, child op is ready to be executed
                 self.register_ready_op(child)
         else:
@@ -220,7 +257,10 @@ class Job:
 
     def reset_op_remaining_run_time(self, op_id, device_type):
         '''Given that an op has just been mounted on a device, reset the remaining run time for each op.'''
-        self.computation_graph.nodes[op_id]['remaining_run_time'] = copy.deepcopy(self.computation_graph.nodes[op_id]['compute_cost'][device_type])
+        if device_type is not None:
+            self.computation_graph.nodes[op_id]['remaining_run_time'] = copy.deepcopy(self.computation_graph.nodes[op_id]['compute_cost'][device_type])
+        else:
+            self.computation_graph.nodes[op_id]['remaining_run_time'] = None
         self.computation_graph.nodes[op_id]['mounted_device_type'] = device_type
 
     def reset_dep_remaining_run_time(self, dep_id):
@@ -272,13 +312,3 @@ class Job:
                                       title=title, 
                                       show_fig=show_fig, 
                                       verbose=verbose)
-    
-    
-
-
-
-
-
-    
-
-

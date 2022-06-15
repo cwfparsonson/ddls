@@ -2,15 +2,19 @@ from ddls.managers.schedulers.job_scheduler import JobScheduler
 from ddls.demands.jobs.job import Job
 from ddls.environments.ramp_cluster.ramp_cluster_environment import RampClusterEnvironment
 from ddls.environments.ramp_cluster.actions.op_schedule import OpSchedule
+from ddls.environments.ramp_cluster.actions.op_partition import OpPartition
+from ddls.environments.ramp_cluster.actions.op_placement import OpPlacement
 
 import numpy as np
 from collections import defaultdict
 import copy
+import json
 
 class SRPTOpScheduler:
 
     def get(self, 
-            op_placement,
+            op_partition: OpPartition,
+            op_placement: OpPlacement,
             cluster: RampClusterEnvironment):
         # get new placements made by job placer
         new_placements = op_placement.action
@@ -31,7 +35,8 @@ class SRPTOpScheduler:
             placement[job_id] = new_placements[job_id]
 
         # gather the placed jobs for which an op schedule is needed
-        jobs = [job for job in cluster.job_queue.jobs.values() if job_id in new_placements]
+        # jobs = [job for job in cluster.job_queue.jobs.values() if job_id in new_placements]
+        jobs = [job for job_id, job in op_partition.partitioned_jobs.items() if job_id in new_placements]
         for job in cluster.jobs_running.values():
             jobs.append(job)
 
@@ -51,12 +56,14 @@ class SRPTOpScheduler:
         # schedule ops on each worker
         for worker_id, ops in op_placement.worker_to_ops.items():
             # get cost of each op
-            job_op_to_cost = {f'{op["job_id"]}_{op["op_id"]}': job_id_to_job[op['job_id']].computation_graph.nodes[op['op_id']]['remaining_run_time'] for op in ops}
+            # job_op_to_cost = {f'{op["job_id"]}_{op["op_id"]}': job_id_to_job[op['job_id']].computation_graph.nodes[op['op_id']]['remaining_run_time'] for op in ops}
+            job_op_to_cost = {json.dumps(op["job_id"]) + '_' + json.dumps(op["op_id"]): job_id_to_job[op['job_id']].computation_graph.nodes[op['op_id']]['remaining_run_time'] for op in ops}
             # sort ops in descending order of cost
             sorted_job_op_to_cost = sorted(job_op_to_cost, key=job_op_to_cost.get, reverse=True)
             # highest cost ops have lowest priority
             for priority, job_op in enumerate(list(sorted_job_op_to_cost)):
-                job_id, op_id = [int(i) for i in job_op.split('_')]
+                # job_id, op_id = [int(i) for i in job_op.split('_')]
+                job_id, op_id = [json.loads(i) for i in job_op.split('_')]
                 worker_to_job_to_op_to_priority[worker_id][job_id][op_id] = priority
 
         return OpSchedule(worker_to_job_to_op_to_priority)

@@ -1,4 +1,5 @@
 from ddls.devices.processors.processor import Processor
+from ddls.utils import gen_job_dep_str, load_job_dep_str
 
 from collections import defaultdict
 
@@ -44,6 +45,7 @@ class A100(Processor):
     def unmount(self, job, op_id):
         self.memory_occupied -= job.computation_graph.nodes[op_id]['memory_cost']
         self.mounted_job_idx_to_ops[job.details['job_idx']].remove(op_id)
-        del self.mounted_job_op_to_priority[f'{job.details["job_idx"]}_{job.job_id}_{op_id}']
+        # del self.mounted_job_op_to_priority[f'{job.details["job_idx"]}_{job.job_id}_{op_id}']
+        del self.mounted_job_op_to_priority[gen_job_dep_str(job.details['job_idx'], job.job_id, op_id)]
         if len(self.mounted_job_idx_to_ops[job.details['job_idx']]) == 0:
             del self.mounted_job_idx_to_ops[job.details['job_idx']]

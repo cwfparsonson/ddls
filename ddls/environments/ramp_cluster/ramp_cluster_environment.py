@@ -1,5 +1,5 @@
 from ddls.environments.cluster.job_queue import JobQueue
-from ddls.utils import Sampler, seed_stochastic_modules_globally
+from ddls.utils import Sampler, seed_stochastic_modules_globally, gen_job_dep_str, load_job_dep_str
 from ddls.topologies.topology import Topology
 from ddls.topologies.torus import Torus
 from ddls.topologies.ramp import Ramp
@@ -275,7 +275,9 @@ class RampClusterEnvironment:
                             # record priority op for this worker
                             worker_to_priority_job_op[worker_id] = priority_job_op
                             # check if should update shortest remaining run time of all priority job ops
-                            job_idx, job_id, op_id = [int(i) for i in priority_job_op.split('_')]
+                            # job_idx, job_id, op_id = [int(i) for i in priority_job_op.split('_')]
+                            # job_idx, job_id, op_id = [json.loads(i) for i in priority_job_op.split('_')]
+                            job_idx, job_id, op_id = load_job_dep_str(priority_job_op)
                             job = self.jobs_running[job_idx]
                             if job.computation_graph.nodes[op_id]['remaining_run_time'] < shortest_remaining_run_time:
                                 # update shortest_remaining_run_time
@@ -290,12 +292,16 @@ class RampClusterEnvironment:
                 # NON-FLOW DEPENDENCIES
                 # find any ready deps which never became flows and therefore have 0 run time
                 non_flow_deps = set()
+                # print(f'deps ready: {job.computation_graph.graph["deps_ready"]}')
                 for dep_id in job.computation_graph.graph['deps_ready']:
                     u, v, k = dep_id
-                    src_job_op = f'{job_idx}_{job.job_id}_{u}'
-                    dst_job_op = f'{job_idx}_{job.job_id}_{v}'
+                    # src_job_op = f'{job_idx}_{job.job_id}_{u}'
+                    # dst_job_op = f'{job_idx}_{job.job_id}_{v}'
+                    src_job_op = gen_job_dep_str(job_idx, job.job_id, u)
+                    dst_job_op = gen_job_dep_str(job_idx, job.job_id, v)
                     src_worker = self.job_op_to_worker[src_job_op]
                     dst_worker = self.job_op_to_worker[dst_job_op]
+                    # print(f'dep_id {dep_id} | size: {job.computation_graph[u][v][k]["size"]} | src_worker: {src_worker} | dst_worker: {dst_worker}')
                     if job.computation_graph[u][v][k]['size'] == 0:
                         # 0 data transferred -> not a flow
                         non_flow_deps.add(dep_id)
@@ -356,7 +362,7 @@ class RampClusterEnvironment:
                     shortest_remaining_communication_time = float('inf')
                     for job_dep in channel_to_priority_job_dep.values():
                         # check if should update shortest remaining communication time of all priority job deps
-                        job_idx, job_id, dep_id = self._load_job_dep_str(job_dep)
+                        job_idx, job_id, dep_id = load_job_dep_str(job_dep)
                         job = self.jobs_running[job_idx]
                         u, v, k = dep_id
                         if job.computation_graph[u][v][k]['remaining_run_time'] < shortest_remaining_communication_time:
@@ -376,7 +382,8 @@ class RampClusterEnvironment:
                     if priority_job_op is not None:
                         node_id = self.topology.graph.graph['worker_to_node'][worker_id]
                         worker = self.topology.graph.nodes[node_id]['workers'][worker_id]
-                        job_idx, job_id, op_id = [int(i) for i in priority_job_op.split('_')]
+                        # job_idx, job_id, op_id = [int(i) for i in priority_job_op.split('_')]
+                        job_idx, job_id, op_id = load_job_dep_str(priority_job_op)
                         job = self.jobs_running[job_idx]
                         if verbose:
                             remaining_run_time = job.computation_graph.nodes[op_id]['remaining_run_time']
@@ -406,7 +413,7 @@ class RampClusterEnvironment:
                 for channel_id, priority_job_dep in channel_to_priority_job_dep.items():
                     if priority_job_dep is not None:
                         channel = self.topology.channel_id_to_channel[channel_id]
-                        job_idx, job_id, dep_id = self._load_job_dep_str(priority_job_dep)
+                        job_idx, job_id, dep_id = load_job_dep_str(priority_job_dep)
                         job = self.jobs_running[job_idx]
                         u, v, k = dep_id
                         if verbose:
@@ -443,8 +450,10 @@ class RampClusterEnvironment:
     def set_dep_init_run_time(self, job, dep_id):
         u, v, k = dep_id
         job_idx = self.job_id_to_job_idx[job.job_id]
-        src_job_op = f'{job_idx}_{job.job_id}_{u}'
-        dst_job_op = f'{job_idx}_{job.job_id}_{v}'
+        # src_job_op = f'{job_idx}_{job.job_id}_{u}'
+        # dst_job_op = f'{job_idx}_{job.job_id}_{v}'
+        src_job_op = gen_job_dep_str(job_idx, job.job_id, u)
+        dst_job_op = gen_job_dep_str(job_idx, job.job_id, v)
         src_worker = self.job_op_to_worker[src_job_op]
         dst_worker = self.job_op_to_worker[dst_job_op]
         if self.topology.graph.graph['worker_to_node'][src_worker] == self.topology.graph.graph['worker_to_node'][dst_worker]:
@@ -470,12 +479,17 @@ class RampClusterEnvironment:
             for op_id in worker.mounted_job_idx_to_ops[job_idx]:
                 if op_id in job.computation_graph.graph['ops_ready']:
                     # op is ready to run
-                    job_op = f'{job_idx}_{job.job_id}_{op_id}'
+                    # job_op = f'{job_idx}_{job.job_id}_{op_id}'
+                    # job_op = json.dumps(job_idx) + '_' + json.dumps(job.job_id) + '_' + json.dumps(op_id)
+                    job_op = gen_job_dep_str(job_idx, job.job_id, op_id)
                     if priority_job_op is None:
                         # not yet considered any other ops, set this op as priority op
                         priority_job_op = job_op
                     else:
                         # check if op has higher priority than current highest priority op found so far
+                        print(f'job_op: {job_op}')
+                        print(f'priority_job_op: {priority_job_op}')
+                        print(f'worker mounted_job_op_to_priority: {worker.mounted_job_op_to_priority}')
                         if worker.mounted_job_op_to_priority[job_op] > worker.mounted_job_op_to_priority[priority_job_op]:
                             # op has higher priority, update priority job op
                             priority_job_op = job_op
@@ -496,7 +510,7 @@ class RampClusterEnvironment:
             for dep_id in channel.mounted_job_idx_to_deps[job_idx]:
                 if dep_id in job.computation_graph.graph['deps_ready']:
                     # dep is ready to run
-                    job_dep = self._gen_job_dep_str(job_idx, job.job_id, dep_id)
+                    job_dep = gen_job_dep_str(job_idx, job.job_id, dep_id)
                     if priority_job_dep is None:
                         # not yet considered any other deps, set this dep as priority dep
                         priority_job_dep = job_dep
@@ -536,7 +550,9 @@ class RampClusterEnvironment:
 
         # execute control plane decisions
         # self._prioritise_jobs() # TODO
-        # self._partition_jobs() # TODO
+        if action.actions['op_partition'] is not None:
+            self._partition_ops(action.actions['op_partition'],
+                                verbose=verbose)
         if action.actions['op_placement'] is not None:
             self._place_ops(action.actions['op_placement'],
                              verbose=verbose)
@@ -634,6 +650,26 @@ class RampClusterEnvironment:
 
         return obs, action_set, reward, done, info
 
+    def _partition_ops(self, action, verbose=False):
+        op_partition = action
+        if verbose:
+            if len(op_partition) > 0:
+                print('New job op(s) to partition. Partitioning...')
+            else:
+                print(f'No new job ops to partition.')
+        for job_id in op_partition.action:
+            # update job in queue with partitioned job
+            orig_job = self.job_queue.jobs[job_id]
+            if verbose:
+                print(f'Job ID: {job_id} | Job idx: {orig_job.details["job_idx"]} | Time arrived: {orig_job.details["time_arrived"]}')
+                for op_id in orig_job.computation_graph.nodes:
+                    num_partitions = op_partition.action[job_id][op_id]
+                    if num_partitions > 1:
+                        print(f'Op ID {op_id} partitioned into {num_partitions} sub-ops')
+                    else:
+                        print(f'Op ID {op_id} not partitioned.')
+            self.job_queue.jobs[job_id] = op_partition.partitioned_jobs[job_id]
+
     def _place_ops(self, action, verbose=False):
         op_placement = action.action
         if verbose:
@@ -656,7 +692,8 @@ class RampClusterEnvironment:
                     worker.mount(job=job, op_id=op_id)
                     self.num_mounted_ops += 1
                     job.reset_op_remaining_run_time(op_id, device_type=self.topology.graph.nodes[node_id]['workers'][worker_id].device_type)
-                    self.job_op_to_worker[f'{job.details["job_idx"]}_{job.job_id}_{op_id}'] = worker_id
+                    # self.job_op_to_worker[f'{job.details["job_idx"]}_{job.job_id}_{op_id}'] = worker_id
+                    self.job_op_to_worker[gen_job_dep_str(job.details['job_idx'], job.job_id, op_id)] = worker_id
                     if verbose:
                         print(f'Op ID {op_id} of job index {job.details["job_idx"]} placed on node ID {node_id} worker ID {worker_id}')
             self._register_running_job(job)
@@ -685,7 +722,7 @@ class RampClusterEnvironment:
                         channel.mount(job, dep_id)
                         self.num_mounted_deps += 1
                         job.reset_dep_remaining_run_time(dep_id)
-                        self.job_dep_to_channels[self._gen_job_dep_str(job_idx, job.job_id, dep_id)].add(channel_id)
+                        self.job_dep_to_channels[gen_job_dep_str(job_idx, job.job_id, dep_id)].add(channel_id)
                         if verbose:
                             print(f'Dep ID {dep_id} of job index {job.details["job_idx"]} placed on channel ID {channel_id}')
 
@@ -701,7 +738,8 @@ class RampClusterEnvironment:
             for job_idx in worker.mounted_job_idx_to_ops.keys():
                 job = self.jobs_running[job_idx]
                 for op_id in worker.mounted_job_idx_to_ops[job_idx]:
-                    worker.mounted_job_op_to_priority[f'{job_idx}_{job.job_id}_{op_id}'] = op_schedule[worker_id][job.job_id][op_id]
+                    # worker.mounted_job_op_to_priority[f'{job_idx}_{job.job_id}_{op_id}'] = op_schedule[worker_id][job.job_id][op_id]
+                    worker.mounted_job_op_to_priority[gen_job_dep_str(job_idx, job.job_id, op_id)] = op_schedule[worker_id][job.job_id][op_id]
 
     def _schedule_deps(self, action, verbose=False):
         '''Sets scheduling priority for mounted deps on each channel.'''
@@ -711,15 +749,7 @@ class RampClusterEnvironment:
             for job_idx in channel.mounted_job_idx_to_deps.keys():
                 job = self.jobs_running[job_idx]
                 for dep_id in channel.mounted_job_idx_to_deps[job_idx]:
-                    channel.mounted_job_dep_to_priority[self._gen_job_dep_str(job_idx, job.job_id, dep_id)] = dep_schedule[channel_id][job.job_id][dep_id]
-
-    def _gen_job_dep_str(self, job_idx, job_id, dep_id):
-        return f'{json.dumps(job_idx)}_{json.dumps(job_id)}_{json.dumps(dep_id)}'
-
-    def _load_job_dep_str(self, job_dep):
-        job_dep = job_dep.split('_')
-        job_idx, job_id, dep_id = job_dep
-        return int(json.loads(job_idx)), int(json.loads(job_id)), tuple(json.loads(dep_id))
+                    channel.mounted_job_dep_to_priority[gen_job_dep_str(job_idx, job.job_id, dep_id)] = dep_schedule[channel_id][job.job_id][dep_id]
 
     def _register_running_job(self, job):
         job.register_job_running(time_started=self.stopwatch.time())
@@ -745,15 +775,17 @@ class RampClusterEnvironment:
         # update simulator workers and channels
         del self.jobs_running[job.details['job_idx']]
         for op_id in job.computation_graph.nodes:
-            worker_id = self.job_op_to_worker[f'{job.details["job_idx"]}_{job.job_id}_{op_id}']
+            # worker_id = self.job_op_to_worker[f'{job.details["job_idx"]}_{job.job_id}_{op_id}']
+            worker_id = self.job_op_to_worker[gen_job_dep_str(job.details['job_idx'], job.job_id, op_id)]
             node_id = self.topology.graph.graph['worker_to_node'][worker_id]
             worker = self.topology.graph.nodes[node_id]['workers'][worker_id]
             worker.unmount(job=job, op_id=op_id)
             self.num_mounted_ops -= 1
-            del self.job_op_to_worker[f'{job.details["job_idx"]}_{job.job_id}_{op_id}']
+            # del self.job_op_to_worker[f'{job.details["job_idx"]}_{job.job_id}_{op_id}']
+            del self.job_op_to_worker[gen_job_dep_str(job.details['job_idx'], job.job_id, op_id)]
         for dep_id in job.computation_graph.edges:
             job_idx = job.details['job_idx']
-            job_dep = self._gen_job_dep_str(job_idx, job.job_id, dep_id)
+            job_dep = gen_job_dep_str(job_idx, job.job_id, dep_id)
             channel_ids = self.job_dep_to_channels[job_dep]
             for channel_id in channel_ids:
                 channel = self.topology.channel_id_to_channel[channel_id]

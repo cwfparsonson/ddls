@@ -1,6 +1,8 @@
 from ddls.demands.jobs.job import Job
 from ddls.environments.ramp_cluster.ramp_cluster_environment import RampClusterEnvironment
 from ddls.environments.ramp_cluster.actions.dep_schedule import DepSchedule
+from ddls.environments.ramp_cluster.actions.dep_placement import DepPlacement
+from ddls.environments.ramp_cluster.actions.op_partition import OpPartition
 
 import numpy as np
 from collections import defaultdict
@@ -10,7 +12,8 @@ import json
 class SRPTDepScheduler:
 
     def get(self, 
-            dep_placement, # flow dep placements
+            op_partition: OpPartition,
+            dep_placement: DepPlacement, # flow dep placements
             cluster: RampClusterEnvironment):
         new_placements = dep_placement.action
 
@@ -30,7 +33,8 @@ class SRPTDepScheduler:
             placement[job_id] = new_placements[job_id]
 
         # gather the placed jobs for which flow schedule is needed
-        jobs = [job for job in cluster.job_queue.jobs.values() if job_id in new_placements]
+        # jobs = [job for job in cluster.job_queue.jobs.values() if job_id in new_placements]
+        jobs = [job for job_id, job in op_partition.partitioned_jobs.items() if job_id in new_placements]
 
         # initialise useful mappings
         job_id_to_job = {job.job_id: job for job in jobs}
