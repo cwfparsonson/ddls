@@ -167,8 +167,8 @@ class Job:
 
             self.computation_graph[u][v][k]['job_id'] = self.job_id
 
-            # TEMPORARY TODO: Assume init run time is just size of edge since don't have data for this yet
-            self.set_dep_init_run_time(edge, copy.deepcopy(self.computation_graph[u][v][k]['size']))
+            # can only know dep run time after placement (since depends on network, collectives, etc.), so init as None and must update later
+            self.set_dep_init_run_time(edge, None)
 
             if 'remaining_run_time' not in self.computation_graph[u][v][k]:
                 # not yet mounted this dep
@@ -203,7 +203,6 @@ class Job:
         self.computation_graph.graph['deps_completed'] = set()
 
     def check_if_op_ready(self, op_id):
-        # return len(self.computation_graph.in_edges(op_id)) == self.computation_graph.nodes[op_id]['parent_deps_completed']
         return len(self.get_op_parents(op_id)) == self.computation_graph.nodes[op_id]['parent_deps_completed']
 
     def register_ready_op(self, op_id):

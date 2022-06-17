@@ -17,6 +17,7 @@ class OpPartition:
 
         # collect useful stats
         self.job_id_to_mp_split_forward_op_ids, self.job_id_to_mp_splits = defaultdict(list), defaultdict(list)
+        self.job_id_to_forward_op_id_to_mp_splits = defaultdict(lambda: defaultdict(lambda: None))
         for job_id in action:
             for op_id in action[job_id]:
                 num_partitions = action[job_id][op_id]
@@ -24,11 +25,13 @@ class OpPartition:
                 if num_partitions > 1:
                     self.job_id_to_mp_split_forward_op_ids[job_id].append(op_id)
                     self.job_id_to_mp_splits[job_id].append(num_partitions)
+                    self.job_id_to_forward_op_id_to_mp_splits[job_id][op_id] = num_partitions
 
-        # create dict mapping job_id -> partitioned_job object
-        self.job_ids, self.partitioned_jobs = set(), {}
+        # create dict mapping job_id -> partitioned_job object and job_id -> original_job object
+        self.job_ids, self.partitioned_jobs, self.original_jobs = set(), {}, {}
         for job_id, job in cluster.job_queue.jobs.items():
             self.job_ids.add(job_id)
+            self.original_jobs[job_id] = job
             computation_graph = job.computation_graph
 
             # apply data parallelism partitioning

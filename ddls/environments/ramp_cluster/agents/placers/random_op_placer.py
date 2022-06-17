@@ -55,7 +55,7 @@ class RandomOpPlacer(Placer):
             for worker in _workers_used:
                 workers_used.add(worker)
                 
-        return OpPlacement(job_to_operation_to_worker)
+        return OpPlacement(job_to_operation_to_worker, op_partition=op_partition, cluster=cluster)
 
     def _get_valid_placements(self, job, op, cluster, worker_to_available_memory, workers_used):
         # cannot exceed worker available memory

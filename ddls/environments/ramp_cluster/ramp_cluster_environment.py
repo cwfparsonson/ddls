@@ -275,8 +275,6 @@ class RampClusterEnvironment:
                             # record priority op for this worker
                             worker_to_priority_job_op[worker_id] = priority_job_op
                             # check if should update shortest remaining run time of all priority job ops
-                            # job_idx, job_id, op_id = [int(i) for i in priority_job_op.split('_')]
-                            # job_idx, job_id, op_id = [json.loads(i) for i in priority_job_op.split('_')]
                             job_idx, job_id, op_id = load_job_dep_str(priority_job_op)
                             job = self.jobs_running[job_idx]
                             if job.computation_graph.nodes[op_id]['remaining_run_time'] < shortest_remaining_run_time:
@@ -295,8 +293,6 @@ class RampClusterEnvironment:
                 # print(f'deps ready: {job.computation_graph.graph["deps_ready"]}')
                 for dep_id in job.computation_graph.graph['deps_ready']:
                     u, v, k = dep_id
-                    # src_job_op = f'{job_idx}_{job.job_id}_{u}'
-                    # dst_job_op = f'{job_idx}_{job.job_id}_{v}'
                     src_job_op = gen_job_dep_str(job_idx, job.job_id, u)
                     dst_job_op = gen_job_dep_str(job_idx, job.job_id, v)
                     src_worker = self.job_op_to_worker[src_job_op]
@@ -463,8 +459,7 @@ class RampClusterEnvironment:
             # 0 data transferred -> not a flow
             run_time = 0
         else:
-            # TEMPORARY TODO: Assume size is run time
-            run_time = job.computation_graph[u][v][k]['size']
+            run_time = job.computation_graph[u][v][k]['init_run_time']
         job.set_dep_init_run_time(dep_id, run_time)
 
     def _get_highest_priority_job_op(self, worker):
@@ -487,9 +482,6 @@ class RampClusterEnvironment:
                         priority_job_op = job_op
                     else:
                         # check if op has higher priority than current highest priority op found so far
-                        print(f'job_op: {job_op}')
-                        print(f'priority_job_op: {priority_job_op}')
-                        print(f'worker mounted_job_op_to_priority: {worker.mounted_job_op_to_priority}')
                         if worker.mounted_job_op_to_priority[job_op] > worker.mounted_job_op_to_priority[priority_job_op]:
                             # op has higher priority, update priority job op
                             priority_job_op = job_op
@@ -645,10 +637,12 @@ class RampClusterEnvironment:
                 if self.is_done():
                     self.save_thread.join()
 
-        # TEMPORARY
         obs, action_set, reward, done, info = None, None, None, self.is_done(), None
 
         return obs, action_set, reward, done, info
+
+    def _update_flow_run_times(self, job):
+        pass
 
     def _partition_ops(self, action, verbose=False):
         op_partition = action
@@ -681,6 +675,8 @@ class RampClusterEnvironment:
             job = self.job_queue.jobs[job_id]
             if verbose:
                 print(f'Job ID: {job_id} | Job idx: {job.details["job_idx"]} | Time arrived: {job.details["time_arrived"]}')
+
+            # 1. place ops for this job
             for op_id in op_placement[job_id]:
                 worker_id = op_placement[job_id][op_id]
                 node_id = self.topology.graph.graph['worker_to_node'][worker_id]
@@ -696,8 +692,14 @@ class RampClusterEnvironment:
                     self.job_op_to_worker[gen_job_dep_str(job.details['job_idx'], job.job_id, op_id)] = worker_id
                     if verbose:
                         print(f'Op ID {op_id} of job index {job.details["job_idx"]} placed on node ID {node_id} worker ID {worker_id}')
+
+            # 2. update the dependency (flow) communication times for this job based on the placement
+            self._update_flow_run_times(job)
+            
+            # 3. register the job as having began to start timers etc
             self._register_running_job(job)
-            # update cluster tracking of current job placement
+
+            # 4. update cluster tracking of current job placement
             self.job_op_placement[job_id] = op_placement[job_id]
 
     def _place_deps(self, action, verbose=False):
