@@ -3,6 +3,7 @@
 class Action:
     def __init__(self,
                  op_partition = None,
+                 job_placement_shape = None,
                  op_placement = None,
                  op_schedule = None,
                  dep_placement = None,
@@ -12,6 +13,8 @@ class Action:
         self.actions = {}
         if op_partition is not None:
             self.actions['op_partition'] = op_partition
+        if job_placement_shape is not None:
+            self.actions['job_placement_shape'] = job_placement_shape
         if op_placement is not None:
             self.actions['op_placement'] = op_placement
         if op_schedule is not None:
@@ -31,7 +34,7 @@ class Action:
 
     def _filter_action(self, key, action):
         '''Removes any job ids from action which were not also handled by all other actions.'''
-        if key in {'op_partition', 'op_placement', 'dep_placement'}:
+        if key in {'op_partition', 'job_placement_shape', 'op_placement', 'dep_placement'}:
             action_job_ids = list(action.action.keys())
             for action_job_id in action_job_ids:
                 if action_job_id not in self.job_ids:

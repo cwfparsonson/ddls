@@ -25,8 +25,8 @@ class OpPlacement:
                 self.worker_to_ops[self.action[job_id][op_id]].append({'op_id': op_id, 'job_id': job_id})
 
         # set partitioned jobs' dependency run times given their op placements, dependency sizes, and the network's processor and channel link parameters
-        update_dep_run_times(cluster=cluster, op_partition=op_partition, op_placement=self)
-        print(f'set partitioned job run times')
+        # update_dep_run_times(cluster=cluster, op_partition=op_partition, op_placement=self, verbose=True) # DEBUG
+        update_dep_run_times(cluster=cluster, op_partition=op_partition, op_placement=self, verbose=False)
 
     def __str__(self):
         descr = ''

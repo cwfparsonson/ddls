@@ -6,8 +6,8 @@ from collections import defaultdict
 
 class OpPartition:
     def __init__(self,
-                 action: dict,
-                 cluster: RampClusterEnvironment):
+            action: dict,
+            cluster: RampClusterEnvironment):
         '''
         Args:
             action: Mapping of job_id -> operation_id -> num_partitions (e.g. If op 1
@@ -18,14 +18,19 @@ class OpPartition:
         # collect useful stats
         self.job_id_to_mp_split_forward_op_ids, self.job_id_to_mp_splits = defaultdict(list), defaultdict(list)
         self.job_id_to_forward_op_id_to_mp_splits = defaultdict(lambda: defaultdict(lambda: None))
+        self.job_id_to_max_partition_degree = defaultdict(lambda: 1)
         for job_id in action:
             for op_id in action[job_id]:
                 num_partitions = action[job_id][op_id]
+                if num_partitions != 1 and num_partitions % 2 != 0:
+                    raise Exception(f'Invalid num_partitions={num_partitions} for job_id {job_id} op_id {op_id}; RAMP placer expects partitions (number of splits per op) to be even numbers.')
                 # update trackers
                 if num_partitions > 1:
                     self.job_id_to_mp_split_forward_op_ids[job_id].append(op_id)
                     self.job_id_to_mp_splits[job_id].append(num_partitions)
                     self.job_id_to_forward_op_id_to_mp_splits[job_id][op_id] = num_partitions
+                    if num_partitions > self.job_id_to_max_partition_degree[job_id]:
+                        self.job_id_to_max_partition_degree[job_id] = num_partitions
 
         # create dict mapping job_id -> partitioned_job object and job_id -> original_job object
         self.job_ids, self.partitioned_jobs, self.original_jobs = set(), {}, {}

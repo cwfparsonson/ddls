@@ -121,6 +121,8 @@ class RampClusterEnvironment:
                 node_id = next(node_ids)
                 topology.graph.nodes[node_id]['workers'] = dict()
                 for worker_config in node_config[node_type]['workers_config']:
+                    if worker_config['num_workers'] > 1:
+                        raise Exception(f'ERROR: Current RAMP implementation only supports 1 worker per server. Set worker_config["num_workers"] = 1.')
                     for i in range(worker_config['num_workers']):
                         # instantiate a worker and add to this node/server
                         if isinstance(worker_config['worker'], str):
@@ -589,10 +591,10 @@ class RampClusterEnvironment:
                     # job was completed this tick
                     jobs_completed.append(job)
                     step_done = True
-                    if verbose:
-                        print(f'Job with job_idx {job.details["job_idx"]} completed. Time arrived: {job.details["time_arrived"]} | Time completed: {job.details["time_completed"]}')
             for job in jobs_completed:
                 self._register_completed_job(job)
+                if verbose:
+                    print(f'Job with job_idx {job.details["job_idx"]} completed. Time arrived: {job.details["time_arrived"]} | Time completed: {job.details["time_completed"]}')
 
             # check if next job should arrive
             if len(self.jobs_generator) > 0:

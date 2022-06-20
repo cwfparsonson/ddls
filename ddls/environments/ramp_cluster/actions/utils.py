@@ -11,17 +11,27 @@ def update_dep_run_times(cluster,
                          op_placement, 
                          verbose=False):
     '''Updates the run times of the partitioned jobs' dependencies given the op placements, dependency sizes, and the network's processor and link parameters.'''
-    for original_job, partitioned_job in zip(op_partition.original_jobs.values(), op_partition.partitioned_jobs.values()):
-        # go through graph and group edge dependencies into collective and one-to-one communications
-        collectives, one_to_one_deps = group_deps_into_collective_and_one_to_one_communications(original_job, partitioned_job, op_partition=op_partition, op_placement=op_placement, verbose=verbose)
-        
-        # set collective dependency run times
-        for collective in collectives:
-            set_collective_dep_run_time(partitioned_job, collective, op_placement, cluster, verbose=verbose)
-                
-        # set one-to-one dependency run times
-        for dep in one_to_one_deps:
-            set_one_to_one_dep_run_time(partitioned_job, dep, op_placement, cluster, verbose=verbose)
+    if verbose:
+        print(f'\nUpdating job run times\nJobs: {op_placement.job_ids}\nOp placements: {op_placement}')
+    if len(op_placement.job_ids) > 0:
+        for original_job, partitioned_job in zip(op_partition.original_jobs.values(), op_partition.partitioned_jobs.values()):
+            if verbose:
+                print(f'\nUpdating job run times for job ID {original_job.job_id}...')
+            # go through graph and group edge dependencies into collective and one-to-one communications
+            collectives, one_to_one_deps = group_deps_into_collective_and_one_to_one_communications(original_job, partitioned_job, op_partition=op_partition, op_placement=op_placement, verbose=verbose)
+            
+            # set collective dependency run times
+            for collective in collectives:
+                set_collective_dep_run_time(partitioned_job, collective, op_placement, cluster, verbose=verbose)
+                    
+            # set one-to-one dependency run times
+            for dep in one_to_one_deps:
+                set_one_to_one_dep_run_time(partitioned_job, dep, op_placement, cluster, verbose=verbose)
+    else:
+        # none of the jobs could be placed
+        if verbose:
+            print(f'Did not find a placement for any job, cannot update dependency run times.')
+        pass
             
 def calc_ramp_all_reduce_collective_communication_run_time(
     message_size: Union[int, float],
@@ -142,7 +152,8 @@ def get_collective_info(partitioned_job, collective, op_placement, verbose=False
 
     # count number of communication groups, racks, and servers used by this collective, and the total message size
     communication_groups, racks, nodes, servers, message_size = set(), set(), set(), set(), 0
-    src_cg_to_dst_cg_to_node_id_to_racks = defaultdict(lambda: defaultdict(lambda: defaultdict(set)))
+    # src_cg_to_dst_cg_to_node_id_to_racks = defaultdict(lambda: defaultdict(lambda: defaultdict(set)))
+    rack_to_src_cg_to_dst_cg_to_node_id = defaultdict(lambda: defaultdict(lambda: defaultdict(set)))
     for dep in collective:
         u, v, k = dep
         
@@ -166,14 +177,31 @@ def get_collective_info(partitioned_job, collective, op_placement, verbose=False
         
         message_size += partitioned_job.computation_graph[u][v][k]['size']
         
-        src_cg_to_dst_cg_to_node_id_to_racks[src_communication_group][dst_communication_group][src_node].add(src_rack)
-        src_cg_to_dst_cg_to_node_id_to_racks[src_communication_group][dst_communication_group][dst_node].add(dst_rack)
+        # src_cg_to_dst_cg_to_node_id_to_racks[src_communication_group][dst_communication_group][src_node].add(src_rack)
+        # src_cg_to_dst_cg_to_node_id_to_racks[src_communication_group][dst_communication_group][dst_node].add(dst_rack)
+
+        rack_to_src_cg_to_dst_cg_to_node_id[src_rack][src_communication_group][dst_communication_group].add(src_node)
+        rack_to_src_cg_to_dst_cg_to_node_id[dst_rack][src_communication_group][dst_communication_group].add(dst_node)
     
-    cont_racks = 0
-    for src_communication_group in src_cg_to_dst_cg_to_node_id_to_racks.keys():
-        for dst_communication_group in src_cg_to_dst_cg_to_node_id_to_racks[src_communication_group].keys():
-            for node in src_cg_to_dst_cg_to_node_id_to_racks[src_communication_group][dst_communication_group].keys():
-                cont_racks += len(src_cg_to_dst_cg_to_node_id_to_racks[src_communication_group][dst_communication_group][node])
+    # # count number of contending racks (number of racks which use the same node number for same src-dst communication groups)
+    # cont_racks = 0
+    # rack_to_contentions = defaultdict(lambda: 0)
+    # for src_communication_group in src_cg_to_dst_cg_to_node_id_to_racks.keys():
+        # for dst_communication_group in src_cg_to_dst_cg_to_node_id_to_racks[src_communication_group].keys():
+            # for node in src_cg_to_dst_cg_to_node_id_to_racks[src_communication_group][dst_communication_group].keys():
+                # cont_racks += len(src_cg_to_dst_cg_to_node_id_to_racks[src_communication_group][dst_communication_group][node])
+
+    # count number of contending racks (number of racks which use the same node number for same src-dst communication groups)
+    cont_racks = 1
+    for src_communication_group in communication_groups:
+        for dst_communication_group in communication_groups:
+            for rack in racks:
+                # check if any other rack with this src-dst comm group uses same node ids assigned to this rack
+                for node_id in rack_to_src_cg_to_dst_cg_to_node_id[src_communication_group][dst_communication_group][rack]:
+                    for _rack in racks:
+                        if _rack != rack:
+                            if node_id in rack_to_src_cg_to_dst_cg_to_node_id[src_communication_group][dst_communication_group][_rack]:
+                                cont_racks += 1
         
     if verbose:
         print(f'\ncollective: {collective}')
@@ -182,7 +210,8 @@ def get_collective_info(partitioned_job, collective, op_placement, verbose=False
         print(f'num_racks: {len(racks)}')
         print(f'num_nodes: {len(nodes)}')
         print(f'message_size: {message_size}')
-        print(f'src_cg_to_dst_cg_to_node_id_to_racks: {src_cg_to_dst_cg_to_node_id_to_racks}')
+        # print(f'src_cg_to_dst_cg_to_node_id_to_racks: {src_cg_to_dst_cg_to_node_id_to_racks}')
+        print(f'rack_to_src_cg_to_dst_cg_to_node_id: {rack_to_src_cg_to_dst_cg_to_node_id}')
         print(f'cont_racks: {cont_racks}')
 
     return communication_groups, racks, nodes, servers, message_size, cont_racks
@@ -195,8 +224,18 @@ def group_deps_into_collective_and_one_to_one_communications(original_job, parti
 
     # go through graph and group edge dependencies into collective and one-to-one communications
     collectives, collective_deps, one_to_one_deps = [], set(), set()
+
+    # # debug
+    # OPS_CONSIDERED = set()
+    # PARTITIONED_OPS_CONSIDERED = set()
+
     for forward_op_id in orig_forward_graph.nodes():
         backward_op_id = get_backward_op_id(forward_op_id, len(list(orig_forward_graph.nodes())))
+
+        # # debug
+        # OPS_CONSIDERED.add(forward_op_id)
+        # OPS_CONSIDERED.add(backward_op_id)
+
         if forward_op_id in op_partition.job_id_to_mp_split_forward_op_ids[job_id]:
             # op was partitioned, gather partitioned dependencies
             if verbose:
@@ -218,10 +257,17 @@ def group_deps_into_collective_and_one_to_one_communications(original_job, parti
                             sync_pairs_added.add((parent_id, child_id))
                     else:
                         partitioned_backward_deps.append((partitioned_dep[0], partitioned_dep[1], 0))
+
+                # # debug  
+                # PARTITIONED_OPS_CONSIDERED.add(partitioned_forward_op_id)
+                # PARTITIONED_OPS_CONSIDERED.add(partitioned_backward_op_id)
+
             if verbose:
                 print(f'forward op {forward_op_id} partitioned forward deps: {partitioned_forward_deps}')
                 print(f'backward op {backward_op_id} partitioned backward deps: {partitioned_backward_deps}')
                 print(f'backward op {backward_op_id} partitioned sync deps: {partitioned_sync_deps}')
+
+
                 
             # check if partitioned dependencies form a collective
             # collective type 1: edges' parent op servers == edges' child op servers
@@ -270,7 +316,7 @@ def group_deps_into_collective_and_one_to_one_communications(original_job, parti
                     print(f'sync edges {[(parent_id, child_id, 0), (child_id, parent_id, 0)]} are a sync collective')
                 collectives.append([(parent_id, child_id, 0), (child_id, parent_id, 0)])
                 collective_deps.add((parent_id, child_id, 0))
-                collective_deps.add((child_id, child_id, 0))
+                collective_deps.add((child_id, parent_id, 0))
         else:
             # op was not partitioned, gather one-to-one communication dependencies of the op
             if verbose:
@@ -283,14 +329,33 @@ def group_deps_into_collective_and_one_to_one_communications(original_job, parti
                 one_to_one_deps.add((dep[0], dep[1], 0))
                 if verbose:
                     print(f'forward op {forward_op_id} backward deps: {(dep[0], dep[1], 0)}')
+
+            # # debug
+            # PARTITIONED_OPS_CONSIDERED.add(str(forward_op_id))
+            # PARTITIONED_OPS_CONSIDERED.add(str(backward_op_id))
                 
+    # # debug
+    # print(f'\noriginal job ops considered: {len(OPS_CONSIDERED)} {OPS_CONSIDERED}')
+    # print(f'num ops in original graph: {len(list(original_job.computation_graph.nodes()))}')
+    # print(f'partitioned job ops considered: {len(PARTITIONED_OPS_CONSIDERED)} {PARTITIONED_OPS_CONSIDERED}')
+    # print(f'num ops in parititoned graph: {len(list(partitioned_job.computation_graph.nodes()))}')
+    # num_deps_missing = 0
+    # for partitioned_job_op in PARTITIONED_OPS_CONSIDERED:
+        # partitioned_job_op_edges = partitioned_job.computation_graph.edges(partitioned_job_op)
+        # for _edge in partitioned_job_op_edges:
+            # edge = (_edge[0], _edge[1], 0)
+            # if edge not in collective_deps and edge not in one_to_one_deps:
+                # print(f'edge {edge} of op {partitioned_job_op} was not found in collective or one to one deps')
+                # num_deps_missing += 1
+    # print(f'num_deps_missing: {num_deps_missing}')
+
     if verbose:
         print(f'\ncollectives: {collectives}')
         print(f'\ncollective deps: {collective_deps}')
         print(f'\none-to-one deps: {one_to_one_deps}')
 
     if len(list(partitioned_job.computation_graph.edges())) != len(collective_deps) + len(one_to_one_deps):
-        raise Exception(f'ERROR: Partitioned graph contains {len(list(partitioned_job.computation_graph.edges()))}, but found {len(collective_deps)} collective deps and {len(one_to_one_deps)}. A bug has occurred somewhere.')
+        raise Exception(f'ERROR: Partitioned graph contains {len(list(partitioned_job.computation_graph.edges()))} edges, but found {len(collective_deps)} collective dependencies and {len(one_to_one_deps)} one-to-one dependencies. A bug has occurred somewhere.')
 
     return collectives, one_to_one_deps
 
