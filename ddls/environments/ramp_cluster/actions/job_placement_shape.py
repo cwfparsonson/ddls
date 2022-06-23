@@ -1,4 +1,3 @@
-
 class JobPlacementShape:
     def __init__(self,
                  action: dict):

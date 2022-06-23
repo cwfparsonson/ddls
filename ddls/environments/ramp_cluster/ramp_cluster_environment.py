@@ -8,6 +8,7 @@ from ddls.demands.jobs.jobs_generator import JobsGenerator
 from ddls.distributions.distribution import Distribution
 from ddls.utils import seed_stochastic_modules_globally, Stopwatch, get_class_from_path
 from ddls.environments.ramp_cluster.ramp_rules import check_if_ramp_op_placement_rules_broken, check_if_ramp_dep_placement_rules_broken
+from ddls.environments.ramp_cluster.actions.action import Action
 
 from typing import Any, Union
 from collections import defaultdict
@@ -33,7 +34,8 @@ class RampClusterEnvironment:
                  name: str = 'ramp_cluster',
                  path_to_save: str = None,
                  save_freq: int = 1,
-                 use_sqlite_database: bool = False):
+                 use_sqlite_database: bool = False,
+                 machine_epsilon=1e-7):
         '''
         In Ramp clusters, so long as the Ramp rules are followed, there is no contention
         in the network. We therefore need a separate Ramp cluster environment which 
@@ -55,6 +57,11 @@ class RampClusterEnvironment:
             save_freq: Step frequency with which to update saved data.
             use_sqlite_database: If True, will save logs to a .sqlite file to reduce
                 RAM memory usage. If False, will hold logs in memory and save to a .pkl file.
+            machine_epsilon (float): An upper bound on the relative approximation error due to rounding
+                in python's floating point arithmetic. Note that the limit of the simulation's
+                time resolution will be the machine epsilon (i.e. cannot measure time with 
+                resolution better than machine_epsilon). Use machine_epsilon to prevent
+                floating point arithmetic errors during simulation.
         '''
         self.topology_config = topology_config
         self.node_config = node_config
@@ -66,6 +73,8 @@ class RampClusterEnvironment:
         if self.path_to_save is not None:
             self.path_to_save = self._init_save_dir(path=self.path_to_save, use_sqlite_database=self.use_sqlite_database)
         self.save_freq = save_freq
+
+        self.machine_epsilon = machine_epsilon
 
         # init topology
         self.topology = self._init_topology(topology_config)
@@ -178,6 +187,7 @@ class RampClusterEnvironment:
         self.num_jobs_arrived = 0
         self.num_mounted_ops = 0
         self.num_mounted_deps = 0
+        self.num_active_workers = 0
         self.jobs_running = {}
         self.jobs_completed = {}
         self.jobs_blocked = {}
@@ -190,6 +200,8 @@ class RampClusterEnvironment:
 
         self.stopwatch.reset()
         self.step_counter = 0
+
+        self.action = None
 
         # add first job to queue
         self.time_next_job_to_arrive = 0
@@ -376,8 +388,10 @@ class RampClusterEnvironment:
 
                 # tick ops mounted on workers
                 job_idx_to_completed_op_ids = defaultdict(list)
+                self.num_active_workers = 0
                 for worker_id, priority_job_op in worker_to_priority_job_op.items():
                     if priority_job_op is not None:
+                        self.num_active_workers += 1
                         node_id = self.topology.graph.graph['worker_to_node'][worker_id]
                         worker = self.topology.graph.nodes[node_id]['workers'][worker_id]
                         # job_idx, job_id, op_id = [int(i) for i in priority_job_op.split('_')]
@@ -392,6 +406,7 @@ class RampClusterEnvironment:
                             job_idx_to_completed_op_ids[job_idx].append(op_id)
                             if verbose:
                                 print(f'Op {op_id} of job index {job_idx} completed')
+                self.step_stats['mean_num_active_workers'].append(self.num_active_workers)
 
                 # tick non-flow deps
                 for dep_id in non_flow_deps:
@@ -519,10 +534,11 @@ class RampClusterEnvironment:
         return priority_job_dep
 
     def step(self,
-             action,
-             verbose=False):
-        if action.actions['op_placement'] is None and action.actions['op_schedule'] is None and action.actions['dep_placement'] is None and action.actions['dep_schedule'] is None:
-            raise Exception(f'>=1 action must != None.')
+             action: Action,
+             verbose: bool = False):
+        self.action = action
+        # if action.actions['op_placement'] is None and action.actions['op_schedule'] is None and action.actions['dep_placement'] is None and action.actions['dep_schedule'] is None:
+            # raise Exception(f'>=1 action must != None.')
         if self.path_to_save is not None and self.use_sqlite_database and self.step_counter % self.save_freq == 0:
             # saved logs at end of previous step, can reset in-memory logs for this step
             self._reset_sim_log()
@@ -580,14 +596,16 @@ class RampClusterEnvironment:
             self.stopwatch.tick(tick)
 
             if verbose:
-                print(f'Finished cluster tick. Stopwatch time at end of tick: {self.stopwatch.time()}')
+                print(f'Ticked cluster by amount {tick}. Stopwatch time at end of tick: {self.stopwatch.time()}')
 
             # register any jobs completed this tick
             jobs_completed = []
             for job in self.jobs_running.values():
                 elapsed_run_time = self.stopwatch.time() - job.details['time_started']
-                remaining_run_time = job.details['lookahead_job_completion_time'] - elapsed_run_time
-                if remaining_run_time == 0:
+                remaining_run_time = (job.details['lookahead_job_completion_time'] - elapsed_run_time) - self.machine_epsilon
+                if verbose:
+                    print(f'Running job_idx {job.details["job_idx"]} job_id {job.job_id} remaining run time: {remaining_run_time}')
+                if remaining_run_time <= 0:
                     # job was completed this tick
                     jobs_completed.append(job)
                     step_done = True
@@ -600,9 +618,9 @@ class RampClusterEnvironment:
             if len(self.jobs_generator) > 0:
                 if verbose:
                     print(f'Time next job due to arrive: {self.time_next_job_to_arrive}')
-                if self.stopwatch.time() > self.time_next_job_to_arrive:
-                    raise Exception(f'Stopwatch time is {self.stopwatch.time()} but next job should have arrived at {self.time_next_job_to_arrive}')
-                elif self.stopwatch.time() == self.time_next_job_to_arrive:
+                # if self.stopwatch.time() > self.time_next_job_to_arrive:
+                    # raise Exception(f'Stopwatch time is {self.stopwatch.time()} but next job should have arrived at {self.time_next_job_to_arrive}')
+                if (self.stopwatch.time() + self.machine_epsilon) >= self.time_next_job_to_arrive:
                     next_job = self._get_next_job()
                     self.step_stats['num_jobs_arrived'] += 1
                     if verbose:
@@ -748,8 +766,10 @@ class RampClusterEnvironment:
     def _schedule_deps(self, action, verbose=False):
         '''Sets scheduling priority for mounted deps on each channel.'''
         dep_schedule = action.action
+        # print(f'dep_schedule: {dep_schedule}')
         for channel_id in dep_schedule.keys():
             channel = self.topology.channel_id_to_channel[channel_id]
+            # print(f'channel_id: {channel_id} | channel mounted_job_idx_to_deps: {channel.mounted_job_idx_to_deps}')
             for job_idx in channel.mounted_job_idx_to_deps.keys():
                 job = self.jobs_running[job_idx]
                 for dep_id in channel.mounted_job_idx_to_deps[job_idx]:
@@ -798,8 +818,10 @@ class RampClusterEnvironment:
             del self.job_dep_to_channels[job_dep]
 
         # clear job from current cluster placement tracker
-        del self.job_op_placement[job.job_id]
-        del self.job_dep_placement[job.job_id]
+        if job.job_id in self.job_op_placement:
+            del self.job_op_placement[job.job_id]
+        if job.job_id in self.job_dep_placement:
+            del self.job_dep_placement[job.job_id]
             
     def _register_blocked_job(self, job):
         self.jobs_blocked[job.details['job_idx']] = job

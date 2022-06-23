@@ -153,7 +153,8 @@ def check_block(ramp,block,op_size,mode):
                 if ramp[server]['mem'] < op_size:
                     return False
             if mode == 'meta':
-                if ramp[server]['ops'] != []:
+                # if ramp[server]['ops'] != []:
+                if ramp[server]['occupied']:
                     return False
         return True
 
@@ -171,10 +172,12 @@ def dummy_ramp(shape, cluster):
             for k in range(s):
                 node = f'{i}-{j}-{k}'
                 mem, ops = 0, []
-                ramp[(i, j, k)] = {'mem': 0, 'ops': []}
+                ramp[(i, j, k)] = {'mem': 0, 'ops': [], 'occupied': False}
                 for worker in cluster.topology.graph.nodes[node]['workers'].values():
                     ramp[(i, j, k)]['mem'] += (worker.memory_capacity - worker.memory_occupied)
-                    ramp[(i, j, k)]['ops'].extend(list(worker.mounted_job_op_to_priority.keys()))
+                    if len(list(worker.mounted_job_op_to_priority.keys())) != 0:
+                        ramp[(i, j, k)]['occupied'] = True
+                    # ramp[(i, j, k)]['ops'].extend(list(worker.mounted_job_op_to_priority.keys()))
     return ramp
 
 def parent_collective_placement(ramp,job_graph,op,split,meta_block_info,parents,op_server_info):

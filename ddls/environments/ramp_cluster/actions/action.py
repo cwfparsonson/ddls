@@ -1,4 +1,4 @@
-
+from collections import defaultdict
 
 class Action:
     def __init__(self,
@@ -10,7 +10,8 @@ class Action:
                  dep_schedule = None,
                  verbose = False):
         # gather actions which were made
-        self.actions = {}
+        # self.actions = {}
+        self.actions = defaultdict(lambda: None)
         if op_partition is not None:
             self.actions['op_partition'] = op_partition
         if job_placement_shape is not None:
@@ -25,8 +26,12 @@ class Action:
             self.actions['dep_schedule'] = dep_schedule
 
         # find which job ids were successfully handled by ALL actions
-        self.job_ids = set(set.intersection(*[action.job_ids for action in self.actions.values()]))
-        print(f'action job ids: {self.job_ids}')
+        if len(list(self.actions.keys())) > 0:
+            self.job_ids = set(set.intersection(*[action.job_ids for action in self.actions.values()]))
+            self.job_idxs = set([op_partition.partitioned_jobs[job_id].details['job_idx'] for job_id in self.job_ids])
+        else:
+            self.job_ids = {}
+            self.job_idxs = {}
 
         # for each action, filter any job ids which were not handled by all actions
         for key, action in self.actions.items():

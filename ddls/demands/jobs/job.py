@@ -56,7 +56,7 @@ class Job:
             details = {}
 
         details['max_compute_node'], details['max_compute_cost'], details['max_memory_node'], details['max_memory_cost'], details['max_depth_node'], details['max_depth'] = self.get_max_node_details()
-        details.update(self.details)
+        # details.update(self.details)
 
         return details
 
@@ -72,10 +72,12 @@ class Job:
 
         For depth info, gets maximum depth of any node from source.
         '''
+        # print(f'\n>>> Getting max node details <<<')
         max_compute_node, max_compute_cost = defaultdict(lambda: 0), defaultdict(lambda: 0)
         max_memory_node, max_memory_cost = 0, 0
         max_depth_node, max_depth = 0, 0
         for node in self.computation_graph.nodes:
+            # print(f'node {node} -> mem cost {self.computation_graph.nodes[node]["memory_cost"]}')
             # check if update max cost info
             for device_type, compute_cost in self.computation_graph.nodes[node]['compute_cost'].items():
                 if self.computation_graph.nodes[node]['compute_cost'][device_type] > max_compute_cost[device_type]:
@@ -84,7 +86,7 @@ class Job:
             # check if update max memory info
             if self.computation_graph.nodes[node]['memory_cost'] > max_memory_cost:
                 max_memory_node = copy.deepcopy(node)
-                max_memory_cost = copy.deepcopy(self.computation_graph.nodes[node]['memory_cost'])
+                max_memory_cost = copy.deepcopy(self.computation_graph.nodes[max_memory_node]['memory_cost'])
             # check if update max depth info
             try:
                 node_depth = len(nx.shortest_path(self.computation_graph, source=self.computation_graph.graph['source_nodes'][0], target=node))
@@ -94,6 +96,7 @@ class Job:
             if node_depth > max_depth:
                 max_depth_node = copy.deepcopy(node)
                 max_depth = copy.deepcopy(node_depth)
+        # print(f'max_compute_node: {max_compute_node} | max_compute_cost: {max_compute_cost} | max_memory_node: {max_memory_node} | max_memory_cost: {max_memory_cost}')
         return max_compute_node, max_compute_cost, max_memory_node, max_memory_cost, max_depth_node, max_depth
 
     def reset_job(self, details, computation_graph=None):
@@ -105,7 +108,8 @@ class Job:
         self.job_total_dependency_size = self._init_job_total_dependecy_size()
         
         self.reset_job_training_step()
-        self.details = self._init_job_details(details)
+        # self.details = self._init_job_details(details)
+        self.details.update(self._init_job_details(details))
         
     def reset_job_training_step(self):
         '''Resets the job ready for a training step to be executed.'''
@@ -270,7 +274,8 @@ class Job:
         return self.training_step_counter == self.num_training_steps
 
     def is_training_step_complete(self):
-        return len(self.computation_graph.graph['ops_completed']) == len(self.computation_graph.nodes)
+        # return len(self.computation_graph.graph['ops_completed']) == len(self.computation_graph.nodes)
+        return len(self.computation_graph.graph['ops_completed']) == len(self.computation_graph.nodes) and len(self.computation_graph.graph['deps_completed']) == len(self.computation_graph.edges)
 
     def tick_op(self, op_id, tick):
         op = self.computation_graph.nodes[op_id]

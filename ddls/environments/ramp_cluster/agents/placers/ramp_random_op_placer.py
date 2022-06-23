@@ -11,6 +11,7 @@ import numpy as np
 import copy
 from collections import defaultdict, deque
 import random
+import math
 
 
 
@@ -86,7 +87,5 @@ class RampRandomOpPlacer(Placer):
             else:
                 # unable to find valid meta block
                 pass
-
-            
 
         return OpPlacement(job_to_operation_to_worker, op_partition=op_partition, cluster=cluster)

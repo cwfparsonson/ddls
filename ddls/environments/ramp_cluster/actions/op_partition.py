@@ -3,6 +3,7 @@ from ddls.demands.jobs.job import Job
 from ddls.environments.ramp_cluster.agents.partitioners.utils import data_split_node, model_split_node
 
 from collections import defaultdict
+import copy
 
 class OpPartition:
     def __init__(self,
@@ -47,10 +48,10 @@ class OpPartition:
 
             # record partitioned job
             self.partitioned_jobs[job_id] = Job(computation_graph=partitioned_computation_graph,
-                                                num_training_steps=job.num_training_steps,
-                                                job_id=job_id,
-                                                job_type=job.job_type,
-                                                details=job.details)
+                    num_training_steps=copy.deepcopy(job.num_training_steps),
+                                                job_id=copy.deepcopy(job_id),
+                                                job_type=copy.deepcopy(job.job_type),
+                                                details=copy.deepcopy(job.details))
 
     def __len__(self):
         return len(list(self.action.keys()))
