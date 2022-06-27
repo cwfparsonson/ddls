@@ -31,6 +31,11 @@ class RLlibEpochLoop:
                  path_to_model_cls: str = None):
         rllib_config = OmegaConf.to_container(rllib_config, resolve=False)
 
+        if 'callbacks' in rllib_config:
+            if isinstance(rllib_config['callbacks'], str):
+                # get callbacks class from string path
+                rllib_config['callbacks'] = get_class_from_path(rllib_config['callbacks'])
+
         if path_to_model_cls is not None:
             # register model with rllib
             ModelCatalog.register_custom_model(rllib_config['model']['custom_model'], get_class_from_path(path_to_model_cls))

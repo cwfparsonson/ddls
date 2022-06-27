@@ -56,6 +56,12 @@ class Job:
             details = {}
 
         details['max_compute_node'], details['max_compute_cost'], details['max_memory_node'], details['max_memory_cost'], details['max_depth_node'], details['max_depth'] = self.get_max_node_details()
+
+        if 'communication_overhead_time' not in details:
+            details['communication_overhead_time'] = 0
+        if 'computation_overhead_time' not in details:
+            details['computation_overhead_time'] = 0
+
         # details.update(self.details)
 
         return details

@@ -29,12 +29,17 @@ class RampJobPlacementShapingEnvironment(gym.Env):
                  node_config: dict,
                  jobs_config: dict,
                  op_partitioner: Union['random_op_partitioner', 'sip_ml_op_partitioner'] = 'sip_ml_op_partitioner',
+                 op_partitioner_kwargs: dict = None,
                  op_placer: Union['ramp_random_op_placer'] = 'ramp_random_op_placer',
+                 op_placer_kwargs: dict = None,
                  op_scheduler: Union['srpt_op_scheduler'] = 'srpt_op_scheduler',
+                 op_scheduler_kwargs: dict = None,
                  dep_placer: Union['first_fit_dep_placer'] = 'first_fit_dep_placer',
+                 dep_placer_kwargs: dict = None,
                  dep_scheduler: Union['srpt_dep_scheduler'] = 'srpt_dep_scheduler',
-                 pad_obs_kwargs: dict = None,
+                 dep_scheduler_kwargs: dict = None,
                  observation_function: Union['ramp_job_placement_shaping_observation'] = 'ramp_job_placement_shaping_observation',
+                 pad_obs_kwargs: dict = None,
                  information_function: Union['default'] = 'default',
                  reward_function: Union['lookahead_job_completion_time'] = 'lookahead_job_completion_time',
                  max_simulation_run_time: Union[int, float] = float('inf'),
@@ -88,11 +93,33 @@ class RampJobPlacementShapingEnvironment(gym.Env):
             raise Exception(f'Unrecognised reward_function {self.reward_function_str}')
 
         # init cluster environment managers
+        if op_partitioner_kwargs is not None:
+            self.op_partitioner_kwargs = op_partitioner_kwargs
+        else:
+            self.op_partitioner_kwargs = {}
+        if op_placer_kwargs is not None:
+            self.op_placer_kwargs = op_placer_kwargs
+        else:
+            self.op_placer_kwargs = {}
+        if op_scheduler_kwargs is not None:
+            self.op_scheduler_kwargs = op_scheduler_kwargs
+        else:
+            self.op_scheduler_kwargs = {}
+        if dep_placer_kwargs is not None:
+            self.dep_placer_kwargs = dep_placer_kwargs
+        else:
+            self.dep_placer_kwargs = {}
+        if dep_scheduler_kwargs is not None:
+            self.dep_scheduler_kwargs= dep_scheduler_kwargs
+        else:
+            self.dep_scheduler_kwargs = {}
+
         self.op_partitioner_str = op_partitioner 
         self.op_placer_str = op_placer
         self.op_scheduler_str = op_scheduler
         self.dep_placer_str = dep_placer
         self.dep_scheduler_str = dep_scheduler
+
         self.op_partitioner, self.op_placer, self.op_scheduler, self.dep_placer, self.dep_scheduler = self._init_cluster_managers()
 
     def _get_action_to_job_placement_shape(self):
@@ -105,7 +132,6 @@ class RampJobPlacementShapingEnvironment(gym.Env):
                     action += 1
         return action_to_job_placement_shape
 
-
     def _init_cluster(self):
         return RampClusterEnvironment(topology_config=self.topology_config,
                                       node_config=self.node_config,
@@ -114,36 +140,34 @@ class RampJobPlacementShapingEnvironment(gym.Env):
                                       use_sqlite_database=self.use_sqlite_database)
 
     def _init_cluster_managers(self):
-        # TODO: Add support for cluster manager kwargs
         if self.op_partitioner_str == 'random_op_partitioner':
-            op_partitioner = RandomOpPartitioner()
+            op_partitioner = RandomOpPartitioner(**self.op_partitioner_kwargs)
         elif self.op_partitioner_str == 'sip_ml_op_partitioner':
-            op_partitioner = SipMlOpPartitioner(max_partitions_per_op=2)
+            op_partitioner = SipMlOpPartitioner(**self.op_partitioner_kwargs)
         else:
             raise Exception(f'Unrecognised op_partitioner {self.op_partitioner_str}')
 
         if self.op_placer_str == 'ramp_random_op_placer':
-            op_placer = RampRandomOpPlacer()
+            op_placer = RampRandomOpPlacer(**self.op_placer_kwargs)
         else:
             raise Exception(f'Unrecognised op_placer {self.op_placer_str}')
 
         if self.op_scheduler_str == 'srpt_op_scheduler':
-            op_scheduler = SRPTOpScheduler()
+            op_scheduler = SRPTOpScheduler(**self.op_scheduler_kwargs)
         else:
             raise Exception(f'Unrecognised op_scheduler {self.op_scheduler_str}')
 
         if self.dep_placer_str == 'first_fit_dep_placer':
-            dep_placer = FirstFitDepPlacer()
+            dep_placer = FirstFitDepPlacer(**self.dep_placer_kwargs)
         else:
             raise Exception(f'Unrecognised dep_placer {self.dep_placer_str}')
 
         if self.dep_scheduler_str == 'srpt_dep_scheduler':
-            dep_scheduler = SRPTDepScheduler()
+            dep_scheduler = SRPTDepScheduler(**self.dep_scheduler_kwargs)
         else:
             raise Exception(f'Unrecognised dep_scheduler {self.dep_scheduler_str}')
 
         return op_partitioner, op_placer, op_scheduler, dep_placer, dep_scheduler
-
 
     def reset(self,
               seed: int = None,
@@ -193,7 +217,6 @@ class RampJobPlacementShapingEnvironment(gym.Env):
 
     def step(self, action: int):
         # process agent decision
-        # TODO: Add support for multiple jobs
         if action not in self.obs['action_set']:
             raise Exception(f'Action {action} not in action set {self.obs["action_set"]}')
         if not self.obs['action_mask'][action]:
@@ -206,14 +229,14 @@ class RampJobPlacementShapingEnvironment(gym.Env):
         self.dep_placement = self.dep_placer.get(op_partition=self.op_partition, op_placement=self.op_placement, cluster=self.cluster)      
         self.dep_schedule = self.dep_scheduler.get(op_partition=self.op_partition, dep_placement=self.dep_placement, cluster=self.cluster)
 
-        # syncronise decisions into a valid decisions action
+        # syncronise decisions into a valid ClusterEnvironment action
         self.action = Action(op_partition=self.op_partition,
                              job_placement_shape=self.job_placement_shape,
                              op_placement=self.op_placement,
                              op_schedule=self.op_schedule,
                              dep_placement=self.dep_placement,
                              dep_schedule=self.dep_schedule)
-        self.placed_job_idxs = self.action.job_idxs
+        self.placed_job_idxs = self.action.job_idxs # useful for external methods accessing placed job info
 
         # step the cluster
         self.cluster.step(self.action, verbose=False)
@@ -242,29 +265,3 @@ class RampJobPlacementShapingEnvironment(gym.Env):
 
     def _get_reward(self):
         return self.reward_function.extract(env=self, done=self._is_done())
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

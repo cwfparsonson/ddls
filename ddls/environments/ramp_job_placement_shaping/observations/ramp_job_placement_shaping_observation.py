@@ -75,9 +75,9 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
                         # not yet taken any partitioning actions, all job placing actions are valid
                         action_mask.append(True)
                     else:
-                        # cannot reserver fewer servers than the partition degree of a given job
-                        # TODO TEMP: Just assume placing 1st job in queue
-                        job_id = list(env.op_partition.job_ids)[0]
+                        # cannot reserve fewer servers than the partition degree of a given job
+                        # job_id = list(env.op_partition.job_ids)[0]
+                        job_id = self._get_job_to_encode(env).job_id
                         action_mask.append(env.op_partition.job_id_to_max_partition_degree[job_id] <= r * s)
                     action += 1
         return action_set, action_mask
@@ -151,9 +151,7 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
         self._observation_space = observation_space
 
     def _get_job_to_encode(self, env):
-        # TEMPORARY: Just assume placing 1st job in queue
         # TODO: Implement where get given job and do per-job encoding?
-        # return list(cluster.job_queue.jobs.values())[0] # assume event-driven where only ever have one job to queue
         return list(env.op_partition.partitioned_jobs.values())[0] # assume event-driven where only ever have one job to queue
 
     def _pad_obs(self, obs):
