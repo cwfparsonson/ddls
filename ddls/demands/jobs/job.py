@@ -56,6 +56,10 @@ class Job:
             details = {}
 
         details['max_compute_node'], details['max_compute_cost'], details['max_memory_node'], details['max_memory_cost'], details['max_depth_node'], details['max_depth'] = self.get_max_node_details()
+        details['max_dep_size_dep'], details['max_dep_size'] = self.get_max_edge_details()
+        details['job_sequential_completion_time'] = self.get_job_sequential_completion_time()
+        details['job_total_op_memory_cost'] = self.get_job_total_memory_cost()
+        details['job_total_dep_size'] = self.get_job_total_dep_size()
 
         if 'communication_overhead_time' not in details:
             details['communication_overhead_time'] = 0
@@ -65,6 +69,30 @@ class Job:
         # details.update(self.details)
 
         return details
+
+    def get_job_sequential_completion_time(self):
+        '''
+        Assuming all job ops are loaded onto one device, computes the total 
+        compute cost of sequentially computing these ops.
+        '''
+        job_sequential_completion_time = defaultdict(lambda: 0)
+        for op in self.computation_graph.nodes:
+            for device_type, compute_cost in self.computation_graph.nodes[op]['compute_cost'].items():
+                job_sequential_completion_time[device_type] += compute_cost
+        return job_sequential_completion_time
+
+    def get_job_total_memory_cost(self):
+        job_total_memory_cost = 0
+        for op in self.computation_graph.nodes:
+            job_total_memory_cost += self.computation_graph.nodes[op]['memory_cost']
+        return job_total_memory_cost
+
+    def get_job_total_dep_size(self):
+        job_total_dep_size = 0
+        for dep in self.computation_graph.edges:
+            u, v, k = dep
+            job_total_dep_size += self.computation_graph[u][v][k]['size']
+        return job_total_dep_size 
 
     def get_max_node_details(self):
         '''
@@ -104,6 +132,15 @@ class Job:
                 max_depth = copy.deepcopy(node_depth)
         # print(f'max_compute_node: {max_compute_node} | max_compute_cost: {max_compute_cost} | max_memory_node: {max_memory_node} | max_memory_cost: {max_memory_cost}')
         return max_compute_node, max_compute_cost, max_memory_node, max_memory_cost, max_depth_node, max_depth
+
+    def get_max_edge_details(self):
+        max_dep_size, max_dep_size_dep = 0, None
+        for edge in self.computation_graph.edges:
+            u, v, k = edge
+            if self.computation_graph[u][v][k]['size'] > max_dep_size:
+                max_dep_size_dep = copy.deepcopy(edge)
+                max_dep_size = copy.deepcopy(self.computation_graph[u][v][k]['size'])
+        return max_dep_size_dep, max_dep_size
 
     def reset_job(self, details, computation_graph=None):
         '''Resets whole job. If computation_graph is not None, will update job's computation graph.'''

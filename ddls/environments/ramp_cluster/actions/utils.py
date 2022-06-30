@@ -123,7 +123,9 @@ def set_collective_dep_run_time(partitioned_job, collective, op_placement, clust
                                                                                       cgs=len(communication_groups),
                                                                                       cont_racks=cont_racks,
                                                                                       x=cluster.topology.num_communication_groups,
-                                                                                      DATA_RATE=cluster.topology.channel_bandwidth)
+                                                                                      DATA_RATE=cluster.topology.channel_bandwidth,
+                                                                                      latency=cluster.topology.switch_reconfiguration_latency,
+                                                                                      IO_latency=cluster.topology.worker_io_latency)
     if verbose:
         print(f'collective_run_time: {collective_run_time}')
     for dep in collective:
@@ -140,7 +142,9 @@ def set_one_to_one_dep_run_time(partitioned_job, dep, op_placement, cluster, ver
         dep_run_time = 0
     else:
         dep_run_time = calc_one_to_one_communication_run_time(partitioned_job.computation_graph[u][v][k]['size'],
-                                                              DATA_RATE=cluster.topology.channel_bandwidth)
+                                                              DATA_RATE=cluster.topology.channel_bandwidth,
+                                                              latency=cluster.topology.switch_reconfiguration_latency,
+                                                              IO_latency=cluster.topology.worker_io_latency)
     if verbose:
         print(f'\none-to-one dep: {dep}')
         print(f'src server: {src_server} | dst server: {dst_server}')

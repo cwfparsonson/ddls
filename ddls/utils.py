@@ -482,7 +482,6 @@ def get_module_from_path(path):
     '''
     return importlib.import_module(path)
      
-
 def get_class_from_path(path):
     '''
     Path must be the path to the class **without** the .py extension.
@@ -493,7 +492,6 @@ def get_class_from_path(path):
     path_to_class = '.'.join(path.split('.')[:-1])
     module = __import__(path_to_class, fromlist=[ClassName])
     return getattr(module, ClassName)
-
 
 def gen_unique_experiment_folder(path_to_save, experiment_name):
     # init highest level folder

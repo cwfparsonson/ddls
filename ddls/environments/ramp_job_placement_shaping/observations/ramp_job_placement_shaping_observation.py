@@ -36,17 +36,17 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
     def reset(self, 
               env, # RampJobPlacementShapingEnvironment
               flatten: bool = True):
+        if self.pad_obs_kwargs is not None:
+            self.max_nodes =  self.pad_obs_kwargs['max_nodes']
+            self.max_edges = int(self.max_nodes*(self.max_nodes-1)/2) #number of edges in a fully connected graph
+        else:
+            self.max_nodes, self.max_edges = 0, 0
+
         # get job which is going to be encoded in obs
         job = self._get_job_to_encode(env)
     
         # encode the initial obs
         obs = self._encode_obs(job, env, flatten=flatten)
-
-        if self.pad_obs_kwargs is not None:
-            max_nodes =  self.pad_obs_kwargs['max_nodes']
-            max_edges = int(max_nodes*(max_nodes-1)/2) #number of edges in a fully connected graph
-        else:
-            max_nodes, max_edges = 0, 0
 
         # use the encoded obs to initialise the observation space
         self.observation_space = gym.spaces.Dict({
@@ -57,8 +57,8 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
                 'graph_features': gym.spaces.Box(low=self.graph_features_low, high=self.graph_features_high, shape=obs['graph_features'].shape, dtype=obs['graph_features'].dtype),
                 'edges_src': gym.spaces.Box(low=0, high=max(obs['edges_src'])+1, shape=obs['edges_src'].shape, dtype=obs['edges_src'].dtype),
                 'edges_dst': gym.spaces.Box(low=0, high=max(obs['edges_dst'])+1, shape=obs['edges_dst'].shape, dtype=obs['edges_dst'].dtype),
-                'node_split': gym.spaces.Box(low=0, high=max_nodes, shape=(1,), dtype=obs['node_split'].dtype),
-                'edge_split': gym.spaces.Box(low=0, high=max_edges, shape=(1,), dtype=obs['edge_split'].dtype)
+                'node_split': gym.spaces.Box(low=0, high=self.max_nodes, shape=(1,), dtype=obs['node_split'].dtype),
+                'edge_split': gym.spaces.Box(low=0, high=self.max_edges, shape=(1,), dtype=obs['edge_split'].dtype)
             })
 
         # print(f'\n\n\n--------------------------------------------------')
@@ -140,8 +140,6 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
         '''
         return self._encode_obs(self._get_job_to_encode(env), env, flatten=flatten)
 
-
-
     @property
     def observation_space(self):
         return self._observation_space
@@ -162,23 +160,23 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
         node_features = torch.Tensor(obs['node_features'])
         edge_features = torch.Tensor(obs['edge_features'])
 
-        max_nodes = self.pad_obs_kwargs['max_nodes']
-        max_edges = int(max_nodes*(max_nodes-1)/2) #number of edges in a fully connected graph
+        self.max_nodes = self.pad_obs_kwargs['max_nodes']
+        self.max_edges = int(self.max_nodes*(self.max_nodes-1)/2) #number of edges in a fully connected graph
 
-        src_padding = torch.zeros((max_edges-len(edges_src),))
-        dst_padding = torch.zeros((max_edges-len(edges_dst),))
+        src_padding = torch.zeros((self.max_edges-len(edges_src),))
+        dst_padding = torch.zeros((self.max_edges-len(edges_dst),))
 
         edges_src = torch.cat((edges_src,src_padding),dim=0)
         edges_dst = torch.cat((edges_dst,dst_padding),dim=0)
 
         edge_feature_padding = torch.zeros(
-            max_edges-edge_features.shape[0],
+            self.max_edges-edge_features.shape[0],
             edge_features.shape[1]
         )
         edge_features = torch.cat((edge_features,edge_feature_padding),dim=0)
 
         node_feature_padding = torch.zeros(
-            max_nodes-node_features.shape[0],
+            self.max_nodes-node_features.shape[0],
             node_features.shape[1]
         )
 
@@ -212,8 +210,16 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
                     'node_split': np.array(np.nan), # init as NaN and can replace if using obs padding
                     'edge_split': np.array(np.nan) # init as NaN and can replace if using obs padding
                  }
+
+        # pad obs if required
         if self.pad_obs_kwargs is not None:
             obs = self._pad_obs(obs)
+
+        # check for any invalid values
+        for key, val in obs.items():
+            if key not in set(['node_split', 'edge_split']):
+                if not np.isfinite(val).any():
+                    raise Exception(f'{key} in observation contains NaN or inf value(s).')
 
         # # DEBUG
         # print(f'\nobs:\n{obs}')
@@ -226,17 +232,20 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
         return [self._get_op_features(node, job, cluster) for node in job.computation_graph.nodes]
 
     def _extract_edge_features(self, job, cluster):
-        # TODO: Encode edge features with useful info
-        edge_features = [np.array([1]) for _ in job.computation_graph.edges]
+        # edge_features = [np.array([1]) for _ in job.computation_graph.edges]
+
+        edge_features = [self._get_dep_features(edge, job, cluster) for edge in job.computation_graph.edges]
+
         if np.min(edge_features) < self.edge_features_low:
             raise Exception(f'edge_features_low set to {self.edge_features_low} but min feature val is {np.min(edge_features)}')
         if np.max(edge_features) > self.edge_features_high:
             raise Exception(f'edge_features_high set to {self.edge_features_high} but max feature val is {np.max(edge_features)}')
+
         return edge_features
 
     def _extract_graph_features(self, job, cluster):
-        graph_features = flatten_list([self._get_job_features(job), 
-                             self._get_network_worker_features(job, cluster), 
+        graph_features = flatten_list([self._get_job_features(job, cluster), 
+                             # self._get_network_worker_features(job, cluster), 
                              self._get_network_graph_features(job, cluster)
                             ])
         if np.min(graph_features) < self.graph_features_low:
@@ -259,48 +268,130 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
 
         return srcs, dsts
 
-    def _get_job_features(self, job, flatten=True):
+    def _get_job_features(self, job, cluster, flatten=True):
         job_features = []
-        num_training_steps_remaining = (job.num_training_steps - job.training_step_counter) / job.num_training_steps
-        job_features.append(np.array(num_training_steps_remaining, dtype=object))
+
+        # num_training_steps_remaining = (job.num_training_steps - job.training_step_counter) / job.num_training_steps
+        # job_features.append(np.array(num_training_steps_remaining, dtype=object))
+
+        if cluster.jobs_generator.jobs_params['max_job_total_num_ops'] - cluster.jobs_generator.jobs_params['min_job_total_num_ops'] != 0:
+            num_ops = (len(job.computation_graph.nodes()) - cluster.jobs_generator.jobs_params['min_job_total_num_ops']) / (cluster.jobs_generator.jobs_params['max_job_total_num_ops'] - cluster.jobs_generator.jobs_params['min_job_total_num_ops'])
+        else:
+            num_ops = 1
+        job_features.append(np.array(num_ops, dtype=object))
+
+        if cluster.jobs_generator.jobs_params['max_job_total_num_deps'] - cluster.jobs_generator.jobs_params['min_job_total_num_deps'] != 0:
+            num_deps = (len(job.computation_graph.edges()) - cluster.jobs_generator.jobs_params['min_job_total_num_deps']) / (cluster.jobs_generator.jobs_params['max_job_total_num_deps'] - cluster.jobs_generator.jobs_params['min_job_total_num_deps'])
+        else:
+            num_deps = 1
+        job_features.append(np.array(num_deps, dtype=object))
+
+        if cluster.jobs_generator.jobs_params['max_job_sequential_completion_times'] - cluster.jobs_generator.jobs_params['min_job_sequential_completion_times'] != 0:
+            job_sequential_completion_time = (job.details['job_sequential_completion_time'][list(cluster.topology.graph.graph['worker_types'])[0]] - cluster.jobs_generator.jobs_params['min_job_sequential_completion_times']) / (cluster.jobs_generator.jobs_params['max_job_sequential_completion_times'] - cluster.jobs_generator.jobs_params['min_job_sequential_completion_times'])
+        else:
+            job_sequential_completion_time = 1
+        job_features.append(np.array(job_sequential_completion_time, dtype=object))
+
+        if cluster.jobs_generator.jobs_params['max_job_total_op_memory_costs'] - cluster.jobs_generator.jobs_params['min_job_total_op_memory_costs'] != 0:
+            job_total_op_memory_cost = (job.details['job_total_op_memory_cost'] - cluster.jobs_generator.jobs_params['min_job_total_op_memory_costs']) / (cluster.jobs_generator.jobs_params['max_job_total_op_memory_costs'] - cluster.jobs_generator.jobs_params['min_job_total_op_memory_costs'])
+        else:
+            job_total_op_memory_cost = 1
+        job_features.append(np.array(job_total_op_memory_cost, dtype=object))
+
+        if cluster.jobs_generator.jobs_params['max_job_total_dep_sizes'] - cluster.jobs_generator.jobs_params['min_job_total_dep_sizes'] != 0:
+            job_total_dep_size = (job.details['job_total_dep_size'] - cluster.jobs_generator.jobs_params['min_job_total_dep_sizes']) / (cluster.jobs_generator.jobs_params['max_job_total_dep_sizes'] - cluster.jobs_generator.jobs_params['min_job_total_dep_sizes'])
+        else:
+            job_total_dep_size = 1
+        job_features.append(np.array(job_total_dep_size, dtype=object))
+
+        if cluster.jobs_generator.jobs_params['max_job_num_training_steps'] - cluster.jobs_generator.jobs_params['min_job_num_training_steps'] != 0:
+            job_num_training_steps = (job.num_training_steps - cluster.jobs_generator.jobs_params['min_job_num_training_steps']) / (cluster.jobs_generator.jobs_params['max_job_num_training_steps'] - cluster.jobs_generator.jobs_params['min_job_num_training_steps'])
+        else:
+            job_num_training_steps = 1
+        job_features.append(np.array(job_num_training_steps, dtype=object))
+
+        op_compute_costs, op_memory_costs = [], []
+        for op in job.computation_graph.nodes():
+            for device_type in cluster.topology.graph.graph['worker_types']:
+                op_compute_costs.append(job.computation_graph.nodes[op]['compute_cost'][device_type] / job.details['max_compute_cost'][device_type])
+            op_memory_costs.append(job.computation_graph.nodes[op]['memory_cost'] / job.details['max_memory_cost'])
+        job_features.append(np.array(np.mean(op_compute_costs), dtype=object))
+        job_features.append(np.array(np.median(op_compute_costs), dtype=object))
+        job_features.append(np.array(np.mean(op_memory_costs), dtype=object))
+        job_features.append(np.array(np.median(op_memory_costs), dtype=object))
+
+        dep_sizes = []
+        for dep in job.computation_graph.edges:
+            u, v, k = dep
+            dep_sizes.append(job.computation_graph[u][v][k]['size'])
+        job_features.append(np.array(np.mean(dep_sizes) / job.details['max_dep_size'], dtype=object))
+        job_features.append(np.array(np.median(dep_sizes) / job.details['max_dep_size'], dtype=object))
+
         if flatten:
             job_features = flatten_numpy_array(job_features)
+
         return job_features
 
-    def _get_network_worker_features(self, job, cluster, flatten=True):
-        network_worker_features = []
-        num_ready_ops, num_mounted_ops = [], []
-        for worker_id, server_id in cluster.topology.graph.graph['worker_to_node'].items():
-            worker = cluster.topology.graph.nodes[server_id]['workers'][worker_id]
-            ready_op_counter = 0
-            mounted_op_counter = 0
-            for job_idx, op_ids in worker.mounted_job_idx_to_ops.items():
-                job = cluster.jobs_running[job_idx]
-                for op_id in op_ids:
-                    mounted_op_counter += 1
-                    if op_id in job.computation_graph.graph['ops_ready']:
-                        ready_op_counter += 1
-            try:
-                num_ready_ops.append(ready_op_counter / mounted_op_counter)
-            except ZeroDivisionError:
-                num_ready_ops.append(0)
-            try:
-                num_mounted_ops.append(mounted_op_counter / cluster.num_mounted_ops)
-            except ZeroDivisionError:
-                num_mounted_ops.append(0)
-        network_worker_features.append(np.array(num_ready_ops, dtype=object))
-        network_worker_features.append(np.array(num_mounted_ops, dtype=object))
-        if flatten:
-            network_worker_features = flatten_numpy_array(network_worker_features)
-        return network_worker_features
+    # def _get_network_worker_features(self, job, cluster, flatten=True):
+        # network_worker_features = []
+        # num_ready_ops, num_mounted_ops = [], []
+        # for worker_id, server_id in cluster.topology.graph.graph['worker_to_node'].items():
+            # worker = cluster.topology.graph.nodes[server_id]['workers'][worker_id]
+            # ready_op_counter = 0
+            # mounted_op_counter = 0
+            # for job_idx, op_ids in worker.mounted_job_idx_to_ops.items():
+                # job = cluster.jobs_running[job_idx]
+                # for op_id in op_ids:
+                    # mounted_op_counter += 1
+                    # if op_id in job.computation_graph.graph['ops_ready']:
+                        # ready_op_counter += 1
+            # try:
+                # num_ready_ops.append(ready_op_counter / mounted_op_counter)
+            # except ZeroDivisionError:
+                # num_ready_ops.append(0)
+            # try:
+                # num_mounted_ops.append(mounted_op_counter / cluster.num_mounted_ops)
+            # except ZeroDivisionError:
+                # num_mounted_ops.append(0)
+        # network_worker_features.append(np.array(num_ready_ops, dtype=object))
+        # network_worker_features.append(np.array(num_mounted_ops, dtype=object))
+        # if flatten:
+            # network_worker_features = flatten_numpy_array(network_worker_features)
+        # return network_worker_features
 
     def _get_network_graph_features(self, job, cluster, flatten=True):
         network_graph_features = []
-        num_active_workers = cluster.num_active_workers / len(list(cluster.topology.graph.graph['worker_to_node'].keys()))
-        network_graph_features.append(np.array(num_active_workers, dtype=object))
+
+        # num_active_workers = cluster.num_active_workers / len(list(cluster.topology.graph.graph['worker_to_node'].keys()))
+        # network_graph_features.append(np.array(num_active_workers, dtype=object))
+
+        num_mounted_workers = len(cluster.mounted_workers) / len(list(cluster.topology.graph.graph['worker_to_node'].keys()))
+        network_graph_features.append(np.array(num_mounted_workers, dtype=object))
+
+        num_mounted_channels = len(cluster.mounted_channels) / (cluster.topology.num_channels * len(list(cluster.topology.graph.edges())))
+        network_graph_features.append(np.array(num_mounted_channels, dtype=object))
+
+        num_jobs_running = len(list(cluster.jobs_running.keys())) / len(list(cluster.topology.graph.graph['worker_to_node'].keys()))
+        network_graph_features.append(np.array(num_jobs_running, dtype=object))
+
         if flatten:
             network_graph_features = flatten_numpy_array(network_graph_features)
+
         return network_graph_features
+
+    def _get_dep_features(self, dep, job, cluster, flatten=True):
+        dep_features = []
+        u, v, k = dep
+
+        # dep size
+        dep_features.append(np.array((job.computation_graph[u][v][k]['size'] / job.details['max_dep_size']), dtype=object))
+        is_highest_dep_size = dep == job.details['max_dep_size_dep']
+        dep_features.append(np.array(is_highest_dep_size, dtype=object))
+
+        if flatten:
+            dep_features = flatten_numpy_array(dep_features)
+
+        return dep_features
 
     def _get_op_features(self, op, job, cluster, flatten=True):
         op_features = []
@@ -401,24 +492,3 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
             raise Exception(f'node_features_high set to {self.node_features_high} but max feature val is {np.max(op_features)}')
 
         return op_features
-
-
-
-
-
-                
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

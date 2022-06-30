@@ -5,6 +5,9 @@ from ddls.demands.jobs.job import Job
 
 import glob
 from typing import Union
+from collections import defaultdict
+import numpy as np
+import copy
 
 class JobsGenerator:
     def __init__(self, 
@@ -51,6 +54,9 @@ class JobsGenerator:
         # init job interarrival time dist
         self.job_interarrival_time_dist = job_interarrival_time_dist
 
+        # init general parameters of jobs
+        self.jobs_params = self._init_jobs_params(jobs)
+
     def __len__(self):
         return len(self.job_sampler)
 
@@ -63,3 +69,34 @@ class JobsGenerator:
             return float('inf')
         else:
             return self.job_interarrival_time_dist.sample(size=size)
+
+    def _init_jobs_params(self, jobs):
+        jobs_params = defaultdict(lambda: [])
+
+        # TODO TEMP: Assume one worker type, but should update to account for multiple worker types?
+        device_type = list(jobs[0].details['job_sequential_completion_time'].keys())[0]
+
+        for job in jobs:
+            jobs_params['job_sequential_completion_times'].append(job.details['job_sequential_completion_time'][device_type])
+            jobs_params['job_total_op_memory_costs'].append(job.details['job_total_op_memory_cost'])
+            jobs_params['job_total_dep_sizes'].append(job.details['job_total_dep_size'])
+            jobs_params['job_total_num_ops'].append(len(list(job.computation_graph.nodes())))
+            jobs_params['job_total_num_deps'].append(len(list(job.computation_graph.edges())))
+            jobs_params['job_num_training_steps'].append(job.num_training_steps)
+
+        updated_jobs_params = {}
+        for key, vals in jobs_params.items():
+            updated_jobs_params[key] = vals
+            updated_jobs_params[f'min_{key}'] = np.min(vals)
+            updated_jobs_params[f'max_{key}'] = np.max(vals)
+            updated_jobs_params[f'mean_{key}'] = np.mean(vals)
+            updated_jobs_params[f'std_{key}'] = np.std(vals)
+
+        return updated_jobs_params
+
+
+
+
+
+
+

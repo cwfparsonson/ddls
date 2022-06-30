@@ -36,6 +36,8 @@ rllib_config:
                 num_servers_per_rack: 4
                 num_channels: 2
                 channel_bandwidth: 1250000000
+                switch_reconfiguration_latency: 0.00000125
+                worker_io_latency: 0.000000100
 
         jobs_config:
             #path_to_files: /scratch/datasets/ddls/jobs/tensorflow_synthetic_graphs/valid
@@ -58,7 +60,6 @@ rllib_config:
         pad_obs_kwargs:
             max_nodes: 200 
 
-
     model:
         fcnet_hiddens:
             - 8
@@ -66,19 +67,21 @@ rllib_config:
         custom_model: my_model
         custom_model_config:
             in_features_node: 5
-            in_features_edge: 1
+            in_features_edge: 2
             out_features_msg: 8
             out_features_hidden: 16
             out_features: 4
-            in_features_graph: 34 # 130 34
+            in_features_graph: 15 # 130 34 44 11
             out_features_graph: 4
             num_layers: 2
             aggregator_type: mean
             action_space_type: discrete # discrete continuous
 
     batch_mode: complete_episodes
-    train_batch_size: 16
-    sgd_minibatch_size: 16
+    #train_batch_size: 16
+    #sgd_minibatch_size: 16
+    train_batch_size: 1
+    sgd_minibatch_size: 1
 
     callbacks: ddls.environments.ramp_cluster.utils.RLlibRampClusterEnvironmentCallback
 

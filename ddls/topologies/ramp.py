@@ -5,6 +5,7 @@ import networkx as nx
 from collections import defaultdict
 import matplotlib.pyplot as plt
 import copy
+from typing import Union
     
 
 class Ramp(Topology):
@@ -13,12 +14,16 @@ class Ramp(Topology):
                  num_racks_per_communication_group: int = 2,
                  num_servers_per_rack: int = 4,
                  num_channels: int = 1,
-                 channel_bandwidth: int = int(1.25e9)):
+                 channel_bandwidth: int = int(1.25e9),
+                 switch_reconfiguration_latency: Union[int, float] = 1.25e-6,
+                 worker_io_latency: Union[int, float] = 100e-9):
         self.num_communication_groups = num_communication_groups
         self.num_racks_per_communication_group = num_racks_per_communication_group
         self.num_servers_per_rack = num_servers_per_rack
         self.num_channels = num_channels
         self.channel_bandwidth = channel_bandwidth
+        self.switch_reconfiguration_latency = switch_reconfiguration_latency
+        self.worker_io_latency = worker_io_latency
         
         self.graph = nx.Graph()
         self._build_topology()

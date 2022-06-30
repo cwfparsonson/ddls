@@ -8,10 +8,16 @@ from typing import Union
 
 class LookaheadJobCompletionTime(DDLSRewardFunction):
     def __init__(self, 
-                 fail_reward: Union[int, float] = -1, 
-                 sign: int = 1, 
-                 inverse: bool = True, 
-                 transform_with_log: bool = False):
+                 # fail_reward: Union[int, float] = -1, 
+                 # sign: int = 1, 
+                 # inverse: bool = True, 
+                 # transform_with_log: bool = False,
+                 # fail_reward: Union[int, float] = 1000, 
+                 fail_reward: Union[int, float, 'job_sequential_completion_time'] = 'job_sequential_completion_time', 
+                 sign: int = -1, 
+                 inverse: bool = False, 
+                 transform_with_log: bool = True,
+                 ):
         self.fail_reward = fail_reward 
         self.sign = sign
         self.inverse = inverse
@@ -23,15 +29,30 @@ class LookaheadJobCompletionTime(DDLSRewardFunction):
     def extract(self, 
                 env, # RampJobPlacementShapingEnvironment, 
                 done: bool):
-        reward = self.fail_reward
-        for job_idx in env.placed_job_idxs:
+        # TODO TEMP: Assume 1 job per step
+        job_idx = env.cluster.last_job_arrived_job_idx
+
+        if job_idx in env.placed_job_idxs:
+            # job was placed, set reward as job completion time
             if job_idx in env.cluster.jobs_running:
                 reward = env.cluster.jobs_running[job_idx].details['lookahead_job_completion_time']
             elif job_idx in env.cluster.jobs_completed:
                 reward = env.cluster.jobs_completed[job_idx].details['lookahead_job_completion_time']
             else:
                 raise Exception(f'Unable to find job_idx {job_idx} in either cluster running or completed jobs.')
+        else:
+            # job was not successfully placed, set reward as fail reward
+            if isinstance(self.fail_reward, int) or isinstance(self.fail_reward, float):
+                reward = copy.deepcopy(self.fail_reward)
+            elif isinstance(self.fail_reward, str):
+                if self.fail_reward == 'job_sequential_completion_time':
+                    # TODO TEMP: Currently assuming one device in whole cluster, should update to handle multiple different device types?
+                    device_type = list(env.cluster.topology.graph.graph['worker_types'])[0]
+                    reward = env.cluster.jobs_blocked[job_idx].details['job_sequential_completion_time'][device_type]
+                else:
+                    raise Exception(f'Unrecognised fail_reward {self.fail_reward}')
 
+        # do any reward processing
         if self.inverse and reward != 0:
             reward = 1 / reward
 
