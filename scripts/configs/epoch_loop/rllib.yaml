@@ -10,6 +10,19 @@ path_to_env_cls: ddls.environments.ramp_job_placement_shaping.ramp_job_placement
 # define string path to the rllib trainer you want to use
 path_to_rllib_trainer_cls: ray.rllib.agents.ppo.PPOTrainer
 
+# define validator/evaluation loop (will use same setup as rllib_config below but with following overrides)
+path_to_validator_cls: ddls.loops.rllib_eval_loop.RLlibEvalLoop
+validator_rllib_config:
+    explore: false
+    seed: 1799
+    env_config:
+        jobs_config:
+            path_to_files: /scratch/datasets/ddls/jobs/pipedream_graphs/image_classification/profiles/alexnet/
+            max_files: 1
+            job_sampling_mode: remove
+    num_workers: 0 # num parallel cpu workers
+    num_gpus: 0 # num gpus available for RLlib
+
 # define the rllib config as usual
 rllib_config:
     #env: job_placing_all_nodes_environment

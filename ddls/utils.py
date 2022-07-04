@@ -2,6 +2,7 @@ import numpy as np
 import random
 import copy
 import glob
+import collections
 from collections import defaultdict
 import time
 import json
@@ -533,6 +534,35 @@ def load_job_dep_str(job_dep, conv_lists_to_tuples=True):
         dep_id = tuple(dep_id)
     return job_idx, job_id, dep_id
 
+def recursively_instantiate_classes_in_hydra_config(d):
+    for k, v in d.items():
+        if isinstance(v, dict):
+            recursively_instantiate_classes_in_hydra_config(v)
+        else:
+            hydra.utils.instantiate(d[k])
+
+def recursively_update_nested_dict(orig_dict, overrides, verbose=False):
+    if verbose:
+        print(f'\nRecursively updating orig_dict {orig_dict} with overrides {overrides}')
+    for key, val in overrides.items():
+        if verbose:
+            print(f'key: {key} | val: {type(val)} {val}')
+        if key not in orig_dict:
+            if verbose:
+                print(f'key not in orig_dict, adding...')
+            orig_dict[key] = val
+        else:
+            if isinstance(val, collections.Mapping):
+                if verbose:
+                    print(f'val is a Mapping, re-running recursion...')
+                orig_dict[key] = recursively_update_nested_dict(orig_dict[key], val)
+            else:
+                if verbose:
+                    print(f'val is not a Mapping, updating...')
+                orig_dict[key] = val
+    if verbose:
+        print(f'Recursively updated orig_dict: {orig_dict}')
+    return orig_dict
 
 
 
