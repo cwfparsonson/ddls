@@ -43,15 +43,15 @@ def calc_ramp_all_reduce_collective_communication_run_time(
     x: int = 32, # number of communication groups in the whole network
     # λ: int = 64,
     # J: int = 32, # number of racks per communicaiton group
-    DATA_RATE=1.6e12,
+    DATA_RATE=1.6e12, # I/O GPU bandwidth (DATA_RATE / x = network link bandwidth)
     # CLK=1455e6,
-    MEM_FRQ=2e12,
-    latency=1.25e-6,
-    π=130e12,
+    MEM_FRQ=2e12, # device memory frequency
+    latency=1.25e-6, # intra GPU internal data propagation latency
+    π=130e12, # device peak computational power
     # comp=True,
     # circ_rec_time=0,
     bytes_per_comp=2,
-    IO_latency=100e-9,
+    IO_latency=100e-9, # intra-GPU in-out latency for reading/writing info from/to memory
 ):
     data_per_tx = DATA_RATE / x
     subgroup_size = [cgs, min(cgs, node_ids), racks, np.ceil(node_ids / x)]

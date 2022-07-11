@@ -15,6 +15,11 @@ from omegaconf import OmegaConf
 import time
 import hydra
 
+import pickle
+import gzip
+
+import threading
+
 
 
 class RLlibEpochLoop:
@@ -60,6 +65,7 @@ class RLlibEpochLoop:
             self.validator = get_class_from_path(path_to_validator_cls)(path_to_env_cls=path_to_env_cls,
                                                                         path_to_rllib_trainer_cls=path_to_rllib_trainer_cls,
                                                                         rllib_config=self.validator_rllib_config)
+        self.validation_thread = None
 
     def run(self, *args, **kwargs):
         '''Run one epoch.'''
@@ -68,21 +74,29 @@ class RLlibEpochLoop:
     def save_agent_checkpoint(self, path_to_save):
         self.last_agent_checkpoint = self.trainer.save(path_to_save)
 
-    def validate(self, checkpoint_path, *args, **kwargs):
+    def validate(self, checkpoint_path, save_results=True, **kwargs):
+        if self.validation_thread is not None:
+            self.validation_thread.join()
+        self.validation_thread = threading.Thread(
+                                                    target=self._validate, 
+                                                    args=(checkpoint_path, save_results,)
+                                                 )
+        self.validation_thread.start()
+
+    def _validate(self, checkpoint_path, save_results=True, **kwargs):
         if self.validator is None:
-            results = {}
+            raise Exception(f'Validator in Epoch Loop is None.')
         else:
-            # TODO: Change rllib_config to trainer_rllib_config (in keeping with validator_rllibg_config)
-
-            # TODO: Run in background thread (AND make sure save checkpoint thread has finished before beginning validate thread)
-            # TODO: Change eval_loop_config syntax to validator_config ni launcher.py rllib.yaml and this file
-            # TODO: Add shufft option for jobs generator -> want to shuffle during training so agent doesn't overfit to specific job order, but keep same order during validation
-            # TODO: Save validation results in each checkpoint
-
             results = self.validator.run(checkpoint_path)
 
+        if save_results:
+            base_path = '/'.join(checkpoint_path.split('/')[:-1])
+            for log_name, log in results.items():
+                log_path = base_path + f'/{log_name}'
+                with gzip.open(log_path + '.pkl', 'wb') as f:
+                    pickle.dump(log, f)
+
         return results
-        
 
 
 

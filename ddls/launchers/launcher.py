@@ -108,8 +108,8 @@ class Launcher:
             checkpointer.write(self.epoch_loop)
 
             if self.epoch_loop.validator is not None:
-                # TODO: Run evaluation thread of checkpoint just saved
-                self.epoch_loop.validate(self.epoch_loop.last_agent_checkpoint)
+                # run evaluation thread of checkpoint just saved
+                self.epoch_loop.validate(self.epoch_loop.last_agent_checkpoint, save_results=True)
 
         # run launcher
         while not self._check_if_should_stop():
@@ -139,8 +139,8 @@ class Launcher:
                     checkpointer.write(self.epoch_loop)
 
                     if self.epoch_loop.validator is not None:
-                        # TODO: Run evaluation thread of checkpoint just saved
-                        self.epoch_loop.validate(self.epoch_loop.last_agent_checkpoint)
+                        # run evaluation thread of checkpoint just saved
+                        self.epoch_loop.validate(self.epoch_loop.last_agent_checkpoint, save_results=True)
 
     def _check_if_should_log(self, logger):
         should_log = False

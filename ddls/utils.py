@@ -51,7 +51,9 @@ def seed_stochastic_modules_globally(default_seed=0,
 class Sampler:
     def __init__(self, 
                  pool: list,
-                 sampling_mode: str):
+                 sampling_mode: str,
+                 shuffle: bool = False, # whether or not to shuffle sampling pool when reset
+                 ):
         '''
         Args:
             sampling_mode ('replace', 'remove', 'remove_and_repeat')
@@ -59,6 +61,7 @@ class Sampler:
         self.original_pool = pool
         self.sample_pool = copy.deepcopy(self.original_pool)
         self.sampling_mode = sampling_mode
+        self.shuffle = shuffle
     
     def sample(self):
         idx = np.random.randint(low=0, high=len(self.sample_pool))
@@ -85,6 +88,8 @@ class Sampler:
 
     def reset(self):
         self.sample_pool = copy.deepcopy(self.original_pool)
+        if self.shuffle:
+            random.shuffle(self.sample_pool)
 
 
 
@@ -443,9 +448,12 @@ def ddls_graph_from_pipedream_txt_file(file_path: str,
                                        verbose: bool = False):
     '''Assumes .txt file follows the convention of the pipedream .txt graph profiles.'''
     pipedream_computation_graph = pipedream_graph_from_txt_file(file_path, verbose=verbose)
-    return ddls_graph_from_pipedream_graph(pipedream_computation_graph, 
+    graph = ddls_graph_from_pipedream_graph(pipedream_computation_graph, 
                                            processor_type_profiled=processor_type_profiled, 
                                            verbose=verbose)
+    graph.graph['file_path'] = file_path
+    graph.graph['graph_name'] = file_path.split('/')[-1].split('.')[0]
+    return graph
 
 def get_forward_graph(computation_graph):
     '''Removes nodes and edges from a graph which originally contains both the forward and backward pass.'''

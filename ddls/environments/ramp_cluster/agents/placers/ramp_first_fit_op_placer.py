@@ -19,7 +19,8 @@ import math
 
 
 
-class RampRandomOpPlacer(Placer):
+# class RampRandomOpPlacer(Placer):
+class RampFirstFitOpPlacer(Placer):
     def __init__(self):
         pass
 

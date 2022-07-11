@@ -12,7 +12,6 @@ class Job:
                  computation_graph: nx.MultiDiGraph,
                  num_training_steps: int,
                  job_id: int = None,
-                 job_type: str = None,
                  details: dict = None):
         '''
         A ddls deep learning job consists of a computation_graph which contains the
@@ -39,8 +38,6 @@ class Job:
             self.job_id = id(self)
         else:
             self.job_id = job_id 
-
-        self.job_type = job_type
 
         if details is None:
             self.details = {}

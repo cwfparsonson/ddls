@@ -15,7 +15,12 @@ class JobsGenerator:
                  job_interarrival_time_dist: Distribution,
                  # job_interarrival_time_dist: Union[Distribution, str], # either a Distribution object or a path leading to the distbution path
                  max_files: int = None, 
-                 job_sampling_mode: Union['replace', 'remove', 'remove_and_repeat'] = 'remove_and_repeat'):
+                 job_sampling_mode: Union['replace', 'remove', 'remove_and_repeat'] = 'remove_and_repeat',
+                 shuffle_files: bool = False, # whether or not to shuffle loaded file order when re-load files
+                 num_training_steps: int = 1,
+                 ):
+        self.shuffle_files = shuffle_files
+
         # get file paths
         _file_paths = glob.glob(path_to_files + '/*')
 
@@ -46,10 +51,14 @@ class JobsGenerator:
                 ddls_computation_graphs = [file_reader(file_path, processor_type_profiled='A100', verbose=False) for file_path in file_paths]
 
         # create ddls jobs
-        jobs = [Job(computation_graph=graph, num_training_steps=2) for graph in ddls_computation_graphs]
+        jobs = []
+        for graph in ddls_computation_graphs:
+            details = {'job_name': graph.graph['graph_name']}
+            jobs.append(Job(computation_graph=graph,
+                            num_training_steps=num_training_steps))
 
         # init job sampler
-        self.job_sampler = Sampler(pool=jobs, sampling_mode=job_sampling_mode)
+        self.job_sampler = Sampler(pool=jobs, sampling_mode=job_sampling_mode, shuffle=self.shuffle_files)
 
         # init job interarrival time dist
         self.job_interarrival_time_dist = job_interarrival_time_dist
@@ -93,10 +102,3 @@ class JobsGenerator:
             updated_jobs_params[f'std_{key}'] = np.std(vals)
 
         return updated_jobs_params
-
-
-
-
-
-
-

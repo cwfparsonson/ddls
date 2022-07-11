@@ -50,7 +50,6 @@ class OpPartition:
             self.partitioned_jobs[job_id] = Job(computation_graph=partitioned_computation_graph,
                     num_training_steps=copy.deepcopy(job.num_training_steps),
                                                 job_id=copy.deepcopy(job_id),
-                                                job_type=copy.deepcopy(job.job_type),
                                                 details=copy.deepcopy(job.details))
 
     def __len__(self):

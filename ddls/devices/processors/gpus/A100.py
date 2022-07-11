@@ -14,7 +14,7 @@ class A100(Processor):
             
         self.device_type = 'A100'
 
-        self.memory_capacity = int(40e9)
+        self.memory_capacity = int(480e9)
         # self.memory_bandwidth = int(1.555e9)
 
         # self.num_streaming_multiprocessors = 8

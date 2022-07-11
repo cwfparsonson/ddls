@@ -14,7 +14,8 @@ experiment:
         - 3
 
 launcher:
-    num_epochs: 5 # 500
+    num_epochs: 1
+    #num_epochs: 50 # 500
     #num_epochs: 100 # 500
     num_episodes: null
     num_actor_steps: null

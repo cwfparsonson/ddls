@@ -4,7 +4,7 @@ from ddls.environments.ramp_cluster.agents.partitioners.random_op_partitioner im
 from ddls.environments.ramp_cluster.agents.partitioners.sip_ml_op_partitioner import SipMlOpPartitioner
 from ddls.environments.ramp_cluster.agents.job_placement_shapers.ramp_random_job_placement_shaper import RampRandomJobPlacementShaper
 from ddls.environments.ramp_cluster.agents.placers.random_op_placer import RandomOpPlacer
-from ddls.environments.ramp_cluster.agents.placers.ramp_random_op_placer import RampRandomOpPlacer
+from ddls.environments.ramp_cluster.agents.placers.ramp_first_fit_op_placer import RampFirstFitOpPlacer
 from ddls.environments.ramp_cluster.agents.schedulers.srpt_op_scheduler import SRPTOpScheduler
 from ddls.environments.ramp_cluster.agents.placers.first_fit_dep_placer import FirstFitDepPlacer
 from ddls.environments.ramp_cluster.agents.schedulers.srpt_dep_scheduler import SRPTDepScheduler
@@ -30,7 +30,7 @@ class RampJobPlacementShapingEnvironment(gym.Env):
                  jobs_config: dict,
                  op_partitioner: Union['random_op_partitioner', 'sip_ml_op_partitioner'] = 'sip_ml_op_partitioner',
                  op_partitioner_kwargs: dict = None,
-                 op_placer: Union['ramp_random_op_placer'] = 'ramp_random_op_placer',
+                 op_placer: Union['ramp_first_fit_op_placer'] = 'ramp_first_fit_op_placer',
                  op_placer_kwargs: dict = None,
                  op_scheduler: Union['srpt_op_scheduler'] = 'srpt_op_scheduler',
                  op_scheduler_kwargs: dict = None,
@@ -42,6 +42,7 @@ class RampJobPlacementShapingEnvironment(gym.Env):
                  pad_obs_kwargs: dict = None,
                  information_function: Union['default'] = 'default',
                  reward_function: Union['lookahead_job_completion_time'] = 'lookahead_job_completion_time',
+                 reward_function_kwargs: dict = None,
                  max_simulation_run_time: Union[int, float] = float('inf'),
                  job_queue_capacity: int = 10,
                  name: str = 'ramp_job_placement_shaping',
@@ -86,9 +87,11 @@ class RampJobPlacementShapingEnvironment(gym.Env):
             raise Exception(f'Unrecognised information_function {self.information_function_str}')
 
         # init reward
+        if reward_function_kwargs is None:
+            reward_function_kwargs = {}
         self.reward_function_str = reward_function
         if reward_function == 'lookahead_job_completion_time':
-            self.reward_function = LookaheadJobCompletionTime()
+            self.reward_function = LookaheadJobCompletionTime(**reward_function_kwargs)
         else:
             raise Exception(f'Unrecognised reward_function {self.reward_function_str}')
 
@@ -147,8 +150,8 @@ class RampJobPlacementShapingEnvironment(gym.Env):
         else:
             raise Exception(f'Unrecognised op_partitioner {self.op_partitioner_str}')
 
-        if self.op_placer_str == 'ramp_random_op_placer':
-            op_placer = RampRandomOpPlacer(**self.op_placer_kwargs)
+        if self.op_placer_str == 'ramp_first_fit_op_placer':
+            op_placer = RampFirstFitOpPlacer(**self.op_placer_kwargs)
         else:
             raise Exception(f'Unrecognised op_placer {self.op_placer_str}')
 
@@ -216,6 +219,9 @@ class RampJobPlacementShapingEnvironment(gym.Env):
         return {}
 
     def step(self, action: int):
+        # DEBUG
+        action = 6
+
         # process agent decision
         if action not in self.obs['action_set']:
             raise Exception(f'Action {action} not in action set {self.obs["action_set"]}')
@@ -260,6 +266,9 @@ class RampJobPlacementShapingEnvironment(gym.Env):
         if not self.done:
             # update op partition ready for next job placement shape decision by agent
             self.op_partition = self.op_partitioner.get(cluster=self.cluster)
+
+        # DEBUG
+        print(f'agent action: {action} -> {self.action_to_job_placement_shape[action]} | action set: {self.obs["action_set"]} | action mask: {self.obs["action_mask"]} | reward: {self.reward}')
 
         return self.obs, self.reward, self.done, self.info
 
