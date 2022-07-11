@@ -76,7 +76,7 @@ class Job:
         for op in self.computation_graph.nodes:
             for device_type, compute_cost in self.computation_graph.nodes[op]['compute_cost'].items():
                 job_sequential_completion_time[device_type] += compute_cost
-        return job_sequential_completion_time
+        return job_sequential_completion_time * self.num_training_steps
 
     def get_job_total_memory_cost(self):
         job_total_memory_cost = 0

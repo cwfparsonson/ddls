@@ -484,13 +484,24 @@ class RampClusterEnvironment:
                             if verbose:
                                 print(f'Dep {dep_id} of job index {job_idx} completed')
 
-                # record any communicaiton vs. computation bottleneck/overhead time
+                # # record any communicaiton vs. computation bottleneck/overhead time
+
+                # OLD: How I think overhead should be calculated
+                # if ticked_ops and ticked_deps:
+                    # # neither communication or computation are bottleneck this tick
+                    # pass
+                # elif ticked_deps and not ticked_ops:
+                    # job.details['communication_overhead_time'] += tick
+                # elif ticked_ops:
+                    # job.details['computation_overhead_time'] += tick
+
+                # NEW: How most papers calc overhead
                 if ticked_ops and ticked_deps:
-                    # neither communication or computation are bottleneck this tick
-                    pass
-                elif ticked_deps:
                     job.details['communication_overhead_time'] += tick
-                elif ticked_ops:
+                    job.details['computation_overhead_time'] += tick
+                elif ticked_deps and not ticked_ops:
+                    job.details['communication_overhead_time'] += tick
+                elif ticked_ops and not ticked_deps:
                     job.details['computation_overhead_time'] += tick
 
                 # tick stopwatch
@@ -601,7 +612,7 @@ class RampClusterEnvironment:
     def step(self,
              action: Action,
              verbose: bool = False):
-        verbose = True # DEBUG
+        # verbose = True # DEBUG
 
         self.action = action
         # if action.actions['op_placement'] is None and action.actions['op_schedule'] is None and action.actions['dep_placement'] is None and action.actions['dep_schedule'] is None:

@@ -117,10 +117,10 @@ rllib_config:
     batch_mode: complete_episodes
     #train_batch_size: 16
     #sgd_minibatch_size: 16
-    #train_batch_size: 4
-    #sgd_minibatch_size: 4
-    train_batch_size: 1
-    sgd_minibatch_size: 1
+    train_batch_size: 4
+    sgd_minibatch_size: 4
+    #train_batch_size: 1
+    #sgd_minibatch_size: 1
 
     callbacks: ddls.environments.ramp_cluster.utils.RLlibRampClusterEnvironmentCallback
 

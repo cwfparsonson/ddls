@@ -219,9 +219,6 @@ class RampJobPlacementShapingEnvironment(gym.Env):
         return {}
 
     def step(self, action: int):
-        # DEBUG
-        action = 6
-
         # process agent decision
         if action not in self.obs['action_set']:
             raise Exception(f'Action {action} not in action set {self.obs["action_set"]}')
