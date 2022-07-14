@@ -65,7 +65,7 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
         # print(f'\nobs_space:\n{self.observation_space}')
     
     def get_action_set_and_action_mask(self, env):
-        action_set, action_mask, action = [], [], 0
+        action_set, action_mask, action = [0], [True], 1 # action 0 (not placing the job) is always valid
         for c in range(1, env.cluster.topology.num_communication_groups+1):
             for r in range(1, env.cluster.topology.num_racks_per_communication_group+1):
                 for s in range(1, env.cluster.topology.num_servers_per_rack+1):
@@ -75,11 +75,39 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
                         # not yet taken any partitioning actions, all job placing actions are valid
                         action_mask.append(True)
                     else:
-                        # cannot reserve fewer servers than the partition degree of a given job
                         # job_id = list(env.op_partition.job_ids)[0]
                         job_id = self._get_job_to_encode(env).job_id
-                        action_mask.append(env.op_partition.job_id_to_max_partition_degree[job_id] <= r * s)
+
+                        # OLD
+                        # # cannot reserve fewer servers than the partition degree of a given job
+                        # action_mask.append(env.op_partition.job_id_to_max_partition_degree[job_id] <= r * s)
+                        
+                        # NEW
+                        # Filter 1: Cannot reserve fewer servers than the partition degree of a given job, and cannot reserve more servers than are unoccupied in the topology
+                        # # DEBUG
+                        # print(f'\nc={c} r={r} s={s} -> {c * r * s}')
+                        # print(f'job partition degree: {env.op_partition.job_id_to_max_partition_degree[job_id]}')
+                        # print(f'num workers available: {env.cluster.topology.graph.graph["num_workers"] - len(env.cluster.mounted_workers)}')
+                        if env.op_partition.job_id_to_max_partition_degree[job_id] <= c * r * s <= env.cluster.topology.graph.graph['num_workers'] - len(env.cluster.mounted_workers):
+
+                            action_mask.append(True) # print(f'Valid.')
+
+                            # # check symmetry rules
+                            # if (c == r and r * s >= env.op_partition.job_id_to_max_partition_degree[job_id]) or (c == env.op_partition.job_id_to_max_partition_degree[job_id] and r == s == 1):
+
+                                # action_mask.append(True)
+                                # # print(f'Valid.')
+                            
+                            # else:
+                                # action_mask.append(False)
+                                # # print(f'Invalid.')
+
+                        else:
+                            action_mask.append(False)
+                            # print(f'Invalid.')
+
                     action += 1
+
         return action_set, action_mask
 
     def extract(self, 

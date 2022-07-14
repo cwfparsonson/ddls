@@ -22,6 +22,8 @@ import numpy as np
 
 from typing import Union
 
+import copy
+
 
 class RampJobPlacementShapingEnvironment(gym.Env):
     def __init__(self,
@@ -75,7 +77,7 @@ class RampJobPlacementShapingEnvironment(gym.Env):
             raise Exception(f'Unrecognised observation_function {self.observation_function_str}')
 
         # init action space
-        self.action_space = gym.spaces.Discrete(int(self.cluster.topology.num_communication_groups * self.cluster.topology.num_racks_per_communication_group * self.cluster.topology.num_servers_per_rack))
+        self.action_space = gym.spaces.Discrete(int((self.cluster.topology.num_communication_groups * self.cluster.topology.num_racks_per_communication_group * self.cluster.topology.num_servers_per_rack) + 1))
         self.action_to_job_placement_shape = self._get_action_to_job_placement_shape()
 
         # init info
@@ -127,7 +129,7 @@ class RampJobPlacementShapingEnvironment(gym.Env):
 
     def _get_action_to_job_placement_shape(self):
         '''Returns a mapping of action (int) -> job_placement_shape (tuple).'''
-        action_to_job_placement_shape, action = {}, 0
+        action_to_job_placement_shape, action = {0: None}, 1
         for c in range(1, self.cluster.topology.num_communication_groups+1):
             for r in range(1, self.cluster.topology.num_racks_per_communication_group+1):
                 for s in range(1, self.cluster.topology.num_servers_per_rack+1):
@@ -176,6 +178,8 @@ class RampJobPlacementShapingEnvironment(gym.Env):
               seed: int = None,
               verbose=False):
 
+        self.step_counter = 0
+
         # init env decisions
         self.op_partition = None
         self.op_placement = None
@@ -218,13 +222,31 @@ class RampJobPlacementShapingEnvironment(gym.Env):
     def _get_info(self):
         return {}
 
-    def step(self, action: int):
+    def step(self, action: int, verbose=False):
+        # verbose = True # DEBUG
+
+        if verbose:
+            print(f'\n~~~~~~~~~~~~~~~~~~~ Step {self.step_counter} ~~~~~~~~~~~~~~~~~~~~~')
+
         # process agent decision
         if action not in self.obs['action_set']:
             raise Exception(f'Action {action} not in action set {self.obs["action_set"]}')
         if not self.obs['action_mask'][action]:
             raise Exception(f'Action {action} is invalid given action mask {self.obs["action_mask"]} for action set {self.obs["action_set"]}')
-        self.job_placement_shape = JobPlacementShape({list(self.op_partition.job_ids)[0]: self.action_to_job_placement_shape[action]})
+
+        if self.action_to_job_placement_shape[action] is not None:
+            self.job_placement_shape = JobPlacementShape({list(self.op_partition.job_ids)[0]: self.action_to_job_placement_shape[action]})
+        else:
+            # agent select not to place job
+            self.job_placement_shape = JobPlacementShape({})
+        if verbose:
+            print(f'Agent action: {action} -> {self.action_to_job_placement_shape[action]} | Action set: {self.obs["action_set"]} | Action mask: {self.obs["action_mask"]}')
+
+        # # DEBUG
+        # if self.step_counter == 0:
+            # self.job_placement_shape = JobPlacementShape({list(self.op_partition.job_ids)[0]: (4, 4, 2)})
+        # else:
+            # self.job_placement_shape = JobPlacementShape({list(self.op_partition.job_ids)[0]: (4, 3, 2)})
 
         # get env decisions
         self.op_placement = self.op_placer.get(op_partition=self.op_partition, job_placement_shape=self.job_placement_shape, cluster=self.cluster)
@@ -240,6 +262,9 @@ class RampJobPlacementShapingEnvironment(gym.Env):
                              dep_placement=self.dep_placement,
                              dep_schedule=self.dep_schedule)
         self.placed_job_idxs = self.action.job_idxs # useful for external methods accessing placed job info
+
+        # record job idx of most recently arrived job
+        self.last_job_arrived_job_idx = copy.deepcopy(self.cluster.last_job_arrived_job_idx)
 
         # step the cluster
         self.cluster.step(self.action, verbose=False)
@@ -264,8 +289,10 @@ class RampJobPlacementShapingEnvironment(gym.Env):
             # update op partition ready for next job placement shape decision by agent
             self.op_partition = self.op_partitioner.get(cluster=self.cluster)
 
-        # DEBUG
-        print(f'agent action: {action} -> {self.action_to_job_placement_shape[action]} | action set: {self.obs["action_set"]} | action mask: {self.obs["action_mask"]} | reward: {self.reward}')
+        if verbose:
+            print(f'Reward: {self.reward} | Done: {self.done}')
+
+        self.step_counter += 1
 
         return self.obs, self.reward, self.done, self.info
 

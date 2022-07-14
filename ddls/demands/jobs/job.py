@@ -58,10 +58,15 @@ class Job:
         details['job_total_op_memory_cost'] = self.get_job_total_memory_cost()
         details['job_total_dep_size'] = self.get_job_total_dep_size()
 
+        # do not override values which are already provided
         if 'communication_overhead_time' not in details:
             details['communication_overhead_time'] = 0
         if 'computation_overhead_time' not in details:
             details['computation_overhead_time'] = 0
+        if 'mounted_workers' not in details:
+            details['mounted_workers'] = set()
+        if 'mounted_channels' not in details:
+            details['mounted_channels'] = set()
 
         # details.update(self.details)
 
@@ -76,7 +81,9 @@ class Job:
         for op in self.computation_graph.nodes:
             for device_type, compute_cost in self.computation_graph.nodes[op]['compute_cost'].items():
                 job_sequential_completion_time[device_type] += compute_cost
-        return job_sequential_completion_time * self.num_training_steps
+        for device_type in job_sequential_completion_time.keys():
+            job_sequential_completion_time[device_type] *= self.num_training_steps
+        return job_sequential_completion_time
 
     def get_job_total_memory_cost(self):
         job_total_memory_cost = 0

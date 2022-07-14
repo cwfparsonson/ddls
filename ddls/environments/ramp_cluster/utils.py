@@ -49,4 +49,9 @@ class RLlibRampClusterEnvironmentCallback(DefaultCallbacks):
             episode.custom_metrics[key] = val
         for env in base_env.get_sub_environments():
             for key, val in env.cluster.episode_stats.items():
-                episode.custom_metrics[key] = np.mean(list(val))
+                try:
+                    val = list(val)
+                except TypeError:
+                    # val is not iterable (e.g. int, float, etc.)
+                    val = [val]
+                episode.custom_metrics[key] = np.mean(val)

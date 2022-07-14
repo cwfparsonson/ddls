@@ -14,7 +14,8 @@ class JobsGenerator:
                  path_to_files: str, 
                  job_interarrival_time_dist: Distribution,
                  # job_interarrival_time_dist: Union[Distribution, str], # either a Distribution object or a path leading to the distbution path
-                 max_files: int = None, 
+                 max_files: int = None, # maximum number of files in path_to_files dir to use
+                 replication_factor: int = 1, # number of times to replicate files in path_to_files (e.g. if path_to_files has 1 job graph profile file and replication_factor=10, will have 10 identical jobs).
                  job_sampling_mode: Union['replace', 'remove', 'remove_and_repeat'] = 'remove_and_repeat',
                  shuffle_files: bool = False, # whether or not to shuffle loaded file order when re-load files
                  num_training_steps: int = 1,
@@ -52,10 +53,11 @@ class JobsGenerator:
 
         # create ddls jobs
         jobs = []
-        for graph in ddls_computation_graphs:
-            details = {'job_name': graph.graph['graph_name']}
-            jobs.append(Job(computation_graph=graph,
-                            num_training_steps=num_training_steps))
+        for _ in range(replication_factor):
+            for graph in ddls_computation_graphs:
+                details = {'job_name': graph.graph['graph_name']}
+                jobs.append(Job(computation_graph=graph,
+                                num_training_steps=num_training_steps))
 
         # init job sampler
         self.job_sampler = Sampler(pool=jobs, sampling_mode=job_sampling_mode, shuffle=self.shuffle_files)

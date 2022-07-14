@@ -25,10 +25,24 @@ class Action:
         if dep_schedule is not None:
             self.actions['dep_schedule'] = dep_schedule
 
+        # # DEBUG
+        # print(f'self.actions before filtering:')
+        # for key, val in self.actions.items():
+            # print(f'{key}:\n{val}')
+
         # find which job ids were successfully handled by ALL actions
+        self.cause_of_unsuccessful_handling = None
         if len(list(self.actions.keys())) > 0:
             self.job_ids = set(set.intersection(*[action.job_ids for action in self.actions.values()]))
             self.job_idxs = set([op_partition.partitioned_jobs[job_id].details['job_idx'] for job_id in self.job_ids])
+            # TEMP: Assume 1 job per step -> only need to check if 1 job id handled successfully
+            # record cause of job being unsuccessfully handled
+            for key, action in self.actions.items():
+                action_job_ids = action.action.keys()
+                if len(list(action_job_ids)) == 0:
+                    # job blocked due to this action
+                    self.cause_of_unsuccessful_handling = key
+                    break
         else:
             self.job_ids = {}
             self.job_idxs = {}

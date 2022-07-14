@@ -45,7 +45,9 @@ class RampFirstFitOpPlacer(Placer):
 
         # place job ops
         job_to_operation_to_worker = defaultdict(lambda: defaultdict(lambda: None))
-        for partitioned_job in jobs:
+        # for partitioned_job in jobs:
+        for key in job_placement_shape.action.keys():
+            partitioned_job = op_partition.partitioned_jobs[key]
             job_id = partitioned_job.job_id
 
             # get original job

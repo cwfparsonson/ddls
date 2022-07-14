@@ -19,10 +19,13 @@ validator_rllib_config:
         jobs_config:
             path_to_files: /scratch/datasets/ddls/jobs/pipedream_graphs/image_classification/profiles/alexnet/
             max_files: null
+            replication_factor: 100
             job_interarrival_time_dist:
                 _target_: ddls.distributions.uniform.Uniform
                 min_val: 1
                 max_val: 1000
+                #min_val: 15000
+                #max_val: 15000
             job_sampling_mode: remove
             shuffle_files: False
             num_training_steps: 50
@@ -37,8 +40,8 @@ rllib_config:
     env_config:
         node_config:
             type_1:
-                num_nodes: 8
-                #num_nodes: 16
+                #num_nodes: 8
+                num_nodes: 32
                 workers_config:
                     #- num_workers: 4
                     - num_workers: 1
@@ -51,10 +54,9 @@ rllib_config:
                 #y_dims: 4
             type: ramp 
             kwargs:
-                num_communication_groups: 2
-                num_racks_per_communication_group: 2
+                num_communication_groups: 4
+                num_racks_per_communication_group: 4
                 num_servers_per_rack: 2
-                #num_servers_per_rack: 4
                 num_channels: 1
                 channel_bandwidth: 1250000000
                 switch_reconfiguration_latency: 0.00000125
@@ -64,11 +66,14 @@ rllib_config:
             #path_to_files: /scratch/datasets/ddls/jobs/tensorflow_synthetic_graphs/valid
             path_to_files: /scratch/datasets/ddls/jobs/pipedream_graphs/image_classification/profiles/alexnet/
             max_files: 1
+            replication_factor: 100
             job_sampling_mode: remove
             job_interarrival_time_dist:
                 _target_: ddls.distributions.uniform.Uniform
                 min_val: 1
                 max_val: 1000
+                #min_val: 15000
+                #max_val: 15000
             shuffle_files: true
             num_training_steps: 50
 
@@ -76,10 +81,11 @@ rllib_config:
         reward_function: lookahead_job_completion_time
         reward_function_kwargs:
             fail_reward: job_sequential_completion_time
+            fail_reward_factor: 2
             sign: -1
             inverse: false
-            #transform_with_log: true
-            transform_with_log: false
+            transform_with_log: true
+            #transform_with_log: false
 
         op_partitioner: sip_ml_op_partitioner
         op_partitioner_kwargs:
@@ -95,7 +101,7 @@ rllib_config:
         dep_scheduler: srpt_dep_scheduler
 
         pad_obs_kwargs:
-            max_nodes: 200 
+            max_nodes: 400
 
     model:
         fcnet_hiddens:
@@ -115,10 +121,10 @@ rllib_config:
             action_space_type: discrete # discrete continuous
 
     batch_mode: complete_episodes
-    #train_batch_size: 16
-    #sgd_minibatch_size: 16
-    train_batch_size: 4
-    sgd_minibatch_size: 4
+    train_batch_size: 16
+    sgd_minibatch_size: 16
+    #train_batch_size: 4
+    #sgd_minibatch_size: 4
     #train_batch_size: 1
     #sgd_minibatch_size: 1
 
