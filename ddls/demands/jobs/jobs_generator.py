@@ -1,6 +1,6 @@
 from ddls.utils import Sampler
 from ddls.distributions.distribution import Distribution
-from ddls.utils import ddls_graph_from_pbtxt_file, ddls_graph_from_pipedream_txt_file
+from ddls.utils import ddls_graph_from_pbtxt_file, ddls_graph_from_pipedream_txt_file, get_class_from_path
 from ddls.demands.jobs.job import Job
 
 import glob
@@ -12,7 +12,7 @@ import copy
 class JobsGenerator:
     def __init__(self, 
                  path_to_files: str, 
-                 job_interarrival_time_dist: Distribution,
+                 job_interarrival_time_dist: Union[Distribution, dict],
                  # job_interarrival_time_dist: Union[Distribution, str], # either a Distribution object or a path leading to the distbution path
                  max_files: int = None, # maximum number of files in path_to_files dir to use
                  replication_factor: int = 1, # number of times to replicate files in path_to_files (e.g. if path_to_files has 1 job graph profile file and replication_factor=10, will have 10 identical jobs).
@@ -63,7 +63,15 @@ class JobsGenerator:
         self.job_sampler = Sampler(pool=jobs, sampling_mode=job_sampling_mode, shuffle=self.shuffle_files)
 
         # init job interarrival time dist
-        self.job_interarrival_time_dist = job_interarrival_time_dist
+        if isinstance(job_interarrival_time_dist, dict):
+            # need to instantiate Distribution object from dict of kwargs
+            if '_target_' not in job_interarrival_time_dist:
+                raise Exception(f'job_interarrival_time_dist specified as dict, therefore expecting dict of kwargs, but require _target_ kwarg giving path to Distribution class so can instantiate.')
+            kwargs = {kwarg: val for kwarg, val in job_interarrival_time_dist.items() if kwarg != '_target_'} 
+            self.job_interarrival_time_dist = get_class_from_path(job_interarrival_time_dist['_target_'])(**kwargs)
+        else:
+            # Distribution object already provided
+            self.job_interarrival_time_dist = job_interarrival_time_dist
 
         # init general parameters of jobs
         self.jobs_params = self._init_jobs_params(jobs)

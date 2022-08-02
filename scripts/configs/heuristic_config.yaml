@@ -3,7 +3,6 @@
 eval_loop:
     _target_: ddls.loops.eval_loop.EvalLoop
 
-
     env:
         _target_: ddls.environments.ramp_job_placement_shaping.ramp_job_placement_shaping_environment.RampJobPlacementShapingEnvironment
 
@@ -34,15 +33,16 @@ eval_loop:
         jobs_config:
             path_to_files: /scratch/datasets/ddls/jobs/pipedream_graphs/image_classification/profiles/alexnet/
             max_files: null
+            #replication_factor: 1
             #replication_factor: 5
             #replication_factor: 10
-            #replication_factor: 100
+            replication_factor: 100
             job_interarrival_time_dist:
                 _target_: ddls.distributions.uniform.Uniform
                 #min_val: 1
                 #max_val: 1000
-                min_val: 15000
-                max_val: 15000
+                min_val: 1000 
+                max_val: 1000 
             job_sampling_mode: remove
             shuffle_files: False
             num_training_steps: 50
@@ -51,11 +51,14 @@ eval_loop:
         reward_function: lookahead_job_completion_time
         reward_function_kwargs:
             fail_reward: job_sequential_completion_time
-            fail_reward_factor: 2
+            #fail_reward_factor: 2
+            fail_reward_factor: 1
             sign: -1
             inverse: false
             #transform_with_log: true
             transform_with_log: false
+            #normaliser: job_sequential_completion_time
+            normaliser: job_sequential_completion_time_times_fail_reward_factor
 
         op_partitioner: sip_ml_op_partitioner
         op_partitioner_kwargs:
@@ -75,12 +78,10 @@ eval_loop:
 
 
     actor:
-        _target_: ddls.environments.ramp_job_placement_shaping.agents.random.Random
+        # HEURISTIC AGENTS
+        #_target_: ddls.environments.ramp_job_placement_shaping.agents.random.Random
         #_target_: ddls.environments.ramp_job_placement_shaping.agents.first_fit.FirstFit
-        #_target_: ddls.environments.ramp_job_placement_shaping.agents.last_fit.LastFit
-
-
-
+        _target_: ddls.environments.ramp_job_placement_shaping.agents.last_fit.LastFit
 
 experiment:
     #name: job_placing
@@ -92,31 +93,3 @@ experiment:
         - 1
         - 2
         - 3
-
-
-
-#launcher:
-    ##num_epochs: 1
-    #num_epochs: 50 # 500
-    ##num_epochs: 100 # 500
-    #num_episodes: null
-    #num_actor_steps: null
-    #num_eval_episodes: null
-    #eval_freq: null
-    #epoch_batch_size: 1
-    #verbose: True
-
-
-
-
-#logger:
-    #actor_step_log_freq: null
-    #episode_log_freq: 2
-    #epoch_log_freq: null
-    #use_sqlite_database: True
-
-
-
-
-#checkpointer:
-    #epoch_checkpoint_freq: 1

@@ -29,7 +29,8 @@ class RLlibEpochLoop:
                  rllib_config: dict,
                  path_to_model_cls: str = None,
                  path_to_validator_cls: str = None,
-                 validator_rllib_config: dict = None):
+                 validator_rllib_config: dict = None,
+                 **kwargs):
         rllib_config = OmegaConf.to_container(rllib_config, resolve=False)
 
         if 'callbacks' in rllib_config:

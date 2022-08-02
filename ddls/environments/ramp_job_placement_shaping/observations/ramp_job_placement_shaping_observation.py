@@ -4,6 +4,7 @@ from ddls.environments.ddls_observation import DDLSObservation
 from ddls.environments.ramp_cluster.ramp_cluster_environment import RampClusterEnvironment
 from ddls.demands.jobs.job import Job
 from ddls.utils import flatten_list, flatten_numpy_array
+from ddls.environments.ramp_cluster.agents.placers.utils import find_meta_block, dummy_ramp
 
 import gym
 import torch
@@ -65,47 +66,52 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
         # print(f'\nobs_space:\n{self.observation_space}')
     
     def get_action_set_and_action_mask(self, env):
+        # print(f'workers in use: {env.cluster.mounted_workers}')
+        ramp_shape = (env.cluster.topology.num_communication_groups, env.cluster.topology.num_racks_per_communication_group, env.cluster.topology.num_servers_per_rack)
+        ramp_topology = dummy_ramp(ramp_shape, env.cluster)
+
         action_set, action_mask, action = [0], [True], 1 # action 0 (not placing the job) is always valid
         for c in range(1, env.cluster.topology.num_communication_groups+1):
             for r in range(1, env.cluster.topology.num_racks_per_communication_group+1):
                 for s in range(1, env.cluster.topology.num_servers_per_rack+1):
                     # action_set.append((c, r, s))
                     action_set.append(copy.deepcopy(action))
+                    is_valid = False
                     if env.op_partition is None:
                         # not yet taken any partitioning actions, all job placing actions are valid
-                        action_mask.append(True)
+                        is_valid = True
                     else:
                         # job_id = list(env.op_partition.job_ids)[0]
                         job_id = self._get_job_to_encode(env).job_id
 
                         # OLD
                         # # cannot reserve fewer servers than the partition degree of a given job
-                        # action_mask.append(env.op_partition.job_id_to_max_partition_degree[job_id] <= r * s)
+                        # is_valid = env.op_partition.job_id_to_max_partition_degree[job_id] <= r * s
                         
                         # NEW
                         # Filter 1: Cannot reserve fewer servers than the partition degree of a given job, and cannot reserve more servers than are unoccupied in the topology
                         # # DEBUG
-                        # print(f'\nc={c} r={r} s={s} -> {c * r * s}')
-                        # print(f'job partition degree: {env.op_partition.job_id_to_max_partition_degree[job_id]}')
-                        # print(f'num workers available: {env.cluster.topology.graph.graph["num_workers"] - len(env.cluster.mounted_workers)}')
                         if env.op_partition.job_id_to_max_partition_degree[job_id] <= c * r * s <= env.cluster.topology.graph.graph['num_workers'] - len(env.cluster.mounted_workers):
+                        # if env.op_partition.job_id_to_max_partition_degree[job_id] <= r * s <= env.cluster.topology.graph.graph['num_workers'] - len(env.cluster.mounted_workers):
 
-                            action_mask.append(True) # print(f'Valid.')
+                            # # OLD
+                            # is_valid = True
 
+                            # # NEW
                             # # check symmetry rules
                             # if (c == r and r * s >= env.op_partition.job_id_to_max_partition_degree[job_id]) or (c == env.op_partition.job_id_to_max_partition_degree[job_id] and r == s == 1):
+                                # is_valid = True
+                                # print(f'Valid.')
 
-                                # action_mask.append(True)
-                                # # print(f'Valid.')
-                            
-                            # else:
-                                # action_mask.append(False)
-                                # # print(f'Invalid.')
+                            # NEW NEW
+                            # check meta block is valid with first fit search
+                            if find_meta_block(ramp_topology, ramp_shape, (c, r, s)) is not None:
+                                # valid meta block found
+                                is_valid = True
 
-                        else:
-                            action_mask.append(False)
-                            # print(f'Invalid.')
 
+                    # print(f'action {action} | c={c} r={r} s={s} -> {c * r * s} | job partition degree: {env.op_partition.job_id_to_max_partition_degree[job_id]} | num workers available: {env.cluster.topology.graph.graph["num_workers"] - len(env.cluster.mounted_workers)} | is_valid: {is_valid}')
+                    action_mask.append(is_valid)
                     action += 1
 
         return action_set, action_mask
@@ -239,6 +245,9 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
                     'edge_split': np.array(np.nan) # init as NaN and can replace if using obs padding
                  }
 
+        # add action mask to graph features
+        obs['graph_features'] = np.concatenate((obs['graph_features'], action_mask))
+
         # pad obs if required
         if self.pad_obs_kwargs is not None:
             obs = self._pad_obs(obs)
@@ -274,7 +283,8 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
     def _extract_graph_features(self, job, cluster):
         graph_features = flatten_list([self._get_job_features(job, cluster), 
                              # self._get_network_worker_features(job, cluster), 
-                             self._get_network_graph_features(job, cluster)
+                             self._get_network_graph_features(job, cluster),
+                             # self._get_action_mask_features(job, cluster)
                             ])
         if np.min(graph_features) < self.graph_features_low:
             raise Exception(f'graph_features_low set to {self.graph_features_low} but min feature val is {np.min(graph_features)}')
@@ -406,6 +416,9 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
             network_graph_features = flatten_numpy_array(network_graph_features)
 
         return network_graph_features
+
+    def _get_action_mask_features(self, job, cluster):
+        pass
 
     def _get_dep_features(self, dep, job, cluster, flatten=True):
         dep_features = []

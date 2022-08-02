@@ -23,6 +23,10 @@ def check_if_ramp_dep_placement_rules_broken(channel, job):
     '''
     rules_broken = []
 
+    # OLD
+    # TODO TEMP: Just ignoring channel rules and assuming Alessandro code accounts for them in placement
+
+    # UPDATED
     # Ramp Rule 1: No channel can have flows from more than one job
     if job.details['job_idx'] not in channel.mounted_job_idx_to_deps:
         # not yet mounted a flow from this job onto the channel

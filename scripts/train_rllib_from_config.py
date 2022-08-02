@@ -25,20 +25,20 @@ import shutil
 import os
 
 
-@hydra.main(config_path='configs', config_name='train_config.yaml')
+@hydra.main(config_path='configs', config_name='rllib_config.yaml')
 def run(cfg: DictConfig):
     if 'cuda_visible_devices' in cfg.experiment:
         os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(str(gpu) for gpu in cfg.experiment.cuda_visible_devices)
 
     # seeding
-    if 'seed' in cfg.experiment:
-        seed_stochastic_modules_globally(cfg.experiment.seed)
+    if 'train_seed' in cfg.experiment:
+        seed_stochastic_modules_globally(cfg.experiment.train_seed)
 
     # create dir for saving data
     save_dir = gen_unique_experiment_folder(path_to_save=cfg.experiment.path_to_save, experiment_name=cfg.experiment.name)
 
     # save copy of config to the save dir
-    OmegaConf.save(config=cfg, f=save_dir+'train_config.yaml')
+    OmegaConf.save(config=cfg, f=save_dir+'rllib_config.yaml')
 
     # print info
     print('\n\n\n')

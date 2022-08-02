@@ -108,6 +108,7 @@ def ff_meta_block(block_shapes,ramp_shape,ramp,mode,op_size=None,meta_block_orig
                     for j in range(ramp_shape[1]):
                         for k in range(ramp_shape[2]):
                             block = get_meta_block(C,R,S,ramp_shape,origin=((orgn_c+i),(orgn_r+j),(orgn_s+k)))
+                            # print(f'block: {block}')
 
                             if check_block(ramp,block,op_size,mode):
                                 if mode == 'sub':

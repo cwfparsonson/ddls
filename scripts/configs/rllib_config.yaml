@@ -1,11 +1,12 @@
 defaults:
-    #- epoch_loop: heuristic
-    - epoch_loop: rllib
+    #- epoch_loop: heuristic_loop
+    - epoch_loop: rllib_loop
 
 experiment:
     #name: job_placing
     name: ramp_job_placement_shaping
-    seed: 0
+    train_seed: 0
+    test_seed: 1799
     path_to_save: '/scratch/datasets/ddls/sims'
     cuda_visible_devices:
         #- 0

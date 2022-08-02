@@ -19,7 +19,7 @@ import pickle
 import gzip
 
 
-@hydra.main(config_path='configs', config_name='validate_config.yaml')
+@hydra.main(config_path='configs', config_name='heuristic_config.yaml')
 def run(cfg: DictConfig):
     if 'cuda_visible_devices' in cfg.experiment:
         os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(str(gpu) for gpu in cfg.experiment.cuda_visible_devices)
@@ -32,7 +32,7 @@ def run(cfg: DictConfig):
     save_dir = gen_unique_experiment_folder(path_to_save=cfg.experiment.path_to_save, experiment_name=cfg.experiment.name)
 
     # save copy of config to the save dir
-    OmegaConf.save(config=cfg, f=save_dir+'validate_config.yaml')
+    OmegaConf.save(config=cfg, f=save_dir+'heuristic_config.yaml')
 
     # print info
     print('\n\n\n')
@@ -52,7 +52,7 @@ def run(cfg: DictConfig):
 
     base_path = '/'.join(save_dir.split('/')[:-1])
     for log_name, log in results.items():
-        log_path = base_path + f'/validation_{log_name}'
+        log_path = base_path + f'/{log_name}'
         with gzip.open(log_path + '.pkl', 'wb') as f:
             pickle.dump(log, f)
         print(f'Saved validation data to {log_path}.pkl')
@@ -60,4 +60,3 @@ def run(cfg: DictConfig):
 
 if __name__ == '__main__':
     run()
-
