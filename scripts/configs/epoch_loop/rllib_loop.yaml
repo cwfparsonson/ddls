@@ -82,8 +82,8 @@ rllib_config:
         reward_function: lookahead_job_completion_time
         reward_function_kwargs:
             fail_reward: job_sequential_completion_time
-            #fail_reward_factor: 2
-            fail_reward_factor: 1
+            fail_reward_factor: 2
+            #fail_reward_factor: 1
             sign: -1
             inverse: false
             #transform_with_log: true

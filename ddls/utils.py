@@ -303,7 +303,16 @@ def pipedream_graph_from_txt_file(file_path, shift_node_ids_by=0, verbose=False)
             comp_and_memory = line[2].split(', ')
             comp_memory_feats = ['forward','backward','activation','parameter']
             for i in range(len(comp_memory_feats)):
-                node_features[comp_memory_feats[i]] = float(comp_and_memory[i].split('=')[1].replace('\n',''))
+                # OLD
+                # feat_val = comp_and_memory[i].split('=')[1].replace('\n', '')
+
+                # NEW (works with pipedream translation computation graphs as well)
+                feat_val = json.loads(comp_and_memory[i].split('=')[1].replace('\n', '').replace(';', ','))
+                if isinstance(feat_val, list):
+                    # HACK: Some of pipedream activation values are given as list, assume sum of this list is total activation size value for this operation
+                    feat_val = np.sum(feat_val)
+
+                node_features[comp_memory_feats[i]] = float(feat_val)
 
             nodes.append((node_id,node_features))
         else:
@@ -382,9 +391,8 @@ def ddls_graph_from_pipedream_graph(pipedream_graph,
                                     verbose: bool = False):
     if verbose:
         print('\n\n~~~ Original Pipedream Graph Nodes ~~~')
-    for node in pipedream_graph.nodes:
-        node_attrs = pipedream_graph.nodes[node]
-        if verbose:
+        for node in pipedream_graph.nodes:
+            node_attrs = pipedream_graph.nodes[node]
             print(f'\npipedream node {node} attrs:')
             print(node_attrs)
     
@@ -452,7 +460,7 @@ def ddls_graph_from_pipedream_txt_file(file_path: str,
                                            processor_type_profiled=processor_type_profiled, 
                                            verbose=verbose)
     graph.graph['file_path'] = file_path
-    graph.graph['graph_name'] = file_path.split('/')[-1].split('.')[0]
+    # graph.graph['graph_name'] = file_path.split('/')[-1].split('.')[0]
     return graph
 
 def get_forward_graph(computation_graph):
