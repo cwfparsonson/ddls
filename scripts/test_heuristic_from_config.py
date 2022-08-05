@@ -46,7 +46,7 @@ def run(cfg: DictConfig):
     print(f'Initialised {eval_loop}.')
 
     start_time = time.time()
-    results = eval_loop.run()
+    results = eval_loop.run(verbose=True)
     print(f'Finished validation in {time.time() - start_time:.3f} s.')
     print(f'Validation results:\n{results}')
 

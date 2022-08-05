@@ -18,18 +18,24 @@ class EvalLoop:
         self.env = env
         # self.seed = seed
 
-    def run(self):
+    def run(self, verbose=False):
         results = {'step_stats': defaultdict(list), 'episode_stats': {}}
 
         # if 'seed' in self.:
             # if self.seed is not None:
                 # seed_stochastic_modules_globally(self.seed)
 
+        if verbose:
+            print(f'Starting validation...')
         obs, done = self.env.reset(), False
         prev_idx = 0
+        step_counter = 1
         while not done:
             action = self.actor.compute_action(obs) 
             obs, reward, done, info = self.env.step(action)
+
+            if verbose:
+                print(f'Step {step_counter} | Action: {action} | Reward: {reward:.3f} | Jobs arrived: {self.env.cluster.num_jobs_arrived} | Jobs running: {len(self.env.cluster.jobs_running)} | Jobs completed: {len(self.env.cluster.jobs_completed)} | Jobs blocked: {len(self.env.cluster.jobs_blocked)}')
 
             results['step_stats']['action'].append(action)
             results['step_stats']['reward'].append(reward)
@@ -83,6 +89,7 @@ class EvalLoop:
                     results['step_stats'][key].append(_val[-1])
 
             prev_idx = copy.deepcopy(len(val))
+            step_counter += 1
 
         for key, val in self.env.cluster.episode_stats.items():
             try:

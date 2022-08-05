@@ -16,7 +16,8 @@ class RLlibEvalLoop:
         self.env = get_class_from_path(path_to_env_cls)(**self.rllib_config['env_config'])
 
     def run(self,
-            checkpoint_path: str):
+            checkpoint_path: str,
+            verbose: bool = False):
         results = {'step_stats': defaultdict(list), 'episode_stats': {}}
 
         if 'seed' in self.rllib_config:
@@ -25,11 +26,28 @@ class RLlibEvalLoop:
 
         self.actor.restore(checkpoint_path)
 
+        if verbose:
+            print(f'Starting validation...')
         obs, done = self.env.reset(), False
         prev_idx = 0
         while not done:
-            action = self.actor.compute_action(obs) 
+            # DEBUG
+            print(f'\nobs in rllib eval loop: {obs}')
+            for key, val in obs.items():
+                try:
+                    print(f'{key} -> shape {np.array(val).shape} | dtype {type(val[0][0])} | min {np.min(val)} | max {np.max(val)}')
+                except:
+                    print(f'{key} -> shape {np.array(val).shape} | dtype {type(val[0])} | min {np.min(val)} | max {np.max(val)}')
+            print(f'observation space of env:')
+            for key, val in self.env.observation_space.items():
+                print(f'{key} -> {val}')
+
+            # action = self.actor.compute_action(obs) 
+            action = self.actor.compute_single_action(obs) 
             obs, reward, done, info = self.env.step(action)
+
+            if verbose:
+                print(f'Step {step_counter} | Action: {action} | Reward: {reward:.3f} | Jobs arrived: {self.env.cluster.num_jobs_arrived} | Jobs running: {len(self.env.cluster.jobs_running)} | Jobs completed: {len(self.env.cluster.jobs_completed)} | Jobs blocked: {len(self.env.cluster.jobs_blocked)}')
 
             results['step_stats']['action'].append(action)
             results['step_stats']['reward'].append(reward)

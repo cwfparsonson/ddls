@@ -191,7 +191,8 @@ class RampJobPlacementShapingEnvironment(gym.Env):
         self._reset_cluster(seed=seed, verbose=verbose)
 
         # update op partition ready for next job placement shape decision by agent
-        self.op_partition = self.op_partitioner.get(cluster=self.cluster)
+        max_partitions_per_op = self.cluster.jobs_generator.max_partitions_per_op_in_observation
+        self.op_partition = self.op_partitioner.get(cluster=self.cluster, max_partitions_per_op=max_partitions_per_op)
 
         # reset the observation function
         self.observation_function.reset(self)
@@ -287,7 +288,8 @@ class RampJobPlacementShapingEnvironment(gym.Env):
 
         if not self.done:
             # update op partition ready for next job placement shape decision by agent
-            self.op_partition = self.op_partitioner.get(cluster=self.cluster)
+            max_partitions_per_op = self.cluster.jobs_generator.max_partitions_per_op_in_observation
+            self.op_partition = self.op_partitioner.get(cluster=self.cluster, max_partitions_per_op=max_partitions_per_op)
 
         if verbose:
             print(f'Reward: {self.reward} | Done: {self.done}')

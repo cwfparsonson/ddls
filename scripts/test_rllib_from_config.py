@@ -88,7 +88,7 @@ def run(cfg: DictConfig):
     print(f'Initialised {eval_loop}.')
 
     start_time = time.time()
-    results = eval_loop.run(checkpoint_path=cfg.epoch_loop.test_time_checkpoint_path)
+    results = eval_loop.run(checkpoint_path=cfg.epoch_loop.test_time_checkpoint_path, verbose=True)
     print(f'Finished validation of {cfg.epoch_loop.test_time_checkpoint_path} in {time.time() - start_time:.3f} s.')
     print(f'Validation results:\n{results}')
 

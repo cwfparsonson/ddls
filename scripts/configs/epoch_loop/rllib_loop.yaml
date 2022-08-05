@@ -19,8 +19,12 @@ validator_rllib_config:
     env_config:
         jobs_config:
             path_to_files: /scratch/datasets/ddls/jobs/pipedream_graphs/image_classification/profiles/alexnet/
+            #path_to_files: /scratch/datasets/ddls/jobs/pipedream_graphs/image_classification/profiles/resnext50/
+            #path_to_files: /scratch/datasets/ddls/jobs/image_classification_and_translation/small_graphs/training/
             max_files: null
-            replication_factor: 100
+            #replication_factor: 1
+            replication_factor: 200
+            #replication_factor: 1000
             job_interarrival_time_dist:
                 _target_: ddls.distributions.uniform.Uniform
                 #min_val: 1
@@ -30,6 +34,7 @@ validator_rllib_config:
             job_sampling_mode: remove
             shuffle_files: False
             num_training_steps: 50
+            max_partitions_per_op_in_observation: 2
     num_workers: 0 # num parallel cpu workers
     num_gpus: 0 # num gpus available for RLlib
 
@@ -64,10 +69,13 @@ rllib_config:
                 worker_io_latency: 0.000000100
 
         jobs_config:
-            #path_to_files: /scratch/datasets/ddls/jobs/tensorflow_synthetic_graphs/valid
             path_to_files: /scratch/datasets/ddls/jobs/pipedream_graphs/image_classification/profiles/alexnet/
-            max_files: 1
-            replication_factor: 100
+            #path_to_files: /scratch/datasets/ddls/jobs/pipedream_graphs/image_classification/profiles/resnext50/
+            #path_to_files: /scratch/datasets/ddls/jobs/image_classification_and_translation/small_graphs/training/
+            max_files: null
+            #replication_factor: 1
+            replication_factor: 200
+            #replication_factor: 1000
             job_sampling_mode: remove
             job_interarrival_time_dist:
                 _target_: ddls.distributions.uniform.Uniform
@@ -77,6 +85,7 @@ rllib_config:
                 max_val: 1000
             shuffle_files: true
             num_training_steps: 50
+            max_partitions_per_op_in_observation: 2
 
         #reward_function: mean_job_completion_time
         reward_function: lookahead_job_completion_time
@@ -94,7 +103,7 @@ rllib_config:
         op_partitioner: sip_ml_op_partitioner
         op_partitioner_kwargs:
             min_op_run_time_quantum: 0.000006 
-            max_partitions_per_op: 2
+            #max_partitions_per_op: 2
 
         op_placer: ramp_first_fit_op_placer
 
@@ -105,7 +114,8 @@ rllib_config:
         dep_scheduler: srpt_dep_scheduler
 
         pad_obs_kwargs:
-            max_nodes: 400
+            #max_nodes: 284
+            max_nodes: 300
 
     model:
         fcnet_hiddens:

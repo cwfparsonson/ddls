@@ -7,13 +7,24 @@ import random
 
 
 class RandomOpPartitioner:
-    def __init__(self, max_partitions_per_op: int = 2):
-        if max_partitions_per_op < 1:
-            raise Exception(f'max_partitions_per_op must be >= 1 but is {max_partitions_per_op}')
-        self.max_partitions_per_op = max_partitions_per_op
+    def __init__(self, 
+                # max_partitions_per_op: int = 2,
+                **kwargs):
+        # if max_partitions_per_op < 1:
+            # raise Exception(f'max_partitions_per_op must be >= 1 but is {max_partitions_per_op}')
+        # self.max_partitions_per_op = max_partitions_per_op
+        pass
 
     def get(self, 
-            cluster: RampClusterEnvironment):
+            cluster: RampClusterEnvironment,
+            max_partitions_per_op: int = 2,
+            **kwargs
+            ):
+        if max_partitions_per_op < 1:
+            raise Exception(f'max_partitions_per_op must be >= 1 but is {max_partitions_per_op}')
+        if max_partitions_per_op > 1 and max_partitions_per_op % 2 != 0:
+            raise Exception(f'max_partitions_per_op must be an even number but is {max_partitions_per_op}')
+
         # gather jobs which are requesting to be placed
         jobs = cluster.job_queue.jobs.values()
 
@@ -28,7 +39,7 @@ class RandomOpPartitioner:
 
             for forward_op_id in forward_graph.nodes:
                 # choose a number of times to partition this op
-                num_partitions = random.randint(1, self.max_partitions_per_op)
+                num_partitions = random.randint(1, max_partitions_per_op)
 
                 # partition this forward op
                 job_id_to_op_id_to_num_partitions[job_id][forward_op_id] = num_partitions

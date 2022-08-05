@@ -14,7 +14,8 @@ import copy
 
 class RampJobPlacementShapingObservation(DDLSObservationFunction):
     def __init__(self,
-                 pad_obs_kwargs: dict = None):
+                 pad_obs_kwargs: dict = None,
+                 ):
         '''
         Args:
             pad_obs_kwargs: If not None will look at jobs_config, get max number of nodes and
@@ -266,7 +267,14 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
         return obs
 
     def _extract_node_features(self, job, cluster):
-        return [self._get_op_features(node, job, cluster) for node in job.computation_graph.nodes]
+        node_features = [self._get_op_features(node, job, cluster) for node in job.computation_graph.nodes]
+
+        if np.min(node_features) < self.node_features_low:
+            raise Exception(f'node_features_low set to {self.node_features_low} but min feature val is {np.min(op_features)}')
+        if np.max(node_features) > self.node_features_high:
+            raise Exception(f'node_features_high set to {self.node_features_high} but max feature val is {np.max(op_features)}')
+
+        return node_features
 
     def _extract_edge_features(self, job, cluster):
         # edge_features = [np.array([1]) for _ in job.computation_graph.edges]
@@ -286,10 +294,12 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
                              self._get_network_graph_features(job, cluster),
                              # self._get_action_mask_features(job, cluster)
                             ])
+        # print(f'graph_features: {graph_features}') # DEBUG
         if np.min(graph_features) < self.graph_features_low:
             raise Exception(f'graph_features_low set to {self.graph_features_low} but min feature val is {np.min(graph_features)}')
         if np.max(graph_features) > self.graph_features_high:
             raise Exception(f'graph_features_high set to {self.graph_features_high} but max feature val is {np.max(graph_features)}')
+
         return graph_features
 
     def _extract_edges_src_dst(self, job):
@@ -319,6 +329,13 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
         job_features.append(np.array(num_ops, dtype=object))
 
         if cluster.jobs_generator.jobs_params['max_job_total_num_deps'] - cluster.jobs_generator.jobs_params['min_job_total_num_deps'] != 0:
+            # # DEBUG
+            # print(f'job: {job}')
+            # print(f'job details: {job.details}')
+            # print(f'graph.graph: {job.computation_graph.graph}')
+            # print(f'job edges: {len(list(job.computation_graph.edges()))}')
+            # print(f'min job total num deps: {cluster.jobs_generator.jobs_params["min_job_total_num_deps"]}')
+            # print(f'max job total num deps: {cluster.jobs_generator.jobs_params["max_job_total_num_deps"]}')
             num_deps = (len(job.computation_graph.edges()) - cluster.jobs_generator.jobs_params['min_job_total_num_deps']) / (cluster.jobs_generator.jobs_params['max_job_total_num_deps'] - cluster.jobs_generator.jobs_params['min_job_total_num_deps'])
         else:
             num_deps = 1
@@ -527,9 +544,9 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
         if flatten:
             op_features = flatten_numpy_array(op_features)
 
-        if np.min(op_features) < self.node_features_low:
-            raise Exception(f'node_features_low set to {self.node_features_low} but min feature val is {np.min(op_features)}')
-        if np.max(op_features) > self.node_features_high:
-            raise Exception(f'node_features_high set to {self.node_features_high} but max feature val is {np.max(op_features)}')
+        # if np.min(op_features) < self.node_features_low:
+            # raise Exception(f'node_features_low set to {self.node_features_low} but min feature val is {np.min(op_features)}')
+        # if np.max(op_features) > self.node_features_high:
+            # raise Exception(f'node_features_high set to {self.node_features_high} but max feature val is {np.max(op_features)}')
 
         return op_features

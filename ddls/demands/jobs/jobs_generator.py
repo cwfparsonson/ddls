@@ -19,6 +19,7 @@ class JobsGenerator:
                  job_sampling_mode: Union['replace', 'remove', 'remove_and_repeat'] = 'remove_and_repeat',
                  shuffle_files: bool = False, # whether or not to shuffle loaded file order when re-load files
                  num_training_steps: int = 1,
+                 max_partitions_per_op_in_observation: int = 1, # use to set max possible nodes and edges for normalising observation feats. N.B. set to None if max num edges and nodes in obs is just the size of the original graph rather than the partitioned graph (i.e. if doing partitioning with gym agent rather than as part of env)
                  ):
         self.shuffle_files = shuffle_files
 
@@ -55,9 +56,13 @@ class JobsGenerator:
         jobs = []
         for _ in range(replication_factor):
             for graph in ddls_computation_graphs:
-                details = {'job_name': graph.graph['graph_name']}
+                # # set model name as graph.txt file's parent folder
+                # details = {'model': graph.graph['file_path'].split('/')[-2]}
+                # set model name as <model>.txt file name
+                details = {'model': graph.graph['file_path'].split('/')[-1]}
                 jobs.append(Job(computation_graph=graph,
-                                num_training_steps=num_training_steps))
+                                num_training_steps=num_training_steps,
+                                details=details))
 
         # init job sampler
         self.job_sampler = Sampler(pool=jobs, sampling_mode=job_sampling_mode, shuffle=self.shuffle_files)
@@ -74,7 +79,8 @@ class JobsGenerator:
             self.job_interarrival_time_dist = job_interarrival_time_dist
 
         # init general parameters of jobs
-        self.jobs_params = self._init_jobs_params(jobs)
+        self.max_partitions_per_op_in_observation = max_partitions_per_op_in_observation
+        self.jobs_params = self._init_jobs_params(jobs, max_partitions_per_op_in_observation=self.max_partitions_per_op_in_observation)
 
     def __len__(self):
         return len(self.job_sampler)
@@ -89,7 +95,7 @@ class JobsGenerator:
         else:
             return self.job_interarrival_time_dist.sample(size=size)
 
-    def _init_jobs_params(self, jobs):
+    def _init_jobs_params(self, jobs, max_partitions_per_op_in_observation=1):
         jobs_params = defaultdict(lambda: [])
 
         # TODO TEMP: Assume one worker type, but should update to account for multiple worker types?
@@ -107,8 +113,29 @@ class JobsGenerator:
         for key, vals in jobs_params.items():
             updated_jobs_params[key] = vals
             updated_jobs_params[f'min_{key}'] = np.min(vals)
-            updated_jobs_params[f'max_{key}'] = np.max(vals)
-            updated_jobs_params[f'mean_{key}'] = np.mean(vals)
-            updated_jobs_params[f'std_{key}'] = np.std(vals)
+            if key in {'job_total_num_ops', 'job_total_num_deps', 'job_total_dep_sizes'}:
+                if key == 'job_total_num_ops':
+                    updated_jobs_params[f'max_{key}'] = int(np.max(vals) * max_partitions_per_op_in_observation) # each op can be split up to max partition degree times
+                elif key == 'job_total_num_deps':
+                    # updated_jobs_params[f'max_{key}'] = int( ((np.max(vals) / 2) * max_partitions_per_op_in_observation) + ((np.max(vals) * max_partitions_per_op_in_observation * 2) ) # each forward edge can be split, each backward edge can be split AND be bidirectional
+                    # QUESTION: Need to add (num_edges) / 2 extra edges since backward pass edges can be bidirectional when partitioned?
+                    max_forward_edges = int((np.max(vals) / 2) * max_partitions_per_op_in_observation * 2) # each edge has a parent and a child, both of which can be split, therefore max edges = # edges x max partition degree x 2
+                    max_backward_edges = int(max_forward_edges * 2) # backward edges can be bidirectional
+                    updated_jobs_params[f'max_{key}'] = max_forward_edges + max_backward_edges
+                elif key == 'job_total_dep_sizes':
+                    # # OLD
+                    # # edges in backward pass (i.e. 50% of overall edges) can be made bidirectinal -> total dep size doubles for these edges -> increase total dep size by 50%
+                    # updated_jobs_params[f'max_{key}'] = np.max(vals) * 1.5
+                    # # PROBLEM: If edges unequally weighted in backward pass, then cannot just increase total by 50%
+
+                    # NEW
+                    # SOLUTION: Just multiply by 2 (i.e. assumes forward edges can be bidirectional too) -> not perfect since will not normalise 0-1 (will be e.g. 0-0.6) but more simple than having to account for each edge
+                    updated_jobs_params[f'max_{key}'] = np.max(vals) * 2
+                else:
+                    raise Exception(f'Handling param {key} not implemented.')
+            else:
+                updated_jobs_params[f'max_{key}'] = np.max(vals)
+            # updated_jobs_params[f'mean_{key}'] = np.mean(vals)
+            # updated_jobs_params[f'std_{key}'] = np.std(vals)
 
         return updated_jobs_params
