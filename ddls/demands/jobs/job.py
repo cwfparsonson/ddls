@@ -350,6 +350,7 @@ class Job:
 
     def __str__(self):
         descr = f'Job ID: {self.job_id}'
+        descr += f' | Model: {self.details["model"]}'
         descr += f' | # nodes: {len(self.computation_graph.nodes)}'
         descr += f' | # edges: {len(self.computation_graph.edges)}'
         descr += f' | # training steps: {self.num_training_steps}'

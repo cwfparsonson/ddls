@@ -15,6 +15,7 @@ import copy
 class RampJobPlacementShapingObservation(DDLSObservationFunction):
     def __init__(self,
                  pad_obs_kwargs: dict = None,
+                 machine_epsilon: float = 1e-7,
                  ):
         '''
         Args:
@@ -24,8 +25,11 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
                 pad_obs_kwargs must be dict of {'max_nodes': <int>, 'max_edges': <int>}
                 UPDATE: Only needs to be {'max_nodes': <int>}, will then calc max edges
                 by assuming fully connected graph of max_nodes.
+            machine_epsilon: Add to obs feat values to stop getting negative feats due
+                to python floating point arithmetic.
         '''
         self.pad_obs_kwargs = pad_obs_kwargs
+        self.machine_epsilon = machine_epsilon
 
         # init obs space
         self._observation_space = None
@@ -34,6 +38,8 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
         self.node_features_low, self.node_features_high = 0, 1
         self.edge_features_low, self.edge_features_high = 0, 1
         self.graph_features_low, self.graph_features_high = 0, 1
+        self.edges_src_low, self.edges_src_high = 0, self.pad_obs_kwargs['max_nodes'] - 1
+        self.edges_dst_low, self.edges_dst_high = 0, self.pad_obs_kwargs['max_nodes'] - 1
 
     def reset(self, 
               env, # RampJobPlacementShapingEnvironment
@@ -57,8 +63,10 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
                 'node_features': gym.spaces.Box(low=self.node_features_low, high=self.node_features_high, shape=obs['node_features'].shape, dtype=obs['node_features'].dtype),
                 'edge_features': gym.spaces.Box(low=self.edge_features_low, high=self.edge_features_high, shape=obs['edge_features'].shape, dtype=obs['edge_features'].dtype),
                 'graph_features': gym.spaces.Box(low=self.graph_features_low, high=self.graph_features_high, shape=obs['graph_features'].shape, dtype=obs['graph_features'].dtype),
-                'edges_src': gym.spaces.Box(low=0, high=max(obs['edges_src'])+1, shape=obs['edges_src'].shape, dtype=obs['edges_src'].dtype),
-                'edges_dst': gym.spaces.Box(low=0, high=max(obs['edges_dst'])+1, shape=obs['edges_dst'].shape, dtype=obs['edges_dst'].dtype),
+                # 'edges_src': gym.spaces.Box(low=0, high=max(obs['edges_src'])+1, shape=obs['edges_src'].shape, dtype=obs['edges_src'].dtype),
+                # 'edges_dst': gym.spaces.Box(low=0, high=max(obs['edges_dst'])+1, shape=obs['edges_dst'].shape, dtype=obs['edges_dst'].dtype),
+                'edges_src': gym.spaces.Box(low=self.edges_src_low, high=self.edges_src_high, shape=obs['edges_src'].shape, dtype=obs['edges_src'].dtype),
+                'edges_dst': gym.spaces.Box(low=self.edges_src_low, high=self.edges_src_high, shape=obs['edges_dst'].shape, dtype=obs['edges_dst'].dtype),
                 'node_split': gym.spaces.Box(low=0, high=self.max_nodes, shape=(1,), dtype=obs['node_split'].dtype),
                 'edge_split': gym.spaces.Box(low=0, high=self.max_edges, shape=(1,), dtype=obs['edge_split'].dtype)
             })
@@ -230,6 +238,11 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
                     job: Job, 
                     env, # RampJobPlacementShapingEnvironment, 
                     flatten: bool = True):
+        # # DEBUG
+        # print(f'\nEncoding obs for job {job}')
+        # print(f'self.max_nodes: {self.max_nodes} | self.max_edges: {self.max_edges}')
+        # print(f'job nodes: {len(list(job.computation_graph.nodes()))} | job edges: {len(list(job.computation_graph.edges()))}')
+
         edges_src, edges_dst = self._extract_edges_src_dst(job)
         action_set, action_mask = self.get_action_set_and_action_mask(env)
         obs =   {
@@ -253,6 +266,20 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
         if self.pad_obs_kwargs is not None:
             obs = self._pad_obs(obs)
 
+        # # DEBUG
+        # print(f'encoded obs after padding: {obs}')
+        # for key, val in obs.items():
+            # try:
+                # print(f'{key} -> shape {np.array(val).shape} | dtype {type(val[0][0])} | min {np.min(val)} | max {np.max(val)}')
+            # except:
+                # print(f'{key} -> shape {np.array(val).shape} | dtype {type(val[0])} | min {np.min(val)} | max {np.max(val)}')
+        # print(f'observation space of env:')
+        # if env.observation_space is not None:
+            # for key, val in env.observation_space.items():
+                # print(f'{key} -> {val}')
+        # else:
+            # print(env.observation_space)
+
         # check for any invalid values
         for key, val in obs.items():
             if key not in set(['node_split', 'edge_split']):
@@ -270,9 +297,9 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
         node_features = [self._get_op_features(node, job, cluster) for node in job.computation_graph.nodes]
 
         if np.min(node_features) < self.node_features_low:
-            raise Exception(f'node_features_low set to {self.node_features_low} but min feature val is {np.min(op_features)}')
+            raise Exception(f'node_features_low set to {self.node_features_low} but min feature val is {np.min(node_features)}')
         if np.max(node_features) > self.node_features_high:
-            raise Exception(f'node_features_high set to {self.node_features_high} but max feature val is {np.max(op_features)}')
+            raise Exception(f'node_features_high set to {self.node_features_high} but max feature val is {np.max(node_features)}')
 
         return node_features
 
@@ -385,7 +412,12 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
         if flatten:
             job_features = flatten_numpy_array(job_features)
 
-        return job_features
+        # job_features = np.array(job_features, dtype=object) + self.machine_epsilon
+        for idx, el in enumerate(job_features):
+            if el < self.graph_features_low:
+                job_features[idx] += self.machine_epsilon
+
+        return job_features.tolist()
 
     # def _get_network_worker_features(self, job, cluster, flatten=True):
         # network_worker_features = []
@@ -432,7 +464,12 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
         if flatten:
             network_graph_features = flatten_numpy_array(network_graph_features)
 
-        return network_graph_features
+        # network_graph_features = np.array(network_graph_features, dtype=object) + self.machine_epsilon
+        for idx, el in enumerate(network_graph_features):
+            if el < self.graph_features_low:
+                network_graph_features[idx] += self.machine_epsilon
+
+        return network_graph_features.tolist()
 
     def _get_action_mask_features(self, job, cluster):
         pass
@@ -449,7 +486,12 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
         if flatten:
             dep_features = flatten_numpy_array(dep_features)
 
-        return dep_features
+        # dep_features = np.array(dep_features, dtype=object) + self.machine_epsilon
+        for idx, el in enumerate(dep_features):
+            if el < self.edge_features_low:
+                dep_features[idx] += self.machine_epsilon
+
+        return dep_features.tolist()
 
     def _get_op_features(self, op, job, cluster, flatten=True):
         op_features = []
@@ -544,9 +586,9 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
         if flatten:
             op_features = flatten_numpy_array(op_features)
 
-        # if np.min(op_features) < self.node_features_low:
-            # raise Exception(f'node_features_low set to {self.node_features_low} but min feature val is {np.min(op_features)}')
-        # if np.max(op_features) > self.node_features_high:
-            # raise Exception(f'node_features_high set to {self.node_features_high} but max feature val is {np.max(op_features)}')
+        # op_features = np.array(op_features, dtype=object) + self.machine_epsilon
+        for idx, el in enumerate(op_features):
+            if el < self.node_features_low:
+                op_features[idx] += self.machine_epsilon
 
-        return op_features
+        return op_features.tolist()

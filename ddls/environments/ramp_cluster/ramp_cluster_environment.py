@@ -256,7 +256,8 @@ class RampClusterEnvironment:
 
         # need to init following manually to ensure they're recorded in saved results
         step_stats['num_jobs_completed'] = 0
-        step_stats['num_jobs_running'] = 0
+        # step_stats['num_jobs_running'] = 0
+        step_stats['mean_num_jobs_running'] = []
         step_stats['num_jobs_arrived'] = 0
         step_stats['num_jobs_blocked'] = 0
 
@@ -711,7 +712,6 @@ class RampClusterEnvironment:
 
         # run step until next job arrives, a job is completed, or the simulation is completed
         step_done = False
-        self.step_stats['num_jobs_running'] = len(self.jobs_running)
         while not step_done:
             if verbose:
                 print('-'*80)
@@ -744,6 +744,8 @@ class RampClusterEnvironment:
 
                 mounted_worker_utilisation.append(job.details['mean_mounted_worker_utilisation_frac'])
                 # mounted_channel_utilisation.append(job.details['mean_mounted_channel_utilisation_frac'])
+
+            self.step_stats['mean_num_jobs_running'].append(len(self.jobs_running))
 
             self.step_stats['mean_compute_throughput'].append(compute_info_processed / tick)
             self.step_stats['mean_comm_throughput'].append(comm_info_processed / tick)
@@ -808,7 +810,10 @@ class RampClusterEnvironment:
         # log step-level data
         self.step_stats['step_end_time'] = self.stopwatch.time()
 
-        for metric in ['mean_num_mounted_workers',
+        for metric in [
+                       'mean_num_jobs_running',
+
+                       'mean_num_mounted_workers',
                        'mean_num_mounted_channels',
                     
                        'mean_compute_throughput',

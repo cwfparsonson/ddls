@@ -59,7 +59,7 @@ class JobsGenerator:
                 # # set model name as graph.txt file's parent folder
                 # details = {'model': graph.graph['file_path'].split('/')[-2]}
                 # set model name as <model>.txt file name
-                details = {'model': graph.graph['file_path'].split('/')[-1]}
+                details = {'model': graph.graph['file_path'].split('/')[-1].replace('.txt', '')}
                 jobs.append(Job(computation_graph=graph,
                                 num_training_steps=num_training_steps,
                                 details=details))
@@ -128,9 +128,16 @@ class JobsGenerator:
                     # updated_jobs_params[f'max_{key}'] = np.max(vals) * 1.5
                     # # PROBLEM: If edges unequally weighted in backward pass, then cannot just increase total by 50%
 
-                    # NEW
-                    # SOLUTION: Just multiply by 2 (i.e. assumes forward edges can be bidirectional too) -> not perfect since will not normalise 0-1 (will be e.g. 0-0.6) but more simple than having to account for each edge
-                    updated_jobs_params[f'max_{key}'] = np.max(vals) * 2
+                    # # NEW
+                    # # SOLUTION: Just multiply by 2 (i.e. assumes forward edges can be bidirectional too) -> not perfect since will not normalise 0-1 (will be e.g. 0-0.6) but more simple than having to account for each edge
+                    # updated_jobs_params[f'max_{key}'] = np.max(vals) * 2
+                    # # PROBLEM: Still does not work since some graphs exceed this. This is because more edges are added than just sync/bidirectional edges
+
+                    # NEW NEW
+                    # SOLUTION: Just assume graph can become fully connected
+                    max_nodes = np.max(jobs_params['job_total_num_ops']) * max_partitions_per_op_in_observation
+                    fully_connected_edges = int(max_nodes * (max_nodes - 1) / 2)
+                    updated_jobs_params[f'max_{key}'] = np.max(vals) * fully_connected_edges
                 else:
                     raise Exception(f'Handling param {key} not implemented.')
             else:

@@ -30,19 +30,8 @@ class RLlibEvalLoop:
             print(f'Starting validation...')
         obs, done = self.env.reset(), False
         prev_idx = 0
+        step_counter = 1
         while not done:
-            # DEBUG
-            print(f'\nobs in rllib eval loop: {obs}')
-            for key, val in obs.items():
-                try:
-                    print(f'{key} -> shape {np.array(val).shape} | dtype {type(val[0][0])} | min {np.min(val)} | max {np.max(val)}')
-                except:
-                    print(f'{key} -> shape {np.array(val).shape} | dtype {type(val[0])} | min {np.min(val)} | max {np.max(val)}')
-            print(f'observation space of env:')
-            for key, val in self.env.observation_space.items():
-                print(f'{key} -> {val}')
-
-            # action = self.actor.compute_action(obs) 
             action = self.actor.compute_single_action(obs) 
             obs, reward, done, info = self.env.step(action)
 
@@ -52,11 +41,8 @@ class RLlibEvalLoop:
             results['step_stats']['action'].append(action)
             results['step_stats']['reward'].append(reward)
             for key, val in self.env.cluster.steps_log.items():
-                # results['step_stats'][key].append(val)
-
                 # get vals which have been added to step stats over elapsed cluster steps
-                _val = val[int(prev_idx):]
-                try:
+                _val = val[int(prev_idx):] try:
                     _val = list(_val)
                 except TypeError:
                     # not iterable, put in list
@@ -103,6 +89,7 @@ class RLlibEvalLoop:
                     results['step_stats'][key].append(_val[-1])
 
             prev_idx = copy.deepcopy(len(val))
+            step_counter += 1
 
         for key, val in self.env.cluster.episode_stats.items():
             try:

@@ -10,6 +10,7 @@ from ddls.environments.ramp_cluster.agents.placers.first_fit_dep_placer import F
 from ddls.environments.ramp_cluster.agents.schedulers.srpt_dep_scheduler import SRPTDepScheduler
 
 from ddls.environments.ramp_job_placement_shaping.rewards.lookahead_job_completion_time import LookaheadJobCompletionTime
+from ddls.environments.ramp_job_placement_shaping.rewards.job_acceptance import JobAcceptance
 
 from ddls.environments.ramp_job_placement_shaping.observations.ramp_job_placement_shaping_observation import RampJobPlacementShapingObservation
 
@@ -43,7 +44,7 @@ class RampJobPlacementShapingEnvironment(gym.Env):
                  observation_function: Union['ramp_job_placement_shaping_observation'] = 'ramp_job_placement_shaping_observation',
                  pad_obs_kwargs: dict = None,
                  information_function: Union['default'] = 'default',
-                 reward_function: Union['lookahead_job_completion_time'] = 'lookahead_job_completion_time',
+                 reward_function: Union['lookahead_job_completion_time', 'job_acceptance'] = 'lookahead_job_completion_time',
                  reward_function_kwargs: dict = None,
                  max_simulation_run_time: Union[int, float] = float('inf'),
                  job_queue_capacity: int = 10,
@@ -94,6 +95,8 @@ class RampJobPlacementShapingEnvironment(gym.Env):
         self.reward_function_str = reward_function
         if reward_function == 'lookahead_job_completion_time':
             self.reward_function = LookaheadJobCompletionTime(**reward_function_kwargs)
+        elif reward_function == 'job_acceptance':
+            self.reward_function = JobAcceptance(**reward_function_kwargs)
         else:
             raise Exception(f'Unrecognised reward_function {self.reward_function_str}')
 
