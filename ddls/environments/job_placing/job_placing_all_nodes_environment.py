@@ -90,7 +90,7 @@ class JobPlacingAllNodesEnvironment(gym.Env):
         self.pad_obs_kwargs = pad_obs_kwargs
 
         # init ddls cluster simulator
-        self._init_cluster()
+        self.cluster = self._init_cluster()
 
         # init obs
         self.observation_function_str = observation_function
@@ -134,12 +134,12 @@ class JobPlacingAllNodesEnvironment(gym.Env):
 
 
     def _init_cluster(self):
-        self.cluster =  ClusterEnvironment(topology_config=self.topology_config,
-                                           node_config=self.node_config,
-                                           name=self.cluster_name,
-                                           path_to_save=self.path_to_save if self.save_cluster_data else None,
-                                           save_freq=self.save_freq,
-                                           use_sqlite_database=self.use_sqlite_database)
+        return ClusterEnvironment(topology_config=self.topology_config,
+                                   node_config=self.node_config,
+                                   name=self.cluster_name,
+                                   path_to_save=self.path_to_save if self.save_cluster_data else None,
+                                   save_freq=self.save_freq,
+                                   use_sqlite_database=self.use_sqlite_database)
 
     def _reset_cluster(self, seed: int = None):
         _ = self.cluster.reset(jobs_config=self.jobs_config,
@@ -245,9 +245,9 @@ class JobPlacingAllNodesEnvironment(gym.Env):
         # extract obs node and edge features
         obs = self.observation_function.extract(cluster=self.cluster, done=self._is_done())
 
-        # # set obs action info
-        # obs.action_set = self._get_action_set()
-        # obs.action_mask = self._get_action_mask()
+        # set obs action info
+        obs.action_set = self._get_action_set()
+        obs.action_mask = self._get_action_mask()
 
         return obs
 

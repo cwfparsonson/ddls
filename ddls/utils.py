@@ -2,6 +2,7 @@ import numpy as np
 import random
 import copy
 import glob
+import collections
 from collections import defaultdict
 import time
 import json
@@ -50,7 +51,9 @@ def seed_stochastic_modules_globally(default_seed=0,
 class Sampler:
     def __init__(self, 
                  pool: list,
-                 sampling_mode: str):
+                 sampling_mode: str,
+                 shuffle: bool = False, # whether or not to shuffle sampling pool when reset
+                 ):
         '''
         Args:
             sampling_mode ('replace', 'remove', 'remove_and_repeat')
@@ -58,6 +61,7 @@ class Sampler:
         self.original_pool = pool
         self.sample_pool = copy.deepcopy(self.original_pool)
         self.sampling_mode = sampling_mode
+        self.shuffle = shuffle
     
     def sample(self):
         idx = np.random.randint(low=0, high=len(self.sample_pool))
@@ -84,6 +88,8 @@ class Sampler:
 
     def reset(self):
         self.sample_pool = copy.deepcopy(self.original_pool)
+        if self.shuffle:
+            random.shuffle(self.sample_pool)
 
 
 
@@ -257,8 +263,213 @@ def ddls_graph_from_pbtxt_file(file_path: str,
                                        processor_type_profiled=processor_type_profiled, 
                                        verbose=verbose)
 
+def pipedream_graph_from_txt_file(file_path, shift_node_ids_by=0, verbose=False):
+    '''
+    Args:
+        shift_node_ids_by (int): How much to shift all node IDs by. Use to e.g. 
+            ensure node ids start at your desired root ID.
+    '''
+    graph = nx.DiGraph()
+
+    f = list(open(file_path,'r'))
+
+    nodes = []
+    edges = []
+
+    for line in f:
+
+        line = line.split(' -- ')
+        for idx, el in enumerate(line):
+            line[idx] = el.split('\t')[-1]
+
+        #if this line represents a node
+        if len(line) > 2:
+
+            node_features = {}
+
+            #get node id
+            node_id = str(int(line[0][4:]) + shift_node_ids_by)
+
+            #get op id
+            op_id = line[1].split('(')[0]
+
+            node_features['type'] = op_id
+
+            #get op details
+            op_details = str(line[1].split(op_id)[1][1:-1]).split(', ')
 
 
+            #get compute time and memory details
+            comp_and_memory = line[2].split(', ')
+            comp_memory_feats = ['forward','backward','activation','parameter']
+            for i in range(len(comp_memory_feats)):
+                # OLD
+                # feat_val = comp_and_memory[i].split('=')[1].replace('\n', '')
+
+                # NEW (works with pipedream translation computation graphs as well)
+                feat_val = json.loads(comp_and_memory[i].split('=')[1].replace('\n', '').replace(';', ','))
+                if isinstance(feat_val, list):
+                    # HACK: Some of pipedream activation values are given as list, assume sum of this list is total activation size value for this operation
+                    feat_val = np.sum(feat_val)
+
+                node_features[comp_memory_feats[i]] = float(feat_val)
+
+            nodes.append((node_id,node_features))
+        else:
+
+            src = int(line[0][4:]) + shift_node_ids_by
+            dst = int(line[1][4:]) + shift_node_ids_by
+
+            edges.append((str(src),str(dst))) #assume only 1 data channel for now
+
+    # get initial graph
+    graph.add_nodes_from(nodes)
+    graph.add_edges_from(edges)
+
+    return graph
+
+def mirror_graph(graph):
+    forward_graph = graph.copy()
+    n = len(forward_graph.nodes())
+
+    backward_nodes = []
+    # for i in range(1,len(forward_graph.nodes())+1):
+    for i in forward_graph.nodes():
+        backward_node_id = str(2*n-(int(i)-1))
+
+        # set extra attrs for backward node
+        forward_graph.nodes[str(i)]['forward_node_id'] = i
+        forward_graph.nodes[str(i)]['backward_node_id'] = None
+        backward_nodes.append((backward_node_id,forward_graph.nodes[str(i)]))
+
+        # update extra attrs for forward node
+        forward_graph.nodes[str(i)]['forward_node_id'] = None
+        forward_graph.nodes[str(i)]['backward_node_id'] = backward_node_id
+
+    backward_edges = list(forward_graph.edges())
+    for i in range(len(backward_edges)):
+        backward_edges[i] = (str(2*n-(int(backward_edges[i][1])-1)),str(2*n-(int(backward_edges[i][0])-1)))
+
+    backward_graph = nx.DiGraph()
+    # for node, node_attrs in zip(nodes, nodes_attrs):
+        # backward_graph.add_node(node, **node_attrs)
+    backward_graph.add_nodes_from(backward_nodes)
+    backward_graph.add_edges_from(backward_edges)
+
+    return forward_graph, backward_graph
+
+def combine_graphs(forward, backward):
+    forward_nodes = list(forward.nodes())
+    backward_nodes = list(backward.nodes())
+
+    for i in list(forward.nodes()):
+        forward.nodes[str(i)]['compute'] = forward.nodes[str(i)]['forward']
+        forward.nodes[str(i)]['pass_type'] = 'forward_pass'
+        del forward.nodes[str(i)]['forward']
+        del forward.nodes[str(i)]['backward']
+
+    for i in list(backward.nodes()):
+        backward.nodes[str(i)]['compute'] = backward.nodes[str(i)]['backward']
+        backward.nodes[str(i)]['pass_type'] = 'backward_pass'
+        backward.nodes[str(i)]['forward_node_id'] = backward.nodes[str(i)]['forward_node_id']
+        del backward.nodes[str(i)]['forward']
+        del backward.nodes[str(i)]['backward']
+
+    join_0, join_1 = max([int(nd) for nd in forward_nodes]),min([int(nd) for nd in backward_nodes])
+    joined = nx.union(forward,backward)
+
+    joined.add_edge(str(join_0),str(join_1))
+
+    for edge in joined.edges():
+        edge = tuple(edge)
+        joined.edges[edge[0],edge[1]]['communication'] = joined.nodes[edge[0]]['activation']
+
+    return joined
+
+def ddls_graph_from_pipedream_graph(pipedream_graph,
+                                    processor_type_profiled: str = 'A100',
+                                    verbose: bool = False):
+    if verbose:
+        print('\n\n~~~ Original Pipedream Graph Nodes ~~~')
+        for node in pipedream_graph.nodes:
+            node_attrs = pipedream_graph.nodes[node]
+            print(f'\npipedream node {node} attrs:')
+            print(node_attrs)
+    
+    # get mirrored forward and backward computation graph
+    forward, backward = mirror_graph(pipedream_graph)
+    fb_pipedream_graph = combine_graphs(forward=forward, backward=backward)
+
+    # init ddls graph
+    ddls_graph = nx.MultiDiGraph()
+
+    if verbose:
+        print('\n\n~~~ Adding Nodes from F-B Pipedream Graph to DDLS Graph ~~~')
+    for node in fb_pipedream_graph.nodes:
+        node_attrs = fb_pipedream_graph.nodes[node]
+        if verbose:
+            print(f'\nF-B pipedream node {node} attrs:')
+            print(node_attrs)
+        
+        node = int(node)
+        ddls_graph.add_node(node,
+                            compute_cost={processor_type_profiled: node_attrs['compute'] if 'compute' in node_attrs else 0},
+                            memory_cost=node_attrs['activation'] + node_attrs['parameter'],
+                            pass_type=node_attrs['pass_type'],
+                            forward_node_id=node_attrs['forward_node_id'] if 'forward_node_id' in node_attrs else None,
+                            backward_node_id=node_attrs['backward_node_id'] if 'backward_node_id' in node_attrs else None)
+            
+        if verbose:
+            print(f'DDLS node {node} attrs:')
+            print(ddls_graph.nodes[node])
+
+    if verbose:
+        print('\n\n~~~ Adding Edges from F-B Pipedream Graph to DDLS Graph ~~~')
+    for edge in fb_pipedream_graph.edges:
+        u, v = edge
+        k = 0 # multi-graph key index hardcoded as 0
+        edge_attrs = fb_pipedream_graph[u][v]
+        if verbose:
+            print(f'\nF-B pipedream edge {edge} attrs:')
+            print(edge_attrs)
+            
+        u, v, k = int(u), int(v), int(k)
+        ddls_graph.add_edge(u_for_edge=u,
+                            v_for_edge=v,
+                            key=k,
+                            size=edge_attrs['communication'] if 'communication' in edge_attrs else 0)
+        
+        if verbose:
+            print(f'DDLS edge {edge} attrs:')
+            print(ddls_graph[u][v][k])
+            
+    if verbose:
+        print(f'\nNum nodes: {len(ddls_graph.nodes)}')
+        print(f'Num edges: {len(ddls_graph.edges)}')
+    
+    return ddls_graph
+    
+
+
+def ddls_graph_from_pipedream_txt_file(file_path: str,
+                                       processor_type_profiled: str,
+                                       verbose: bool = False):
+    '''Assumes .txt file follows the convention of the pipedream .txt graph profiles.'''
+    pipedream_computation_graph = pipedream_graph_from_txt_file(file_path, verbose=verbose)
+    graph = ddls_graph_from_pipedream_graph(pipedream_computation_graph, 
+                                           processor_type_profiled=processor_type_profiled, 
+                                           verbose=verbose)
+    graph.graph['file_path'] = file_path
+    # graph.graph['graph_name'] = file_path.split('/')[-1].split('.')[0]
+    return graph
+
+def get_forward_graph(computation_graph):
+    '''Removes nodes and edges from a graph which originally contains both the forward and backward pass.'''
+    forward_graph = copy.deepcopy(computation_graph)
+    for node in computation_graph.nodes():
+        if computation_graph.nodes[node]['pass_type'] == 'backward_pass':
+            forward_graph.remove_node(node)
+    return forward_graph 
 
 class Stopwatch:
     def __init__(self):
@@ -288,7 +499,6 @@ def get_module_from_path(path):
     '''
     return importlib.import_module(path)
      
-
 def get_class_from_path(path):
     '''
     Path must be the path to the class **without** the .py extension.
@@ -299,7 +509,6 @@ def get_class_from_path(path):
     path_to_class = '.'.join(path.split('.')[:-1])
     module = __import__(path_to_class, fromlist=[ClassName])
     return getattr(module, ClassName)
-
 
 def gen_unique_experiment_folder(path_to_save, experiment_name):
     # init highest level folder
@@ -321,10 +530,55 @@ def gen_unique_experiment_folder(path_to_save, experiment_name):
 def transform_with_log(val):
     return math.copysign(1, val) * math.log(1 + abs(val), 10)
 
+def gen_channel_id(src, dst, channel_number):
+    '''
+    src and dst are the two server nodes between which the channel exists on a link, 
+    channel_number is the global channel number of the channel.
+    '''
+    return f'src_{src}_dst_{dst}_channel_{channel_number}'
 
+def init_nested_hash():
+    return defaultdict(init_nested_hash)
 
+def gen_job_dep_str(job_idx, job_id, dep_id):
+    return json.dumps(job_idx) + '_' + json.dumps(job_id) + '_' + json.dumps(dep_id)
 
+def load_job_dep_str(job_dep, conv_lists_to_tuples=True):
+    job_idx, job_id, dep_id = [json.loads(i) for i in job_dep.split('_')]
+    if isinstance(dep_id, list) and conv_lists_to_tuples:
+        # is an edge dependency, convert to hashable type tuple as in networkx (json has no concept of tuples so was mistakenly json'd as list rather than tuple)
+        dep_id = tuple(dep_id)
+    return job_idx, job_id, dep_id
 
+def recursively_instantiate_classes_in_hydra_config(d):
+    for k, v in d.items():
+        if isinstance(v, dict):
+            recursively_instantiate_classes_in_hydra_config(v)
+        else:
+            hydra.utils.instantiate(d[k])
+
+def recursively_update_nested_dict(orig_dict, overrides, verbose=False):
+    if verbose:
+        print(f'\nRecursively updating orig_dict {orig_dict} with overrides {overrides}')
+    for key, val in overrides.items():
+        if verbose:
+            print(f'key: {key} | val: {type(val)} {val}')
+        if key not in orig_dict:
+            if verbose:
+                print(f'key not in orig_dict, adding...')
+            orig_dict[key] = val
+        else:
+            if isinstance(val, collections.Mapping):
+                if verbose:
+                    print(f'val is a Mapping, re-running recursion...')
+                orig_dict[key] = recursively_update_nested_dict(orig_dict[key], val)
+            else:
+                if verbose:
+                    print(f'val is not a Mapping, updating...')
+                orig_dict[key] = val
+    if verbose:
+        print(f'Recursively updated orig_dict: {orig_dict}')
+    return orig_dict
 
 
 

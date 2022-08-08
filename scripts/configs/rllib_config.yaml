@@ -1,0 +1,36 @@
+defaults:
+    #- epoch_loop: heuristic_loop
+    - epoch_loop: rllib_loop
+
+experiment:
+    #name: job_placing
+    name: ramp_job_placement_shaping
+    train_seed: 0
+    test_seed: 1799
+    path_to_save: '/scratch/datasets/ddls/sims'
+    cuda_visible_devices:
+        #- 0
+        - 1
+        - 2
+        - 3
+
+launcher:
+    #num_epochs: 1
+    #num_epochs: 50 # 500
+    #num_epochs: 100 # 500
+    num_epochs: 500 # 500
+    num_episodes: null
+    num_actor_steps: null
+    num_eval_episodes: null
+    eval_freq: null
+    epoch_batch_size: 1
+    verbose: True
+
+logger:
+    actor_step_log_freq: null
+    episode_log_freq: 2
+    epoch_log_freq: null
+    use_sqlite_database: True
+
+checkpointer:
+    epoch_checkpoint_freq: 1

@@ -16,4 +16,6 @@ class DDLSObservationFunction(ABC):
     def observation_space(self):
         pass
 
-
+    @abstractmethod
+    def get_action_set_and_action_mask(self, cluster: ClusterEnvironment):
+        pass
