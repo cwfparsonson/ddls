@@ -1,11 +1,16 @@
 from ddls.loops.env_loop import EnvLoop
 from ddls.loops.epoch_loop import EpochLoop
+# from ddls.loops.eval_loop import EvalLoop
+# from ddls.loops.rllib_eval_loop import RLlibEvalLoop
+from ddls.loops.rllib_epoch_loop import RLlibEpochLoop 
 from ddls.loggers.logger import Logger
 from ddls.checkpointers.checkpointer import Checkpointer
 
 import numpy as np
 import time
 from collections import defaultdict
+
+from typing import Union
 
 
 
@@ -17,7 +22,8 @@ class Launcher:
                  num_eval_episodes: int = None,
                  eval_freq: int = None,
                  env_loop: EnvLoop = None,
-                 epoch_loop: EpochLoop = None,
+                 epoch_loop: Union[RLlibEpochLoop, EpochLoop] = None,
+                 # eval_loop: Union[RLlibEvalLoop, EvalLoop] = None,
                  epoch_batch_size: int = 1,
                  verbose: bool = False):
 
@@ -34,6 +40,7 @@ class Launcher:
 
         self.env_loop = env_loop 
         self.epoch_loop = epoch_loop
+        # self.eval_loop = eval_loop
         self.epoch_batch_size = epoch_batch_size
 
         self.verbose = verbose
@@ -44,8 +51,10 @@ class Launcher:
             self.epoch_counter += 1
             if 'rllib_results' in _results:
                 # using rllib epoch loop
-                self.episode_counter += _results['rllib_results']['episodes_this_iter']
-                self.actor_step_counter += _results['rllib_results']['timesteps_this_iter']
+                # self.episode_counter += _results['rllib_results']['episodes_this_iter']
+                # self.actor_step_counter += _results['rllib_results']['timesteps_this_iter']
+                self.episode_counter = _results['rllib_results']['episodes_total']
+                self.actor_step_counter = _results['rllib_results']['agent_timesteps_total']
             else:
                 # using custom epoch loop
                 self.episode_counter += self.epoch_batch_size
@@ -98,6 +107,10 @@ class Launcher:
             # save initial agent checkpoint
             checkpointer.write(self.epoch_loop)
 
+            if self.epoch_loop.validator is not None:
+                # run evaluation thread of checkpoint just saved
+                self.epoch_loop.validate(self.epoch_loop.last_agent_checkpoint, save_results=True)
+
         # run launcher
         while not self._check_if_should_stop():
             # step the launcher
@@ -124,6 +137,10 @@ class Launcher:
             if checkpointer is not None and self.epoch_loop is not None:
                 if self.epoch_counter % checkpointer.epoch_checkpoint_freq == 0:
                     checkpointer.write(self.epoch_loop)
+
+                    if self.epoch_loop.validator is not None:
+                        # run evaluation thread of checkpoint just saved
+                        self.epoch_loop.validate(self.epoch_loop.last_agent_checkpoint, save_results=True)
 
     def _check_if_should_log(self, logger):
         should_log = False
@@ -157,27 +174,3 @@ class Launcher:
                 if self.actor_step_counter >= self.num_actor_steps:
                     stop = True
         return stop
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -1,6 +1,6 @@
 from ddls.ml_models.models import GNN
 
-from typing import Sequence
+from typing import Sequence, Union
 import gym
 from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.modules.noisy_layer import NoisyLayer
@@ -52,8 +52,17 @@ class GNNPolicy(TorchModelV2, nn.Module):
         action_space,
         num_outputs,
         model_config,
-        name
+        name,
     ):
+        '''
+        model_config:
+            action_space_type ('continuous', 'discrete'): Whether the action space
+                is continuous or discrete. If continuous, policy will output
+                2*action_space.n logits, where outputting the mean and variance of a Gaussian
+                distribution over each dimension of the action space. If discrete,
+                policy will output action_space.n logits; one logit for each possible
+                discrete action. Can then mask appropriately.
+        '''
 
         nn.Module.__init__(self)
         super(GNNPolicy, self).__init__(
@@ -68,17 +77,21 @@ class GNNPolicy(TorchModelV2, nn.Module):
         
         self.gnn = GNN(self.config)
 
-        self.graph_layer = nn.Linear(self.config['in_features_graph'],self.config['out_features_graph'])
+        self.graph_layer = nn.Linear(self.config['in_features_graph'], self.config['out_features_graph'])
 
+        if self.config['action_space_type'] == 'continuous':
+            num_logits = 2 * action_space.n
+        elif self.config['action_space_type'] == 'discrete':
+            num_logits = action_space.n
+        else:
+            raise Exception(f'Unrecognised model_config action_space_type {self.config["action_space_type"]}.')
         self.logit_layer = FC(
             Box(-1,1,shape=(self.config['out_features_graph']+self.config['out_features'],)),
             action_space,
-            2,
+            num_logits,
             model_config,
             name + "_logits"
         )
-
-        
 
         self.initialising = True
         self.initialised = False
@@ -213,8 +226,16 @@ class GNNPolicy(TorchModelV2, nn.Module):
 
         #calculate logits/output from this final representation
         logits, _ = self.logit_layer({
-            'obs':final_emb
+            'obs': final_emb
         })
+
+        if self.config['action_space_type'] == 'discrete':
+            # apply action masking; use inf action mask where invalid actioins have the smallest possible float value (so that will be 0 when RLLib applies softmax over logits and therefore will never be sampled) and 0 otherwise (so logit values will be unchanged)
+            inf_mask = torch.maximum(
+                                     torch.log(input_dict['obs']['action_mask']).to(device), 
+                                     torch.tensor(torch.finfo(torch.float32).min).to(device)
+                                    ).to(device)
+            logits += inf_mask
 
         return logits, state
 

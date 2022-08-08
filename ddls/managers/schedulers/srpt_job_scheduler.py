@@ -22,14 +22,14 @@ class SRPTJobScheduler(JobScheduler):
             pass
 
         # combine current cluster placement status with new placement decisions so can schedule ops
-        placement = copy.deepcopy(cluster.placement)
+        placement = copy.deepcopy(cluster.job_op_placement)
         for job_id in new_placements.keys():
             placement[job_id] = new_placements[job_id]
 
         # gather the placed jobs for which an op schedule is needed
-        jobs = [job for job in cluster.job_queue.jobs.values() if job_id in new_placements]
-        for job in cluster.jobs_running.values():
-            jobs.append(job)
+        jobs = [job for job in cluster.job_queue.jobs.values() if job.job_id in new_placements]
+        # for job in cluster.jobs_running.values():
+            # jobs.append(job)
 
         # initialise useful mappings
         job_id_to_job = {job.job_id: job for job in jobs}

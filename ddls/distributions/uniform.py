@@ -20,7 +20,7 @@ class Uniform(Distribution):
                replace: bool = True):
         return np.random.choice(
                         np.around(
-                            np.arange(self.min_val, self.max_val, self.interval), 
+                            np.arange(self.min_val, self.max_val+self.interval, self.interval), 
                             decimals=self.decimals), 
                         size=size, replace=replace)
 

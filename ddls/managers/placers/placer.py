@@ -10,8 +10,7 @@ class Placer(ABC):
         self.parallelisation = parallelisation
     
     @abstractmethod
-    def get_placement(self, 
-                      jobs: list[Job], 
-                      cluster: ClusterEnvironment):
+    def get(self, 
+            cluster: ClusterEnvironment):
         '''Place jobs in the cluster.'''
         pass
