@@ -4,7 +4,7 @@ from ddls.environments.ddls_observation import DDLSObservation
 from ddls.environments.ramp_cluster.ramp_cluster_environment import RampClusterEnvironment
 from ddls.demands.jobs.job import Job
 from ddls.utils import flatten_list, flatten_numpy_array
-from ddls.environments.ramp_cluster.agents.placers.utils import find_meta_block, dummy_ramp
+from ddls.environments.ramp_cluster.agents.placers.utils import find_meta_block, dummy_ramp, get_factor_pairs, get_block_shapes, get_block
 
 import gym
 import torch
@@ -12,8 +12,9 @@ import networkx as nx
 import numpy as np
 import copy
 
-class RampJobPlacementShapingObservation(DDLSObservationFunction):
+class RampJobPartitioningObservation(DDLSObservationFunction):
     def __init__(self,
+                 max_partitions_per_op: int,
                  pad_obs_kwargs: dict = None,
                  machine_epsilon: float = 1e-7,
                  ):
@@ -28,6 +29,7 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
             machine_epsilon: Add to obs feat values to stop getting negative feats due
                 to python floating point arithmetic.
         '''
+        self.max_partitions_per_op = max_partitions_per_op
         self.pad_obs_kwargs = pad_obs_kwargs
         self.machine_epsilon = machine_epsilon
 
@@ -75,53 +77,54 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
         # print(f'\nobs_space:\n{self.observation_space}')
     
     def get_action_set_and_action_mask(self, env):
-        # print(f'workers in use: {env.cluster.mounted_workers}')
+        # action_set, action_mask = [0], [True] # action = 0 (do not place job) is always valid
+        # for action in range(1, env.cluster.topology.graph.graph['num_workers']+1):
+            # action_set.append(action)
+            # is_valid = False
+            
+            # # if partitoning op (i.e. num partitions >1), then number of times op is partitioned must be even
+            # if (action > 1 and action % 2 == 0) or (action == 1):
+                # # cannot partition an op more times than max_partitions_per_op
+                # if action <= env.max_partitions_per_op:
+                    # # cannot partition an op more times than there are available workers
+                    # if action <= env.cluster.topology.graph.graph['num_workers'] - len(env.cluster.mounted_workers):
+                        # is_valid = True
+
+            # # # DEBUG
+            # # print(f'action: {action} | max_partitions_per_op: {env.max_partitions_per_op} | num available workers: {env.cluster.topology.graph.graph["num_workers"] - len(env.cluster.mounted_workers)} -> is_valid: {is_valid}')
+
+            # action_mask.append(is_valid)
+
         ramp_shape = (env.cluster.topology.num_communication_groups, env.cluster.topology.num_racks_per_communication_group, env.cluster.topology.num_servers_per_rack)
-        ramp_topology = dummy_ramp(ramp_shape, env.cluster)
+        action_set, action_mask = [0], [True] # action = 0 (do not place job) is always valid
+        for action in range(1, env.cluster.topology.graph.graph['num_workers']+1):
+            action_set.append(action)
+            is_valid = False
 
-        action_set, action_mask, action = [0], [True], 1 # action 0 (not placing the job) is always valid
-        for c in range(1, env.cluster.topology.num_communication_groups+1):
-            for r in range(1, env.cluster.topology.num_racks_per_communication_group+1):
-                for s in range(1, env.cluster.topology.num_servers_per_rack+1):
-                    # action_set.append((c, r, s))
-                    action_set.append(copy.deepcopy(action))
-                    is_valid = False
-                    if env.op_partition is None:
-                        # not yet taken any partitioning actions, all job placing actions are valid
-                        is_valid = True
-                    else:
-                        # job_id = list(env.op_partition.job_ids)[0]
-                        job_id = self._get_job_to_encode(env).job_id
-
-                        # OLD
-                        # # cannot reserve fewer servers than the partition degree of a given job
-                        # is_valid = env.op_partition.job_id_to_max_partition_degree[job_id] <= r * s
-                        
-                        # NEW
-                        # Filter 1: Cannot reserve fewer servers than the partition degree of a given job, and cannot reserve more servers than are unoccupied in the topology
-                        # # DEBUG
-                        if env.op_partition.job_id_to_max_partition_degree[job_id] <= c * r * s <= env.cluster.topology.graph.graph['num_workers'] - len(env.cluster.mounted_workers):
-                        # if env.op_partition.job_id_to_max_partition_degree[job_id] <= r * s <= env.cluster.topology.graph.graph['num_workers'] - len(env.cluster.mounted_workers):
-
-                            # # OLD
-                            # is_valid = True
-
-                            # # NEW
-                            # # check symmetry rules
-                            # if (c == r and r * s >= env.op_partition.job_id_to_max_partition_degree[job_id]) or (c == env.op_partition.job_id_to_max_partition_degree[job_id] and r == s == 1):
-                                # is_valid = True
-                                # print(f'Valid.')
-
-                            # NEW NEW
-                            # check meta block is valid with first fit search
-                            if find_meta_block(ramp_topology, ramp_shape, (c, r, s)) is not None:
-                                # valid meta block found
+            # if partitoning op (i.e. num partitions >1), then number of times op is partitioned must be even
+            if (action > 1 and action % 2 == 0) or (action == 1):
+                # cannot partition an op more times than max_partitions_per_op
+                if action <= env.max_partitions_per_op:
+                    # cannot partition an op more times than there are available workers
+                    if action <= env.cluster.topology.graph.graph['num_workers'] - len(env.cluster.mounted_workers):
+                        if action == 1:
+                            # run job sequentially on one worker
+                            is_valid = True
+                        else:
+                            # check if number of partitions has a valid shape which meets the ramp rule requirements
+                            pairs = get_factor_pairs(action)
+                            block_shapes = get_block_shapes(pairs, ramp_shape)
+                            b = []
+                            for shape in block_shapes:
+                                block = get_block(shape[0], shape[1], shape[2], ramp_shape)
+                                b.extend(block)
+                            if len(b) > 0:
                                 is_valid = True
 
+            # # DEBUG
+            # print(f'action: {action} | max_partitions_per_op: {env.max_partitions_per_op} | num available workers: {env.cluster.topology.graph.graph["num_workers"] - len(env.cluster.mounted_workers)} -> is_valid: {is_valid}')
 
-                    # print(f'action {action} | c={c} r={r} s={s} -> {c * r * s} | job partition degree: {env.op_partition.job_id_to_max_partition_degree[job_id]} | num workers available: {env.cluster.topology.graph.graph["num_workers"] - len(env.cluster.mounted_workers)} | is_valid: {is_valid}')
-                    action_mask.append(is_valid)
-                    action += 1
+            action_mask.append(is_valid)
 
         return action_set, action_mask
 
@@ -193,7 +196,8 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
 
     def _get_job_to_encode(self, env):
         # TODO: Implement where get given job and do per-job encoding?
-        return list(env.op_partition.partitioned_jobs.values())[0] # assume event-driven where only ever have one job to queue
+        # return list(env.op_partition.partitioned_jobs.values())[0] # assume event-driven where only ever have one job to queue
+        return list(env.cluster.job_queue.jobs.values())[0] # assume event-driven where only ever have one job to queue
 
     def _pad_obs(self, obs):
         padded_obs = copy.deepcopy(obs)
@@ -303,9 +307,9 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
         node_features = [self._get_op_features(node, job, cluster) for node in job.computation_graph.nodes]
 
         if np.min(node_features) < self.node_features_low:
-            raise Exception(f'node_features_low set to {self.node_features_low} but min feature val is {np.min(node_features)}')
+            raise Exception(f'node_features_low set to {self.node_features_low} but min feature val is {np.min(node_features)} at index {np.argmin(node_features)}')
         if np.max(node_features) > self.node_features_high:
-            raise Exception(f'node_features_high set to {self.node_features_high} but max feature val is {np.max(node_features)}')
+            raise Exception(f'node_features_high set to {self.node_features_high} but max feature val is {np.max(node_features)} at index {np.argmax(node_features)}')
 
         return node_features
 
@@ -315,9 +319,9 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
         edge_features = [self._get_dep_features(edge, job, cluster) for edge in job.computation_graph.edges]
 
         if np.min(edge_features) < self.edge_features_low:
-            raise Exception(f'edge_features_low set to {self.edge_features_low} but min feature val is {np.min(edge_features)}')
+            raise Exception(f'edge_features_low set to {self.edge_features_low} but min feature val is {np.min(edge_features)} at index {np.argmin(edge_features)}')
         if np.max(edge_features) > self.edge_features_high:
-            raise Exception(f'edge_features_high set to {self.edge_features_high} but max feature val is {np.max(edge_features)}')
+            raise Exception(f'edge_features_high set to {self.edge_features_high} but max feature val is {np.max(edge_features)} at index {np.argmax(edge_features)}')
 
         return edge_features
 
@@ -329,9 +333,9 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
                             ])
         # print(f'graph_features: {graph_features}') # DEBUG
         if np.min(graph_features) < self.graph_features_low:
-            raise Exception(f'graph_features_low set to {self.graph_features_low} but min feature val is {np.min(graph_features)}')
+            raise Exception(f'graph_features_low set to {self.graph_features_low} but min feature val is {np.min(graph_features)} at index {np.argmin(graph_features)}')
         if np.max(graph_features) > self.graph_features_high:
-            raise Exception(f'graph_features_high set to {self.graph_features_high} but max feature val is {np.max(graph_features)}')
+            raise Exception(f'graph_features_high set to {self.graph_features_high} but max feature val is {np.max(graph_features)} at index {np.argmax(graph_features)}')
 
         return graph_features
 
@@ -461,8 +465,8 @@ class RampJobPlacementShapingObservation(DDLSObservationFunction):
         num_mounted_workers = len(cluster.mounted_workers) / len(list(cluster.topology.graph.graph['worker_to_node'].keys()))
         network_graph_features.append(np.array(num_mounted_workers, dtype=object))
 
-        num_mounted_channels = len(cluster.mounted_channels) / (cluster.topology.num_channels * len(list(cluster.topology.graph.edges())))
-        network_graph_features.append(np.array(num_mounted_channels, dtype=object))
+        # num_mounted_channels = len(cluster.mounted_channels) / (cluster.topology.num_channels * len(list(cluster.topology.graph.edges())))
+        # network_graph_features.append(np.array(num_mounted_channels, dtype=object))
 
         num_jobs_running = len(list(cluster.jobs_running.keys())) / len(list(cluster.topology.graph.graph['worker_to_node'].keys()))
         network_graph_features.append(np.array(num_jobs_running, dtype=object))

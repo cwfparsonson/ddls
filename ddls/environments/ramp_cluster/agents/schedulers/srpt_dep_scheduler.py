@@ -43,12 +43,10 @@ class SRPTDepScheduler:
         for job_id, job in job_id_to_job.items():
             for dep_id in job.computation_graph.edges:
                 channel_id = dep_placement.job_to_dep_to_channel[job_id][dep_id]
-                if len(channel_id) > 0:
-                    # dep is a flow -> has a placement
-                    channel_to_deps[channel_id].append(f'{json.dumps(job_id)}_{json.dumps(dep_id)}')
-                else:
-                    # dep not a flow -> has no placement
-                    pass
+                # if len(channel_id) > 0:
+                    # # dep is a flow -> has a placement
+                    # channel_to_deps[channel_id].append(f'{json.dumps(job_id)}_{json.dumps(dep_id)}')
+                channel_to_deps[channel_id].append(f'{json.dumps(job_id)}_{json.dumps(dep_id)}')
 
         # if remaining run time not initialised for dep, initialise so can calc dep costs for scheduling
         for job in job_id_to_job.values():

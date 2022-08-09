@@ -1,7 +1,62 @@
+from ddls.environments.ramp_cluster.ramp_cluster_environment import RampClusterEnvironment
 import numpy as np
 import copy
 from collections import defaultdict, deque
 import random
+import math
+
+def get_partitioned_job_valid_meta_block_shapes(cluster: RampClusterEnvironment, job_max_partition_degree: int):
+    '''
+    Returns action_set, action_mask indicating which meta block shapes are valid
+    for a partitioned job given its maximum partition degree.
+
+    action_set is a numpy array of tuples of all meta block shapes
+
+    action_mask is a bool mask indicating which meta block shapes are valid and which
+    are not.
+    '''
+    # get shape of ramp topology
+    ramp_shape = (cluster.topology.num_communication_groups, cluster.topology.num_racks_per_communication_group, cluster.topology.num_servers_per_rack)
+    ramp_topology = dummy_ramp(ramp_shape, cluster)
+
+    # find which meta block shape(s) valid for this job
+    action_set, action_mask = [], []
+    for c in range(1, cluster.topology.num_communication_groups+1):
+        for r in range(1, cluster.topology.num_racks_per_communication_group+1):
+            for s in range(1, cluster.topology.num_servers_per_rack+1):
+                # store action
+                action = (c, r, s)
+                action_set.append(copy.deepcopy(action))
+
+                # check if action is valid
+                is_valid = False
+
+                # if op_partition is None:
+                    # # not yet taken any partitioning actions, all job placing actions are valid
+                    # is_valid = True
+                # else:
+
+                # cannot reserve fewer servers than the partition degree of a given job, and cannot reserve more servers than are unoccupied in the topology
+                if job_max_partition_degree <= c * r * s <= cluster.topology.graph.graph['num_workers'] - len(cluster.mounted_workers):
+                    if c * r * s == job_max_partition_degree:
+                        # must be able to pack job ops evenly across racks and comm groups
+                        if c == r:
+                            # check meta block is valid with first fit search
+                            if find_meta_block(ramp_topology, ramp_shape, (c, r, s)) is not None:
+                                is_valid = True
+                    else:
+                        # check meta block is valid with first fit search
+                        if find_meta_block(ramp_topology, ramp_shape, (c, r, s)) is not None:
+                            # valid meta block found
+                            is_valid = True
+
+                # store action validity
+                action_mask.append(is_valid)
+
+                # # DEBUG
+                # print(f'action {action} | c={c} r={r} s={s} -> {c * r * s} | job partition degree: {job_max_partition_degree} | num workers available: {env.cluster.topology.graph.graph["num_workers"] - len(env.cluster.mounted_workers)} | is_valid: {is_valid}')
+
+    return np.array(action_set), np.array(action_mask).astype(bool)
 
 
 def get_allocation_preamble(original_graph, mp_split_ids, mp_splits):
@@ -238,10 +293,20 @@ def parent_collective_placement(ramp,job_graph,op,split,meta_block_info,parents,
     return None
 
 def get_backward_op_id(forward_op_id, num_nodes):
-    return str((2*num_nodes)-(int(forward_op_id)-1))
+    op_id = str((2*num_nodes)-(int(forward_op_id)-1))
+    # try:
+        # op_id = int(op_id)
+    # except ValueError:
+        # pass
+    return op_id
 
 def get_partitioned_op_id(op_id, split_id):
-    return str(int(op_id))+chr(97+split_id)
+    op_id = str(int(op_id))+chr(97+split_id)
+    # try:
+        # op_id = int(op_id)
+    # except ValueError:
+        # pass
+    return op_id
 
 
 def regular_collective_placement(ramp,ramp_shape,job_graph,op,split,meta_block_info,op_server_info):
@@ -298,6 +363,7 @@ def find_sub_block(ramp_topology,ramp_shape,meta_block_shape,meta_block_origin,n
         block_shapes = get_block_shapes(pairs,meta_block_shape)
         #if no possible shapes try rack and CG distributed
         block_shapes += [(num_servers,num_servers,-1),(num_servers,1,1)]
+        # print(f'block_shapes: {block_shapes}')
         # print(f'find_sub_block: {ramp_topology.keys()}')
         block = ff_block(block_shapes,meta_block_shape,ramp_shape,ramp_topology,'sub',op_size=op_size,meta_block_origin=meta_block_origin)
         return block
@@ -347,6 +413,7 @@ def ff_block(block_shapes,meta_shape,ramp_shape,ramp,mode,op_size=None,meta_bloc
                         for k in range(K):
                             #get a block of shape (C,R,S) at origin (i,j,k)
                             block = get_block(C,R,S,ramp_shape,origin=(orgn_c+i,orgn_r+j,orgn_s+k))
+                            # print(f'sub block: {block}')
                             if check_block(ramp,block,op_size,mode):
                                 if mode == 'sub':
                                     return block
@@ -411,15 +478,21 @@ def get_block_shapes(pairs,ramp_shape):
         meta-block.
         '''
         blocks = []
-        # print(ramp_shape)
+        # print(f'ramp_shape: {ramp_shape}')
         for pair in pairs:
+            var = math.sqrt(pair[0])
+            # print(f'pair {pair} -> var {var}')
+            if var % 1 == 0:
+                if var <= ramp_shape[0] and var <= ramp_shape[1] and pair[1] <= ramp_shape[2]:
+                    blocks.append((int(var), int(var), pair[1]))
+                    # print(f'tuple: {(int(var), int(var), pair[1])}')
             if pair[0] > ramp_shape[0] or pair[0] > ramp_shape[1] or pair[1] > ramp_shape[2]:
                 continue
             else:
                 # blocks.append((pair[0],pair[0],pair[1]))
                 blocks.append((pair[0],1,pair[1]))
                 blocks.append((pair[0],pair[1],1))
-        
+                
         return blocks
 
 def allocate(ramp,ramp_shape,job_graph,sequence,splits,meta_block_info,parents,op_server_info):

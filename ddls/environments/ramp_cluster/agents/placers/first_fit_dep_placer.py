@@ -87,7 +87,8 @@ class FirstFitDepPlacer(Placer):
                         # dependency is not a flow, no need to place
                         if verbose:
                             print(f'Dep is not a flow, no placement needed.')
-                        pass
+                        job_to_dep_to_channels[job_id][dep_id].add(None)
+                        # pass
 
             # update channel ids used across jobs
             for channel_id in _channel_ids_used_for_other_jobs:

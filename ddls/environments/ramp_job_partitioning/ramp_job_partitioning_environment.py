@@ -1,7 +1,7 @@
 from ddls.environments.ramp_cluster.ramp_cluster_environment import RampClusterEnvironment
 
-from ddls.environments.ramp_cluster.agents.partitioners.random_op_partitioner import RandomOpPartitioner
-from ddls.environments.ramp_cluster.agents.partitioners.sip_ml_op_partitioner import SipMlOpPartitioner
+# from ddls.environments.ramp_cluster.agents.partitioners.random_op_partitioner import RandomOpPartitioner
+# from ddls.environments.ramp_cluster.agents.partitioners.sip_ml_op_partitioner import SipMlOpPartitioner
 from ddls.environments.ramp_cluster.agents.job_placement_shapers.ramp_random_job_placement_shaper import RampRandomJobPlacementShaper
 from ddls.environments.ramp_cluster.agents.placers.random_op_placer import RandomOpPlacer
 from ddls.environments.ramp_cluster.agents.placers.ramp_first_fit_op_placer import RampFirstFitOpPlacer
@@ -9,30 +9,42 @@ from ddls.environments.ramp_cluster.agents.schedulers.srpt_op_scheduler import S
 from ddls.environments.ramp_cluster.agents.placers.first_fit_dep_placer import FirstFitDepPlacer
 from ddls.environments.ramp_cluster.agents.schedulers.srpt_dep_scheduler import SRPTDepScheduler
 
-from ddls.environments.ramp_job_placement_shaping.rewards.lookahead_job_completion_time import LookaheadJobCompletionTime
-from ddls.environments.ramp_job_placement_shaping.rewards.job_acceptance import JobAcceptance
+from ddls.environments.ramp_job_partitioning.rewards.lookahead_job_completion_time import LookaheadJobCompletionTime
+from ddls.environments.ramp_job_partitioning.rewards.job_acceptance import JobAcceptance
 
-from ddls.environments.ramp_job_placement_shaping.observations.ramp_job_placement_shaping_observation import RampJobPlacementShapingObservation
+from ddls.environments.ramp_job_partitioning.observations.ramp_job_partitioning_observation import RampJobPartitioningObservation
 
-from ddls.environments.ramp_cluster.actions.job_placement_shape import JobPlacementShape
+# from ddls.environments.ramp_cluster.actions.job_placement_shape import JobPlacementShape
+from ddls.environments.ramp_cluster.actions.op_partition import OpPartition
 from ddls.environments.ramp_cluster.actions.action import Action
+
+from ddls.utils import get_forward_graph
+
 
 
 import gym
+
 import numpy as np
+import math
+
+from collections import defaultdict
 
 from typing import Union
 
 import copy
 
 
-class RampJobPlacementShapingEnvironment(gym.Env):
+class RampJobPartitioningEnvironment(gym.Env):
     def __init__(self,
                  topology_config: dict,
                  node_config: dict,
                  jobs_config: dict,
-                 op_partitioner: Union['random_op_partitioner', 'sip_ml_op_partitioner'] = 'sip_ml_op_partitioner',
-                 op_partitioner_kwargs: dict = None,
+                 # op_partitioner: Union['random_op_partitioner', 'sip_ml_op_partitioner'] = 'sip_ml_op_partitioner',
+                 # op_partitioner_kwargs: dict = None,
+                 max_partitions_per_op: int = None,
+                 min_op_run_time_quantum: Union[float, int] = 0.000006,
+                 job_placement_shaper: Union['ramp_random_job_placement_shaper'] = 'ramp_random_job_placement_shaper',
+                 job_placement_shaper_kwargs: dict = None,
                  op_placer: Union['ramp_first_fit_op_placer'] = 'ramp_first_fit_op_placer',
                  op_placer_kwargs: dict = None,
                  op_scheduler: Union['srpt_op_scheduler'] = 'srpt_op_scheduler',
@@ -41,14 +53,14 @@ class RampJobPlacementShapingEnvironment(gym.Env):
                  dep_placer_kwargs: dict = None,
                  dep_scheduler: Union['srpt_dep_scheduler'] = 'srpt_dep_scheduler',
                  dep_scheduler_kwargs: dict = None,
-                 observation_function: Union['ramp_job_placement_shaping_observation'] = 'ramp_job_placement_shaping_observation',
+                 observation_function: Union['ramp_job_partitioning_observation'] = 'ramp_job_partitioning_observation',
                  pad_obs_kwargs: dict = None,
                  information_function: Union['default'] = 'default',
                  reward_function: Union['lookahead_job_completion_time', 'job_acceptance'] = 'lookahead_job_completion_time',
                  reward_function_kwargs: dict = None,
                  max_simulation_run_time: Union[int, float] = float('inf'),
                  job_queue_capacity: int = 10,
-                 name: str = 'ramp_job_placement_shaping',
+                 name: str = 'ramp_job_partitioning',
                  path_to_save: str = None,
                  save_cluster_data: bool = False,
                  save_freq: int = 1,
@@ -70,16 +82,24 @@ class RampJobPlacementShapingEnvironment(gym.Env):
         # init ddls ramp cluster
         self.cluster = self._init_cluster()
 
+        if max_partitions_per_op is None:
+            self.max_partitions_per_op = self.cluster.topology.graph.graph['num_workers']
+        else:
+            self.max_partitions_per_op = max_partitions_per_op
+        self.min_op_run_time_quantum = min_op_run_time_quantum
+
         # init obs
         self.observation_function_str = observation_function
-        if observation_function == 'ramp_job_placement_shaping_observation':
-            self.observation_function = RampJobPlacementShapingObservation(pad_obs_kwargs=self.pad_obs_kwargs)
+        if observation_function == 'ramp_job_partitioning_observation':
+            self.observation_function = RampJobPartitioningObservation(self.max_partitions_per_op, pad_obs_kwargs=self.pad_obs_kwargs)
         else:
             raise Exception(f'Unrecognised observation_function {self.observation_function_str}')
 
         # init action space
-        self.action_space = gym.spaces.Discrete(int((self.cluster.topology.num_communication_groups * self.cluster.topology.num_racks_per_communication_group * self.cluster.topology.num_servers_per_rack) + 1))
-        self.action_to_job_placement_shape = self._get_action_to_job_placement_shape()
+        # self.action_space = gym.spaces.Discrete(int((self.cluster.topology.num_communication_groups * self.cluster.topology.num_racks_per_communication_group * self.cluster.topology.num_servers_per_rack) + 1))
+        # self.action_to_job_placement_shape = self._get_action_to_job_placement_shape()
+        self.action_set = [action for action in range(self.max_partitions_per_op+1)] # 0 -> corresponds to do not place job
+        self.action_space = gym.spaces.Discrete(int(len(self.action_set)))
 
         # init info
         self.information_function_str = information_function
@@ -101,10 +121,14 @@ class RampJobPlacementShapingEnvironment(gym.Env):
             raise Exception(f'Unrecognised reward_function {self.reward_function_str}')
 
         # init cluster environment managers
-        if op_partitioner_kwargs is not None:
-            self.op_partitioner_kwargs = op_partitioner_kwargs
+        # if op_partitioner_kwargs is not None:
+            # self.op_partitioner_kwargs = op_partitioner_kwargs
+        # else:
+            # self.op_partitioner_kwargs = {}
+        if job_placement_shaper_kwargs is not None:
+            self.job_placement_shaper_kwargs = job_placement_shaper_kwargs
         else:
-            self.op_partitioner_kwargs = {}
+            self.job_placement_shaper_kwargs = {}
         if op_placer_kwargs is not None:
             self.op_placer_kwargs = op_placer_kwargs
         else:
@@ -122,13 +146,15 @@ class RampJobPlacementShapingEnvironment(gym.Env):
         else:
             self.dep_scheduler_kwargs = {}
 
-        self.op_partitioner_str = op_partitioner 
+        # self.op_partitioner_str = op_partitioner 
+        self.job_placement_shaper_str = job_placement_shaper
         self.op_placer_str = op_placer
         self.op_scheduler_str = op_scheduler
         self.dep_placer_str = dep_placer
         self.dep_scheduler_str = dep_scheduler
 
-        self.op_partitioner, self.op_placer, self.op_scheduler, self.dep_placer, self.dep_scheduler = self._init_cluster_managers()
+        # self.op_partitioner, self.op_placer, self.op_scheduler, self.dep_placer, self.dep_scheduler = self._init_cluster_managers()
+        self.job_placement_shaper, self.op_placer, self.op_scheduler, self.dep_placer, self.dep_scheduler = self._init_cluster_managers()
 
     def _get_action_to_job_placement_shape(self):
         '''Returns a mapping of action (int) -> job_placement_shape (tuple).'''
@@ -148,12 +174,16 @@ class RampJobPlacementShapingEnvironment(gym.Env):
                                       use_sqlite_database=self.use_sqlite_database)
 
     def _init_cluster_managers(self):
-        if self.op_partitioner_str == 'random_op_partitioner':
-            op_partitioner = RandomOpPartitioner(**self.op_partitioner_kwargs)
-        elif self.op_partitioner_str == 'sip_ml_op_partitioner':
-            op_partitioner = SipMlOpPartitioner(**self.op_partitioner_kwargs)
+        # if self.op_partitioner_str == 'random_op_partitioner':
+            # op_partitioner = RandomOpPartitioner(**self.op_partitioner_kwargs)
+        # elif self.op_partitioner_str == 'sip_ml_op_partitioner':
+            # op_partitioner = SipMlOpPartitioner(**self.op_partitioner_kwargs)
+        # else:
+            # raise Exception(f'Unrecognised op_partitioner {self.op_partitioner_str}')
+        if self.job_placement_shaper_str == 'ramp_random_job_placement_shaper':
+            job_placement_shaper = RampRandomJobPlacementShaper(**self.job_placement_shaper_kwargs)
         else:
-            raise Exception(f'Unrecognised op_partitioner {self.op_partitioner_str}')
+            raise Exception(f'Unrecognised job_placement_shaper {self.job_placement_shaper_str}')
 
         if self.op_placer_str == 'ramp_first_fit_op_placer':
             op_placer = RampFirstFitOpPlacer(**self.op_placer_kwargs)
@@ -175,7 +205,8 @@ class RampJobPlacementShapingEnvironment(gym.Env):
         else:
             raise Exception(f'Unrecognised dep_scheduler {self.dep_scheduler_str}')
 
-        return op_partitioner, op_placer, op_scheduler, dep_placer, dep_scheduler
+        # return op_partitioner, op_placer, op_scheduler, dep_placer, dep_scheduler
+        return job_placement_shaper, op_placer, op_scheduler, dep_placer, dep_scheduler
 
     def reset(self,
               seed: int = None,
@@ -184,7 +215,8 @@ class RampJobPlacementShapingEnvironment(gym.Env):
         self.step_counter = 0
 
         # init env decisions
-        self.op_partition = None
+        # self.op_partition = None
+        self.job_placement_shape = None
         self.op_placement = None
         self.op_schedule = None
         self.dep_placement = None
@@ -193,9 +225,9 @@ class RampJobPlacementShapingEnvironment(gym.Env):
         # reset the cluster environment
         self._reset_cluster(seed=seed, verbose=verbose)
 
-        # update op partition ready for next job placement shape decision by agent
-        max_partitions_per_op = self.cluster.jobs_generator.max_partitions_per_op_in_observation
-        self.op_partition = self.op_partitioner.get(cluster=self.cluster, max_partitions_per_op=max_partitions_per_op)
+        # # update op partition ready for next job placement shape decision by agent
+        # max_partitions_per_op = self.cluster.jobs_generator.max_partitions_per_op_in_observation
+        # self.op_partition = self.op_partitioner.get(cluster=self.cluster, max_partitions_per_op=max_partitions_per_op)
 
         # reset the observation function
         self.observation_function.reset(self)
@@ -229,35 +261,60 @@ class RampJobPlacementShapingEnvironment(gym.Env):
     def step(self, action: int, verbose=False):
         # verbose = True # DEBUG
 
+        # action = 32 # DEBUG
+        # action = 4 # DEBUG
+        # action = 0 # DEBUG
+
         if verbose:
             print(f'\n~~~~~~~~~~~~~~~~~~~ Step {self.step_counter} ~~~~~~~~~~~~~~~~~~~~~')
 
-        # process agent decision
+        # # PROCESS AGENT DECISION
         if action not in self.obs['action_set']:
             raise Exception(f'Action {action} not in action set {self.obs["action_set"]}')
         if not self.obs['action_mask'][action]:
             raise Exception(f'Action {action} is invalid given action mask {self.obs["action_mask"]} for action set {self.obs["action_set"]}')
 
-        if self.action_to_job_placement_shape[action] is not None:
-            self.job_placement_shape = JobPlacementShape({list(self.op_partition.job_ids)[0]: self.action_to_job_placement_shape[action]})
+        if action != 0:
+            job_id, job = list(self.cluster.job_queue.jobs.keys())[0], list(self.cluster.job_queue.jobs.values())[0]
+            job_id_to_op_id_to_num_partitions = defaultdict(lambda: defaultdict(lambda: 1))
+
+            # collapse mirrored graph into only forward pass nodes
+            forward_graph = get_forward_graph(job.computation_graph)
+
+            max_partitions_per_op = action
+            for forward_op_id in forward_graph.nodes:
+                # choose an EVEN number of times to partition this op
+                # HACK: assume worker type is A100
+                worker_type = 'A100'
+                num_partitions = int(max(1, min(math.ceil(math.ceil(forward_graph.nodes[forward_op_id]['compute_cost'][worker_type] / self.min_op_run_time_quantum) / 2) * 2, max_partitions_per_op)))
+
+                # partition this forward op
+                job_id_to_op_id_to_num_partitions[job_id][forward_op_id] = num_partitions
+
+                # apply same partitioning to the backward op
+                backward_op_id = job.computation_graph.nodes[forward_op_id]['backward_node_id']
+                job_id_to_op_id_to_num_partitions[job_id][backward_op_id] = num_partitions
+
+            self.op_partition = OpPartition(job_id_to_op_id_to_num_partitions, cluster=self.cluster)
+
         else:
-            # agent select not to place job
-            self.job_placement_shape = JobPlacementShape({})
+            # job was not placed
+            self.op_partition = OpPartition({}, cluster=self.cluster)
 
         if verbose:
-            print(f'Agent action: {action} -> {self.action_to_job_placement_shape[action]} | Action set: {self.obs["action_set"]} | Action mask: {self.obs["action_mask"]}')
-
-        # # DEBUG
-        # if self.step_counter == 0:
-            # self.job_placement_shape = JobPlacementShape({list(self.op_partition.job_ids)[0]: (4, 4, 2)})
-        # else:
-            # self.job_placement_shape = JobPlacementShape({list(self.op_partition.job_ids)[0]: (4, 3, 2)})
+            print(f'Agent action: {action} -> Action set: {self.obs["action_set"]} | Action mask: {self.obs["action_mask"]}')
 
         # get env decisions
+        self.job_placement_shape = self.job_placement_shaper.get(op_partition=self.op_partition, cluster=self.cluster)
+        # print(f'job_placement_shape: {self.job_placement_shape}')
         self.op_placement = self.op_placer.get(op_partition=self.op_partition, job_placement_shape=self.job_placement_shape, cluster=self.cluster)
+        # print(f'op_placement: {self.op_placement}')
         self.op_schedule = self.op_scheduler.get(op_partition=self.op_partition, op_placement=self.op_placement, cluster=self.cluster)      
+        # print(f'op_schedule: {self.op_schedule}')
         self.dep_placement = self.dep_placer.get(op_partition=self.op_partition, op_placement=self.op_placement, cluster=self.cluster)      
+        # print(f'dep_placement: {self.dep_placement}')
         self.dep_schedule = self.dep_scheduler.get(op_partition=self.op_partition, dep_placement=self.dep_placement, cluster=self.cluster)
+        # print(f'dep_schedule: {self.dep_schedule}')
 
         # syncronise decisions into a valid ClusterEnvironment action
         self.action = Action(op_partition=self.op_partition,
@@ -290,14 +347,15 @@ class RampJobPlacementShapingEnvironment(gym.Env):
             pass
         self.info = self._get_info()
 
-        if not self.done:
-            # update op partition ready for next job placement shape decision by agent
-            max_partitions_per_op = self.cluster.jobs_generator.max_partitions_per_op_in_observation
-            self.op_partition = self.op_partitioner.get(cluster=self.cluster, max_partitions_per_op=max_partitions_per_op)
+        # if not self.done:
+            # # update op partition ready for next job placement shape decision by agent
+            # max_partitions_per_op = self.cluster.jobs_generator.max_partitions_per_op_in_observation
+            # self.op_partition = self.op_partitioner.get(cluster=self.cluster, max_partitions_per_op=max_partitions_per_op)
 
         if verbose:
             print(f'Reward: {self.reward} | Done: {self.done}')
 
+        
         self.step_counter += 1
 
         return self.obs, self.reward, self.done, self.info

@@ -33,7 +33,9 @@ import pickle
 import gzip
 
 
-@hydra.main(config_path='configs', config_name='rllib_config.yaml')
+# to override from command line, do e.g.:
+# python <test_rllib_from_config.py --config-path=ramp_job_placement_shaping_configs --config-name=heuristic_config.yaml
+@hydra.main(config_path='ramp_job_placement_shaping_configs', config_name='rllib_config.yaml')
 def run(cfg: DictConfig):
     if 'cuda_visible_devices' in cfg.experiment:
         os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(str(gpu) for gpu in cfg.experiment.cuda_visible_devices)

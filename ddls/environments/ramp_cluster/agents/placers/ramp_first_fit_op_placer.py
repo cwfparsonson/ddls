@@ -70,9 +70,20 @@ class RampFirstFitOpPlacer(Placer):
             # get a meta-block of a particular shape which the heuristic allocator will try to pack the job fully into
             meta_block_info = find_meta_block(ramp_topology, ramp_shape, meta_shape)
 
+            # # DEBUG
+            # print(f'\nramp_topology: {ramp_topology}')
+            # print(f'ramp_shape: {ramp_shape}')
+            # print(f'forward_graph: {forward_graph}')
+            # print(f'sequence: {sequence}')
+            # print(f'splits: {splits}')
+            # print(f'meta_block_info: {meta_block_info}')
+            # print(f'parents: {parents}')
+            # print(f'op_server_info: {op_server_info}')
+
             if meta_block_info:
                 # valid meta block successfully found, try to allocate the job
                 allocated = allocate(ramp_topology,ramp_shape,forward_graph,sequence,splits,meta_block_info,parents,op_server_info)
+                # print(f'allocated: {allocated}') # DEBUG
                 if allocated:
                     # update the topology and op-server info for use in the next job allocation
                     ramp_topology, op_server_info = allocated

@@ -42,7 +42,8 @@ class RLlibEvalLoop:
             results['step_stats']['reward'].append(reward)
             for key, val in self.env.cluster.steps_log.items():
                 # get vals which have been added to step stats over elapsed cluster steps
-                _val = val[int(prev_idx):] try:
+                _val = val[int(prev_idx):] 
+                try:
                     _val = list(_val)
                 except TypeError:
                     # not iterable, put in list

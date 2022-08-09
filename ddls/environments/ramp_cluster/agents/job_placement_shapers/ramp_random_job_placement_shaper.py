@@ -1,10 +1,11 @@
 from ddls.environments.ramp_cluster.actions.op_partition import OpPartition
 from ddls.environments.ramp_cluster.ramp_cluster_environment import RampClusterEnvironment
 from ddls.environments.ramp_cluster.actions.job_placement_shape import JobPlacementShape
-from ddls.environments.ramp_cluster.agents.placers.utils import dummy_ramp
+# from ddls.environments.ramp_cluster.agents.placers.utils import dummy_ramp, find_meta_block
+from ddls.environments.ramp_cluster.agents.placers.utils import get_partitioned_job_valid_meta_block_shapes
 
 import random
-import random
+import numpy as np
 
 class RampRandomJobPlacementShaper:
     def __init__(self):
@@ -20,27 +21,18 @@ class RampRandomJobPlacementShaper:
         is a tuple of (num_communication_groups, num_racks, num_nodes_per_rack) specifying
         amount of cluster resources to use for each job.
         '''
-        # get shape of ramp topology
-        ramp_shape = (cluster.topology.num_communication_groups, cluster.topology.num_racks_per_communication_group, cluster.topology.num_servers_per_rack)
-        ramp_topology = dummy_ramp(ramp_shape, cluster)
-
         # generate meta block shapes for each job requesting to be placed
         job_to_meta_block_shape = {}
         for job_id in op_partition.partitioned_jobs.keys():
-            # meta block shape is (num_communication_groups, num_racks, num_nodes)
-            # total number of servers to use for job is given by num_servers = num_racks * num_nodes
-            # given a partitioned job where ops have been partitioned up to max_partition_degree times, need
-            # to ensure that num_servers >= max_partition_degree to ensure partitioned ops can be spread across servers.
-            if ramp_shape[1] * ramp_shape[2] < op_partition.job_id_to_max_partition_degree[job_id]:
-                raise Exception(f'ERROR: Ramp shape is {ramp_shape} -> have num_racks x num_racks_per_server = {ramp_shape[1]} x {ramp_shape[2]} = {int(ramp_shape[1] * ramp_shape[2])} servers, but op partition for job_id {job_id} has max op partition degree {op_partition.job_id_to_max_partition_degree[job_id]}. Either increase the number of servers in your RAMP cluster, or decrease the maximum partition degree of your op partitioning agent.')
-            count = 1
-            while True:
-                job_to_meta_block_shape[job_id] = tuple([int(math.ceil(random.randint(1, dim) / 2) * 2) for dim in ramp_shape])
-                if job_to_meta_block_shape[job_id][1] * job_to_meta_block_shape[job_id][2] >= op_partition.job_id_to_max_partition_degree[job_id]:
-                    break
-                else:
-                    if count > 10000:
-                        raise Exception(f'Unable to find valid meta block shape after {count} attempts. Lower max partition degree or increase number of servers in cluster to help find valid meta blocks.')
-                count += 1
+            # find which meta block shape(s) valid for this job
+            meta_block_shapes, mask = get_partitioned_job_valid_meta_block_shapes(cluster, op_partition.job_id_to_max_partition_degree[job_id])
+
+            # choose a meta block shape for this job
+            valid_meta_block_shapes = meta_block_shapes[mask]
+            if len(valid_meta_block_shapes) > 0:
+                job_to_meta_block_shape[job_id] = random.choice(list(valid_meta_block_shapes))
+            else:
+                # no valid meta block shapes available for this job
+                pass
 
         return JobPlacementShape(job_to_meta_block_shape)

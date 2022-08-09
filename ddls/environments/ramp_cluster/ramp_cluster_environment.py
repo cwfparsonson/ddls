@@ -577,6 +577,9 @@ class RampClusterEnvironment:
                 if verbose:
                     print(f'Finished lookahead tick. Temporary stopwatch time at end of tick: {tmp_stopwatch.time()}')
 
+                if math.isinf(tick):
+                    raise Exception(f'ERROR: Last tick was infinite, a bug has occurred somewhere.')
+
                 lookahead_tick_counter += 1
 
             if verbose:
@@ -872,6 +875,10 @@ class RampClusterEnvironment:
             self.job_queue.jobs[job_id] = op_partition.partitioned_jobs[job_id]
 
     def _place_ops(self, action, verbose=False):
+        # # DEBUG
+        # verbose = True
+        # print(f'Placing ops for action {action}') 
+
         op_placement = action.action
         if verbose:
             if len(op_placement) > 0:
@@ -925,19 +932,25 @@ class RampClusterEnvironment:
                 print(f'Job ID: {job_id} | Job idx: {job.details["job_idx"]} | Time arrived: {job.details["time_arrived"]}')
             for dep_id in dep_placement[job_id].keys():
                 for channel_id in dep_placement[job_id][dep_id]:
-                    channel = self.topology.channel_id_to_channel[channel_id]
-                    rules_broken = check_if_ramp_dep_placement_rules_broken(channel, job)
-                    if len(rules_broken) > 0:
-                        raise Exception(f'Dep placement for job index {job.details["job_idx"]} job ID {job_id} dep ID {dep_id} channel ID {channel_id} breaks the following Ramp rules: {rules_broken}')
+                    if channel_id is not None:
+                        # dep was placed on a channel
+                        channel = self.topology.channel_id_to_channel[channel_id]
+                        rules_broken = check_if_ramp_dep_placement_rules_broken(channel, job)
+                        if len(rules_broken) > 0:
+                            raise Exception(f'Dep placement for job index {job.details["job_idx"]} job ID {job_id} dep ID {dep_id} channel ID {channel_id} breaks the following Ramp rules: {rules_broken}')
+                        else:
+                            channel.mount(job, dep_id)
+                            job.details['mounted_channels'].add(channel_id)
+                            # self.mounted_channels.add(channel_id)
+                            self.num_mounted_deps += 1
+                            job.reset_dep_remaining_run_time(dep_id)
+                            self.job_dep_to_channels[gen_job_dep_str(job_idx, job.job_id, dep_id)].add(channel_id)
+                            if verbose:
+                                print(f'Dep ID {dep_id} of job index {job.details["job_idx"]} placed on channel ID {channel_id}')
                     else:
-                        channel.mount(job, dep_id)
-                        job.details['mounted_channels'].add(channel_id)
-                        # self.mounted_channels.add(channel_id)
-                        self.num_mounted_deps += 1
-                        job.reset_dep_remaining_run_time(dep_id)
-                        self.job_dep_to_channels[gen_job_dep_str(job_idx, job.job_id, dep_id)].add(channel_id)
                         if verbose:
-                            print(f'Dep ID {dep_id} of job index {job.details["job_idx"]} placed on channel ID {channel_id}')
+                            print(f'Dep ID {dep_id} of job index {job.details["job_idx"]} not placed on any channel since not a flow')
+                        pass
 
             # update cluster tracking of current job placement
             self.job_dep_placement[job_id] = dep_placement[job_id]
@@ -959,12 +972,17 @@ class RampClusterEnvironment:
         dep_schedule = action.action
         # print(f'dep_schedule: {dep_schedule}')
         for channel_id in dep_schedule.keys():
-            channel = self.topology.channel_id_to_channel[channel_id]
-            # print(f'channel_id: {channel_id} | channel mounted_job_idx_to_deps: {channel.mounted_job_idx_to_deps}')
-            for job_idx in sorted(channel.mounted_job_idx_to_deps.keys()):
-                job = self.jobs_running[job_idx]
-                for dep_id in sorted(channel.mounted_job_idx_to_deps[job_idx]):
-                    channel.mounted_job_dep_to_priority[gen_job_dep_str(job_idx, job.job_id, dep_id)] = dep_schedule[channel_id][job.job_id][dep_id]
+            if channel_id is not None:
+                # dep was placed on a channel
+                channel = self.topology.channel_id_to_channel[channel_id]
+                # print(f'channel_id: {channel_id} | channel mounted_job_idx_to_deps: {channel.mounted_job_idx_to_deps}')
+                for job_idx in sorted(channel.mounted_job_idx_to_deps.keys()):
+                    job = self.jobs_running[job_idx]
+                    for dep_id in sorted(channel.mounted_job_idx_to_deps[job_idx]):
+                        channel.mounted_job_dep_to_priority[gen_job_dep_str(job_idx, job.job_id, dep_id)] = dep_schedule[channel_id][job.job_id][dep_id]
+            else:
+                # dep not a flow so not placed on channel so no need to schedule
+                pass
 
     def _register_running_job(self, job):
         job.register_job_running(time_started=self.stopwatch.time())
