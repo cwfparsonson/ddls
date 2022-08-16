@@ -5,6 +5,7 @@ import gzip
 import threading
 import time
 import copy
+import numpy as np
 
 
 class Logger:
@@ -13,7 +14,8 @@ class Logger:
                  actor_step_log_freq: int = None,
                  episode_log_freq: int = None,
                  epoch_log_freq: int = None,
-                 use_sqlite_database: bool = False):
+                 use_sqlite_database: bool = False,
+                 **kwargs):
 
         self.path_to_save = path_to_save
 
@@ -78,47 +80,5 @@ class Logger:
                 # save log as pkl
                 with gzip.open(log_path + '.pkl', 'wb') as f:
                     pickle.dump(log, f)
+
         print(f'Saved {list(data.keys())} data to {self.path_to_save} in {(time.time() - start_time):.4f} s.')
-
-    # def recursively_update_nested_log_dict(self, log, log_to_update):
-        # for key, val in log.items():
-            # print(f'{key} {val}')
-            # if key in {'config', 'experiment_id', 'trial_id', 'pid', 'hostname', 'node_ip'}:
-                # # no need to update
-                # print(f'no need to update key {key}, skipping...')
-                # pass
-            # else:
-                # if isinstance(val, dict):
-                    # print('val is dict, recursion...')
-                    # self.recursively_update_nested_log_dict(val, log_to_update[key])
-                # else:
-                    # print('val is not dict, update...')
-                    # if key not in log_to_update:
-                        # print(f'key {key} not in log_to_update, initialising...')
-                        # log_to_update[key] = val
-                    # else:
-                        # print(f'log_to_update[{key}]: {log_to_update[key]}')
-                        # if not isinstance(log_to_update[key], list):
-                            # print(f'converting log_to_update[{key}] val {log_to_update[key]} to list...')
-                            # log_to_update[key] = [log_to_update[key]]
-                        # print(f'extending with val {val}...')
-                        # if isinstance(val, list):
-                            # log_to_update[key] += val
-                        # else:
-                            # log_to_update[key] += [val]
-                    # print(f'log_to_update[{key}]: {log_to_update[key]}')
-
-    # def recursively_copy_dict(self, dict_to_copy, dict_to_copy_to):
-        # print(f'> recursion <:')
-        # print(f'dict_to_copy: {dict_to_copy}')
-        # print(f'dict_to_copy_to: {dict_to_copy_to}')
-        # for key, val in dict_to_copy.items():
-            # print(f'key: {key} val: {val}')
-            # if isinstance(val, dict):
-                # print(f'val is dict, recursion...')
-                # dict_to_copy_to[key] = {}
-                # self.recursively_copy_dict(val, dict_to_copy_to[key])
-            # else:
-                # print(f'val is not dict, update...')
-                # dict_to_copy_to[key] = val
-

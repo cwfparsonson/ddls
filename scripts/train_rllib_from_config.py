@@ -25,6 +25,7 @@ import shutil
 import os
 
 
+
 # to override from command line, do e.g.:
 # python <train_rllib_from_config.py --config-path=ramp_job_placement_shaping_configs --config-name=heuristic_config.yaml
 @hydra.main(config_path='ramp_job_placement_shaping_configs', config_name='rllib_config.yaml')
@@ -32,12 +33,24 @@ def run(cfg: DictConfig):
     if 'cuda_visible_devices' in cfg.experiment:
         os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(str(gpu) for gpu in cfg.experiment.cuda_visible_devices)
 
+    # init weights and biases
+    if 'wandb' in cfg:
+        if cfg.wandb is not None:
+            import wandb
+            hparams = OmegaConf.to_container(cfg)
+            wandb.init(config=hparams, **cfg.wandb.init)
+        else:
+            wandb = None
+    else:
+        wandb = None
+
     # seeding
     if 'train_seed' in cfg.experiment:
         seed_stochastic_modules_globally(cfg.experiment.train_seed)
 
     # create dir for saving data
     save_dir = gen_unique_experiment_folder(path_to_save=cfg.experiment.path_to_save, experiment_name=cfg.experiment.name)
+    cfg['experiment']['save_dir'] = save_dir
 
     # save copy of config to the save dir
     OmegaConf.save(config=cfg, f=save_dir+'rllib_config.yaml')
@@ -50,7 +63,7 @@ def run(cfg: DictConfig):
     print(f'~'*80)
 
     # epoch loop for running epochs
-    epoch_loop = hydra.utils.instantiate(cfg.epoch_loop)
+    epoch_loop = hydra.utils.instantiate(cfg.epoch_loop, wandb=wandb)
     print(f'Initialised {epoch_loop}.')
 
     # launcher for running the experiment

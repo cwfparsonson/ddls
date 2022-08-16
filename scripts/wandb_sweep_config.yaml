@@ -1,0 +1,22 @@
+program: train_rllib_from_config.py
+method: grid
+#method: bayes
+metric:
+  #goal: maximize
+  #name: valid/episode_stats/return
+  goal: minimize
+  name: valid/episode_stats/job_completion_time
+parameters:
+
+    #epoch_loop.rllib_config.env_config.max_partitions_per_op:
+        #values: [2, 4, 6, 8]
+        
+    epoch_loop.rllib_config.env_config.reward_function_kwargs.fail_reward_factor:
+        values: [1, 2, 4, 8]
+
+command:
+  - ${env}
+  - python
+  - ${program}
+  - --config-path=ramp_job_partitioning_configs
+  - ${args_no_hyphens}

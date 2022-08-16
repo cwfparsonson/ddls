@@ -3,6 +3,7 @@ from ddls.environments.ramp_cluster.ramp_cluster_environment import RampClusterE
 # from ddls.environments.ramp_cluster.agents.partitioners.random_op_partitioner import RandomOpPartitioner
 # from ddls.environments.ramp_cluster.agents.partitioners.sip_ml_op_partitioner import SipMlOpPartitioner
 from ddls.environments.ramp_cluster.agents.job_placement_shapers.ramp_random_job_placement_shaper import RampRandomJobPlacementShaper
+from ddls.environments.ramp_cluster.agents.job_placement_shapers.ramp_first_fit_job_placement_shaper import RampFirstFitJobPlacementShaper
 from ddls.environments.ramp_cluster.agents.placers.random_op_placer import RandomOpPlacer
 from ddls.environments.ramp_cluster.agents.placers.ramp_first_fit_op_placer import RampFirstFitOpPlacer
 from ddls.environments.ramp_cluster.agents.schedulers.srpt_op_scheduler import SRPTOpScheduler
@@ -43,7 +44,7 @@ class RampJobPartitioningEnvironment(gym.Env):
                  # op_partitioner_kwargs: dict = None,
                  max_partitions_per_op: int = None,
                  min_op_run_time_quantum: Union[float, int] = 0.000006,
-                 job_placement_shaper: Union['ramp_random_job_placement_shaper'] = 'ramp_random_job_placement_shaper',
+                 job_placement_shaper: Union['ramp_random_job_placement_shaper', 'first_fit_job_placement_shaper'] = 'ramp_random_job_placement_shaper',
                  job_placement_shaper_kwargs: dict = None,
                  op_placer: Union['ramp_first_fit_op_placer'] = 'ramp_first_fit_op_placer',
                  op_placer_kwargs: dict = None,
@@ -182,6 +183,8 @@ class RampJobPartitioningEnvironment(gym.Env):
             # raise Exception(f'Unrecognised op_partitioner {self.op_partitioner_str}')
         if self.job_placement_shaper_str == 'ramp_random_job_placement_shaper':
             job_placement_shaper = RampRandomJobPlacementShaper(**self.job_placement_shaper_kwargs)
+        elif self.job_placement_shaper_str == 'ramp_first_fit_job_placement_shaper':
+            job_placement_shaper = RampFirstFitJobPlacementShaper(**self.job_placement_shaper_kwargs)
         else:
             raise Exception(f'Unrecognised job_placement_shaper {self.job_placement_shaper_str}')
 

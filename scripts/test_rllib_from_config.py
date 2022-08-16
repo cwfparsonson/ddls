@@ -49,6 +49,7 @@ def run(cfg: DictConfig):
 
     # save copy of config to the save dir
     OmegaConf.save(config=cfg, f=save_dir+'rllib_config.yaml')
+    cfg['experiment']['save_dir'] = save_dir
 
     # print info
     print('\n\n\n')

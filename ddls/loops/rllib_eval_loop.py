@@ -92,6 +92,7 @@ class RLlibEvalLoop:
             prev_idx = copy.deepcopy(len(val))
             step_counter += 1
 
+        results['episode_stats']['return'] = np.sum(results['step_stats']['reward'])
         for key, val in self.env.cluster.episode_stats.items():
             try:
                 val = list(val)

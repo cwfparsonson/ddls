@@ -1,5 +1,17 @@
 # ONLY USE FOR VALIDATING HEURISTICS CURRENTLY
 
+experiment:
+    #name: job_placing
+    name: ramp_job_partitioning
+    seed: 1799
+    path_to_save: '/scratch/datasets/ddls/sims'
+    cuda_visible_devices:
+        #- 0
+        - 1
+        - 2
+        - 3
+    save_dir: null # placeholder, will be updated
+
 eval_loop:
     _target_: ddls.loops.eval_loop.EvalLoop
 
@@ -56,6 +68,9 @@ eval_loop:
         #max_partitions_per_op: 2
         max_partitions_per_op: null
 
+        # CHANGE
+        min_op_run_time_quantum: 0.000006
+
         #reward_function: mean_job_completion_time
 
         reward_function: lookahead_job_completion_time
@@ -77,7 +92,8 @@ eval_loop:
             ##max_partitions_per_op: 2
         
         # CHANGE
-        job_placement_shaper: ramp_random_job_placement_shaper
+        #job_placement_shaper: ramp_random_job_placement_shaper
+        job_placement_shaper: ramp_first_fit_job_placement_shaper # TODO: need to test
 
         op_placer: ramp_first_fit_op_placer
 
@@ -103,13 +119,9 @@ eval_loop:
         #_target_: ddls.environments.ramp_job_partitioning.agents.sip_ml.SiPML
         #max_partitions_per_op: 8
 
-experiment:
-    #name: job_placing
-    name: ramp_job_partitioning
-    seed: 1799
-    path_to_save: '/scratch/datasets/ddls/sims'
-    cuda_visible_devices:
-        #- 0
-        - 1
-        - 2
-        - 3
+
+wandb:
+    init:
+        project: ddls
+        entity: ong
+#wandb: null

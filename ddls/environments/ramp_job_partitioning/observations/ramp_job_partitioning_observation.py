@@ -97,7 +97,8 @@ class RampJobPartitioningObservation(DDLSObservationFunction):
 
         ramp_shape = (env.cluster.topology.num_communication_groups, env.cluster.topology.num_racks_per_communication_group, env.cluster.topology.num_servers_per_rack)
         action_set, action_mask = [0], [True] # action = 0 (do not place job) is always valid
-        for action in range(1, env.cluster.topology.graph.graph['num_workers']+1):
+        # for action in range(1, env.cluster.topology.graph.graph['num_workers']+1):
+        for action in range(1, env.max_partitions_per_op+1):
             action_set.append(action)
             is_valid = False
 

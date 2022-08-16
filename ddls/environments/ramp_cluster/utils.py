@@ -55,3 +55,4 @@ class RLlibRampClusterEnvironmentCallback(DefaultCallbacks):
                     # val is not iterable (e.g. int, float, etc.)
                     val = [val]
                 episode.custom_metrics[key] = np.mean(val)
+            # episode.custom_metrics['return'] = np.sum(env.cluster.episode_stats['reward'])

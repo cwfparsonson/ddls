@@ -1,7 +1,6 @@
-defaults:
-    #- epoch_loop: heuristic_loop
-    - epoch_loop: rllib_loop
+# USE FOR TRAINING AN RLLIB AGENT
 
+    
 experiment:
     #name: job_placing
     name: ramp_job_partitioning
@@ -10,15 +9,17 @@ experiment:
     path_to_save: '/scratch/datasets/ddls/sims'
     cuda_visible_devices:
         #- 0
-        - 1
-        - 2
+        #- 1
+        #- 2
         - 3
+    save_dir: null # placeholder, will be updated
 
 launcher:
     #num_epochs: 1
+    #num_epochs: 10
     #num_epochs: 50 # 500
-    #num_epochs: 100 # 500
-    num_epochs: 500 # 500
+    num_epochs: 100 # 500
+    #num_epochs: 500 # 500
     num_episodes: null
     num_actor_steps: null
     num_eval_episodes: null
@@ -34,3 +35,176 @@ logger:
 
 checkpointer:
     epoch_checkpoint_freq: 1
+
+wandb:
+    init:
+        project: ddls
+        entity: ong
+#wandb: null
+
+
+
+epoch_loop:
+    _target_: ddls.loops.rllib_epoch_loop.RLlibEpochLoop
+
+    # define string path to the model you want to use
+    path_to_model_cls: ddls.ml_models.policies.GNNPolicy
+
+    # define string path to the environment you want to use
+    path_to_env_cls: ddls.environments.ramp_job_partitioning.ramp_job_partitioning_environment.RampJobPartitioningEnvironment
+
+    # define string path to the rllib trainer you want to use
+    path_to_rllib_trainer_cls: ray.rllib.agents.ppo.PPOTrainer
+
+    # define validator/evaluation loop (will use same setup as rllib_config below but with following overrides)
+    path_to_validator_cls: ddls.loops.rllib_eval_loop.RLlibEvalLoop
+    test_time_checkpoint_path: /scratch/datasets/ddls/sims/ramp_job_partitioning/ramp_job_partitioning_1/checkpoints/checkpoint_000002/checkpoint-2 # USE FOR TESTING SPECIFIC CHECKPOINT (is ignored during training)
+    validator_rllib_config:
+        explore: False
+        #seed: 1799
+        env_config:
+            jobs_config:
+                path_to_files: /scratch/datasets/ddls/jobs/pipedream_graphs/image_classification/profiles/alexnet/
+                #path_to_files: /scratch/datasets/ddls/jobs/pipedream_graphs/translation/profiles/gnmt/
+                #path_to_files: /scratch/datasets/ddls/jobs/pipedream_graphs/image_classification/profiles/resnext50/
+                #path_to_files: /scratch/datasets/ddls/jobs/image_classification_and_translation/small_graphs/training/
+                max_files: null
+                #replication_factor: 1
+                #replication_factor: 10
+                replication_factor: 200
+                #replication_factor: 1000
+                job_interarrival_time_dist:
+                    _target_: ddls.distributions.uniform.Uniform
+                    #min_val: 1
+                    #max_val: 1000
+                    min_val: 1000
+                    max_val: 1000
+                job_sampling_mode: remove
+                shuffle_files: False
+                num_training_steps: 50
+                max_partitions_per_op_in_observation: 1
+        num_workers: 0 # num parallel cpu workers
+        num_gpus: 0 # num gpus available for RLlib
+
+    # define the rllib config as usual
+    rllib_config:
+        #env: job_placing_all_nodes_environment
+        env: ramp_job_partitioning_environment
+
+        env_config:
+            node_config:
+                type_1:
+                    #num_nodes: 8
+                    num_nodes: 32
+                    workers_config:
+                        #- num_workers: 4
+                        - num_workers: 1
+                          worker: ddls.devices.processors.gpus.A100.A100
+
+            topology_config:
+                #type: torus
+                #kwargs:
+                    #x_dims: 4
+                    #y_dims: 4
+                type: ramp 
+                kwargs:
+                    num_communication_groups: 4
+                    num_racks_per_communication_group: 4
+                    num_servers_per_rack: 2
+                    num_channels: 1
+                    channel_bandwidth: 1250000000
+                    switch_reconfiguration_latency: 0.00000125
+                    worker_io_latency: 0.000000100
+
+            jobs_config:
+                path_to_files: /scratch/datasets/ddls/jobs/pipedream_graphs/image_classification/profiles/alexnet/
+                #path_to_files: /scratch/datasets/ddls/jobs/pipedream_graphs/translation/profiles/gnmt/
+                #path_to_files: /scratch/datasets/ddls/jobs/pipedream_graphs/image_classification/profiles/resnext50/
+                #path_to_files: /scratch/datasets/ddls/jobs/image_classification_and_translation/small_graphs/training/
+                max_files: null
+                #replication_factor: 1
+                #replication_factor: 10
+                replication_factor: 200
+                #replication_factor: 1000
+                job_sampling_mode: remove
+                job_interarrival_time_dist:
+                    _target_: ddls.distributions.uniform.Uniform
+                    #min_val: 1
+                    #max_val: 1000
+                    min_val: 1000
+                    max_val: 1000
+                shuffle_files: true
+                num_training_steps: 50
+                max_partitions_per_op_in_observation: 1
+                
+            #max_partitions_per_op: null
+            #max_partitions_per_op: 2
+            max_partitions_per_op: 8
+
+            min_op_run_time_quantum: 0.000006
+
+            #reward_function: mean_job_completion_time
+
+            reward_function: lookahead_job_completion_time
+            reward_function_kwargs:
+                fail_reward: job_sequential_completion_time
+                fail_reward_factor: 2
+                #fail_reward_factor: 1
+                sign: -1
+                inverse: false
+                #transform_with_log: true
+                transform_with_log: false
+                #normaliser: job_sequential_completion_time
+                normaliser: job_sequential_completion_time_times_fail_reward_factor
+
+            #reward_function: job_acceptance
+            #reward_function_kwargs:
+                #fail_reward: -1
+                #success_reward: 1
+
+            # CHANGE
+            #job_placement_shaper: ramp_random_job_placement_shaper
+            job_placement_shaper: ramp_first_fit_job_placement_shaper # TODO: need to test
+
+            op_placer: ramp_first_fit_op_placer
+
+            op_scheduler: srpt_op_scheduler
+
+            dep_placer: first_fit_dep_placer
+
+            dep_scheduler: srpt_dep_scheduler
+
+            pad_obs_kwargs:
+                max_nodes: 100
+
+        model:
+            fcnet_hiddens:
+                - 8
+            fcnet_activation: relu
+            custom_model: my_model
+            custom_model_config:
+                in_features_node: 5 # dimension of node features
+                in_features_edge: 2 # dimension of edge features
+                out_features_msg: 8 # dimension of message sent between nodes during message passing
+                out_features_hidden: 16 # embedding dimension of the hidden layer(s) during message passing
+                out_features_node: 4 # per-node-level output embedding size after message passing N.B. changed out_features -> out_features_node
+                in_features_graph: 14 # dimension of graph features (gets concatenated with action_space so that graph embedding includes representation of action mask)
+                out_features_graph: 4 # graph-level output embedding size (gets concatenated with out_features_node and passed through readout module to get final output logits)
+                num_layers: 2
+                aggregator_type: mean
+                action_space_type: discrete # discrete continuous
+
+        batch_mode: complete_episodes
+        #train_batch_size: 32
+        #sgd_minibatch_size: 32
+        train_batch_size: 4
+        sgd_minibatch_size: 4
+        #train_batch_size: 1
+        #sgd_minibatch_size: 1
+
+        callbacks: ddls.environments.ramp_cluster.utils.RLlibRampClusterEnvironmentCallback
+
+        num_workers: 0 # num parallel cpu workers
+        num_gpus: 1 # num gpus available for RLlib
+
+        framework: torch
