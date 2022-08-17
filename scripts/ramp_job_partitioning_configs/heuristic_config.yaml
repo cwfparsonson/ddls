@@ -1,0 +1,127 @@
+# ONLY USE FOR VALIDATING HEURISTICS CURRENTLY
+
+experiment:
+    #name: job_placing
+    name: ramp_job_partitioning
+    seed: 1799
+    path_to_save: '/scratch/datasets/ddls/sims'
+    cuda_visible_devices:
+        #- 0
+        - 1
+        - 2
+        - 3
+    save_dir: null # placeholder, will be updated
+
+eval_loop:
+    _target_: ddls.loops.eval_loop.EvalLoop
+
+    env:
+        _target_: ddls.environments.ramp_job_partitioning.ramp_job_partitioning_environment.RampJobPartitioningEnvironment
+
+        node_config:
+            type_1:
+                #num_nodes: 8
+                num_nodes: 32
+                workers_config:
+                    #- num_workers: 4
+                    - num_workers: 1
+                      worker: ddls.devices.processors.gpus.A100.A100
+
+        topology_config:
+            #type: torus
+            #kwargs:
+                #x_dims: 4
+                #y_dims: 4
+            type: ramp 
+            kwargs:
+                num_communication_groups: 4
+                num_racks_per_communication_group: 4
+                num_servers_per_rack: 2
+                num_channels: 1
+                channel_bandwidth: 1250000000
+                switch_reconfiguration_latency: 0.00000125
+                worker_io_latency: 0.000000100
+
+        jobs_config:
+            path_to_files: /scratch/datasets/ddls/jobs/pipedream_graphs/image_classification/profiles/alexnet/
+            #path_to_files: /scratch/datasets/ddls/jobs/pipedream_graphs/image_classification/profiles/resnext50/
+            #path_to_files: /scratch/datasets/ddls/jobs/image_classification_and_translation/small_graphs/training/
+            max_files: null
+            #replication_factor: 1
+            #replication_factor: 5
+            #replication_factor: 10
+            #replication_factor: 100
+            replication_factor: 200
+            #replication_factor: 1000
+            job_interarrival_time_dist:
+                _target_: ddls.distributions.uniform.Uniform
+                #min_val: 1
+                #max_val: 1000
+                min_val: 1000 
+                max_val: 1000 
+            job_sampling_mode: remove
+            shuffle_files: False
+            num_training_steps: 50
+            max_partitions_per_op_in_observation: 1
+
+        # CHANGE
+        #max_partitions_per_op: 2
+        max_partitions_per_op: null
+
+        # CHANGE
+        min_op_run_time_quantum: 0.000006
+
+        #reward_function: mean_job_completion_time
+
+        reward_function: lookahead_job_completion_time
+        reward_function_kwargs:
+            fail_reward: job_sequential_completion_time
+            fail_reward_factor: 2
+            #fail_reward_factor: 1
+            sign: -1
+            inverse: false
+            #transform_with_log: true
+            transform_with_log: false
+            #normaliser: job_sequential_completion_time
+            normaliser: job_sequential_completion_time_times_fail_reward_factor
+
+        # CHANGE
+        #op_partitioner: sip_ml_op_partitioner
+        #op_partitioner_kwargs:
+            #min_op_run_time_quantum: 0.000006 
+            ##max_partitions_per_op: 2
+        
+        # CHANGE
+        #job_placement_shaper: ramp_random_job_placement_shaper
+        job_placement_shaper: ramp_first_fit_job_placement_shaper # TODO: need to test
+
+        op_placer: ramp_first_fit_op_placer
+
+        op_scheduler: srpt_op_scheduler
+
+        dep_placer: first_fit_dep_placer
+
+        dep_scheduler: srpt_dep_scheduler
+
+        # CHANGE
+        pad_obs_kwargs:
+            max_nodes: 100
+
+    # CHANGE
+    actor:
+        # HEURISTIC AGENTS
+        _target_: ddls.environments.ramp_job_partitioning.agents.random.Random
+
+        #_target_: ddls.environments.ramp_job_partitioning.agents.no_parallelism.NoParallelism
+
+        #_target_: ddls.environments.ramp_job_partitioning.agents.max_parallelism.MaxParallelism
+
+        #_target_: ddls.environments.ramp_job_partitioning.agents.sip_ml.SiPML
+        #max_partitions_per_op: 8
+
+
+wandb:
+    init:
+        project: ddls
+        entity: ong
+#wandb: null

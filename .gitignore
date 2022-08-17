@@ -152,3 +152,6 @@ logs/
 # hydra logs
 outputs/
 multirun/
+
+# weights and biases logs
+wandb/

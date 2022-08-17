@@ -13,9 +13,11 @@ class EvalLoop:
                  # seed: int = None,
                  actor,
                  env,
+                 wandb=None,
                  **kwargs):
         self.actor = actor
         self.env = env
+        self.wandb = wandb
         # self.seed = seed
 
     def run(self, verbose=False):
@@ -102,6 +104,14 @@ class EvalLoop:
             except TypeError:
                 # val is not numeric (is e.g. a string)
                 results['episode_stats'][key] = val
+
+        if self.wandb is not None:
+            wandb_log = {}
+            for log_name, log in results.keys():
+                for key, val in log.items():
+                    # record average of stat for validation run
+                    wandb_log[f'valid/{log_name}/{key}'] = np.mean(val)
+            self.wandb.log(wandb_log)
 
         # print(f'\nstep stats: {results["step_stats"]}')
         # print(f'\nepisode stats: {results["episode_stats"]}\n')

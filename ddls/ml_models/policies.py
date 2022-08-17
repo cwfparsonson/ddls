@@ -77,7 +77,7 @@ class GNNPolicy(TorchModelV2, nn.Module):
         
         self.gnn = GNN(self.config)
 
-        self.graph_layer = nn.Linear(self.config['in_features_graph'], self.config['out_features_graph'])
+        self.graph_layer = nn.Linear(self.config['in_features_graph'] + action_space.n, self.config['out_features_graph'])
 
         if self.config['action_space_type'] == 'continuous':
             num_logits = 2 * action_space.n
@@ -86,7 +86,7 @@ class GNNPolicy(TorchModelV2, nn.Module):
         else:
             raise Exception(f'Unrecognised model_config action_space_type {self.config["action_space_type"]}.')
         self.logit_layer = FC(
-            Box(-1,1,shape=(self.config['out_features_graph']+self.config['out_features'],)),
+            Box(-1,1,shape=(self.config['out_features_graph']+self.config['out_features_node'],)),
             action_space,
             num_logits,
             model_config,

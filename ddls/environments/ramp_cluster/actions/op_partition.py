@@ -35,7 +35,9 @@ class OpPartition:
 
         # create dict mapping job_id -> partitioned_job object and job_id -> original_job object
         self.job_ids, self.partitioned_jobs, self.original_jobs = set(), {}, {}
-        for job_id, job in cluster.job_queue.jobs.items():
+        # for job_id, job in cluster.job_queue.jobs.items(): # OLD
+        for job_id in action: # NEW
+            job = cluster.job_queue.jobs[job_id]
             self.job_ids.add(job_id)
             self.original_jobs[job_id] = job
             computation_graph = job.computation_graph

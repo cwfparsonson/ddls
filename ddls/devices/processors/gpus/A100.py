@@ -14,7 +14,7 @@ class A100(Processor):
             
         self.device_type = 'A100'
 
-        self.memory_capacity = int(480e9)
+        self.memory_capacity = int(80e9)
         # self.memory_bandwidth = int(1.555e9)
 
         # self.num_streaming_multiprocessors = 8
@@ -35,6 +35,8 @@ class A100(Processor):
 
     def mount(self, job, op_id):
         '''Returns job with initialised remaining_run_time for each op.'''
+        if op_id not in job.computation_graph.nodes:
+            raise Exception(f'Op ID {op_id} not found in job {job}\nJob nodes:\n{job.computation_graph.nodes()}')
         if self.device_type not in job.computation_graph.nodes[op_id]['compute_cost']:
             raise Exception(f'Tried to mount op on device type {self.device_type} but only profile op compute cost for {job.computation_graph.nodes[op_id]["compute_cost"]}')
         if self.memory_occupied + job.computation_graph.nodes[op_id]['memory_cost'] > self.memory_capacity:

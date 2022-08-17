@@ -33,7 +33,9 @@ import pickle
 import gzip
 
 
-@hydra.main(config_path='configs', config_name='rllib_config.yaml')
+# to override from command line, do e.g.:
+# python <test_rllib_from_config.py --config-path=ramp_job_placement_shaping_configs --config-name=heuristic_config.yaml
+@hydra.main(config_path='ramp_job_placement_shaping_configs', config_name='rllib_config.yaml')
 def run(cfg: DictConfig):
     if 'cuda_visible_devices' in cfg.experiment:
         os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(str(gpu) for gpu in cfg.experiment.cuda_visible_devices)
@@ -47,13 +49,14 @@ def run(cfg: DictConfig):
 
     # save copy of config to the save dir
     OmegaConf.save(config=cfg, f=save_dir+'rllib_config.yaml')
+    cfg['experiment']['save_dir'] = save_dir
 
     # print info
     print('\n\n\n')
-    print(f'~'*80)
+    print(f'~'*100)
     print(f'Initialised experiment save dir {save_dir}')
     print(f'Config:\n{OmegaConf.to_yaml(cfg)}')
-    print(f'~'*80)
+    print(f'~'*100)
 
     # get rllib config
     _rllib_config = OmegaConf.to_container(cfg.epoch_loop.rllib_config, resolve=False)

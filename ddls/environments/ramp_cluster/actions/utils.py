@@ -4,6 +4,7 @@ from ddls.environments.ramp_cluster.agents.placers.utils import get_backward_op_
 import numpy as np
 from typing import Union
 from collections import defaultdict
+import math
 
 
 def update_dep_run_times(cluster,
@@ -11,6 +12,8 @@ def update_dep_run_times(cluster,
                          op_placement, 
                          verbose=False):
     '''Updates the run times of the partitioned jobs' dependencies given the op placements, dependency sizes, and the network's processor and link parameters.'''
+    # verbose = True # DEBUG
+
     if verbose:
         print(f'\nUpdating job run times\nJobs: {op_placement.job_ids}\nOp placements: {op_placement}')
     if len(op_placement.job_ids) > 0:
@@ -38,7 +41,7 @@ def calc_ramp_all_reduce_collective_communication_run_time(
     node_ids: int,
     racks: int,
     cgs: int,
-    cont_racks: int = 1, # number of contending racks (number of racks which use the same node number for same src-dst communication groups)
+    cont_racks: int = 1, # number of contending racks (number of nodes with the same node ID and communication group ID)
     # collective: str = "allreduce",
     x: int = 32, # number of communication groups in the whole network
     # λ: int = 64,
@@ -75,13 +78,22 @@ def calc_ramp_all_reduce_collective_communication_run_time(
             )
             comm_time += latency + 2 * IO_latency + msg_size[step] / effect_bw[step]
     total_time = 2 * comm_time + comp_time # x2 since all-reduce is made up of 2 collectives: reduce-scatter and all-gather
+
+    if math.isinf(total_time):
+        raise Exception(f'Infinite ramp all reduce collective dependency run time found.')
+
     return total_time # units of seconds
 
 def calc_one_to_one_communication_run_time(message_size: Union[int, float],
                                            DATA_RATE=1.6e12,
                                            latency=1.25e-6,
                                            IO_latency=100e-9):
-    return latency + 2 * IO_latency + message_size / DATA_RATE
+    run_time = latency + 2 * IO_latency + message_size / DATA_RATE
+
+    if math.isinf(run_time):
+        raise Exception(f'Infinite one-to-one dependency run time found.')
+
+    return run_time
 
 def effective_trx_per_comm(cg=32, d=32, J=1):
     if d ==1:
@@ -156,8 +168,8 @@ def get_collective_info(partitioned_job, collective, op_placement, verbose=False
 
     # count number of communication groups, racks, and servers used by this collective, and the total message size
     communication_groups, racks, nodes, servers, message_size = set(), set(), set(), set(), 0
-    # src_cg_to_dst_cg_to_node_id_to_racks = defaultdict(lambda: defaultdict(lambda: defaultdict(set)))
-    rack_to_src_cg_to_dst_cg_to_node_id = defaultdict(lambda: defaultdict(lambda: defaultdict(set)))
+    # rack_to_src_cg_to_dst_cg_to_node_id = defaultdict(lambda: defaultdict(lambda: defaultdict(set)))
+    ids = set()
     for dep in collective:
         u, v, k = dep
         
@@ -169,6 +181,7 @@ def get_collective_info(partitioned_job, collective, op_placement, verbose=False
         racks.add(src_rack)
         nodes.add(src_node)
         servers.add(src_server)
+        ids.add((src_communication_group, src_rack, src_server))
         
         dst_server = op_placement.action[job_id][v]
         dst_communication_group = dst_server.split('node_')[1].split('_worker')[0].split('-')[0]
@@ -178,34 +191,43 @@ def get_collective_info(partitioned_job, collective, op_placement, verbose=False
         racks.add(dst_rack)
         nodes.add(dst_node)
         servers.add(dst_server)
+        ids.add((dst_communication_group, dst_rack, dst_server))
         
         message_size += partitioned_job.computation_graph[u][v][k]['size']
-        
-        # src_cg_to_dst_cg_to_node_id_to_racks[src_communication_group][dst_communication_group][src_node].add(src_rack)
-        # src_cg_to_dst_cg_to_node_id_to_racks[src_communication_group][dst_communication_group][dst_node].add(dst_rack)
 
-        rack_to_src_cg_to_dst_cg_to_node_id[src_rack][src_communication_group][dst_communication_group].add(src_node)
-        rack_to_src_cg_to_dst_cg_to_node_id[dst_rack][src_communication_group][dst_communication_group].add(dst_node)
+        # rack_to_src_cg_to_dst_cg_to_node_id[src_rack][src_communication_group][dst_communication_group].add(src_node)
+        # rack_to_src_cg_to_dst_cg_to_node_id[dst_rack][src_communication_group][dst_communication_group].add(dst_node)
+
+    # count number of contending racks (number of nodes with the same node ID and communication group ID)
+    # # OLD
+    # cont_racks = 1
+    # for src_communication_group in communication_groups:
+        # for dst_communication_group in communication_groups:
+            # for rack in racks:
+                # # check if any other rack with this src-dst comm group uses same node ids assigned to this rack
+                # for node_id in rack_to_src_cg_to_dst_cg_to_node_id[src_communication_group][dst_communication_group][rack]:
+                    # for _rack in racks:
+                        # if _rack != rack:
+                            # if node_id in rack_to_src_cg_to_dst_cg_to_node_id[src_communication_group][dst_communication_group][_rack]:
+                                # cont_racks += 1
+
+    # # NEW
+    # cont_racks = len(racks)
+
+    # NEW NEW
+    cont_racks, node_to_cg = 1, defaultdict(set)
+    for _id in ids:
+        c, r, s = _id
+        if s in node_to_cg:
+            # already used this node ID, check if used this comm group for this node ID
+            if c in node_to_cg[s]:
+                # node and comm group ID conflict, contending rack found
+                cont_racks += 1
+            else:
+                node_to_cg[s].add(c)
+        else:
+            node_to_cg[s].add(c)
     
-    # # count number of contending racks (number of racks which use the same node number for same src-dst communication groups)
-    # cont_racks = 0
-    # rack_to_contentions = defaultdict(lambda: 0)
-    # for src_communication_group in src_cg_to_dst_cg_to_node_id_to_racks.keys():
-        # for dst_communication_group in src_cg_to_dst_cg_to_node_id_to_racks[src_communication_group].keys():
-            # for node in src_cg_to_dst_cg_to_node_id_to_racks[src_communication_group][dst_communication_group].keys():
-                # cont_racks += len(src_cg_to_dst_cg_to_node_id_to_racks[src_communication_group][dst_communication_group][node])
-
-    # count number of contending racks (number of racks which use the same node number for same src-dst communication groups)
-    cont_racks = 1
-    for src_communication_group in communication_groups:
-        for dst_communication_group in communication_groups:
-            for rack in racks:
-                # check if any other rack with this src-dst comm group uses same node ids assigned to this rack
-                for node_id in rack_to_src_cg_to_dst_cg_to_node_id[src_communication_group][dst_communication_group][rack]:
-                    for _rack in racks:
-                        if _rack != rack:
-                            if node_id in rack_to_src_cg_to_dst_cg_to_node_id[src_communication_group][dst_communication_group][_rack]:
-                                cont_racks += 1
         
     if verbose:
         print(f'\ncollective: {collective}')

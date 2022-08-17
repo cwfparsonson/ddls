@@ -7,7 +7,7 @@ from ddls.environments.ramp_cluster.agents.placers.utils import get_partitioned_
 import random
 import numpy as np
 
-class RampRandomJobPlacementShaper:
+class RampFirstFitJobPlacementShaper:
     def __init__(self):
         pass
 
@@ -30,7 +30,7 @@ class RampRandomJobPlacementShaper:
             # choose a meta block shape for this job
             valid_meta_block_shapes = meta_block_shapes[mask]
             if len(valid_meta_block_shapes) > 0:
-                job_to_meta_block_shape[job_id] = random.choice(list(valid_meta_block_shapes))
+                job_to_meta_block_shape[job_id] = valid_meta_block_shapes[0]
             else:
                 # no valid meta block shapes available for this job
                 pass

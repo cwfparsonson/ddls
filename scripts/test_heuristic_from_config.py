@@ -19,10 +19,23 @@ import pickle
 import gzip
 
 
-@hydra.main(config_path='configs', config_name='heuristic_config.yaml')
+# to override from command line, do e.g.:
+# python <test_heuristic_from_config.py --config-path=ramp_job_placement_shaping_configs --config-name=heuristic_config.yaml
+@hydra.main(config_path='ramp_job_placement_shaping_configs', config_name='heuristic_config.yaml')
 def run(cfg: DictConfig):
     if 'cuda_visible_devices' in cfg.experiment:
         os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(str(gpu) for gpu in cfg.experiment.cuda_visible_devices)
+
+    # init weights and biases
+    if 'wandb' in cfg:
+        if cfg.wandb is not None:
+            import wandb
+            wandb.init(**cfg.wandb.init)
+            wandb.confg = cfg
+        else:
+            wandb = None
+    else:
+        wandb = None
 
     # seeding
     if 'seed' in cfg.experiment:
@@ -30,19 +43,20 @@ def run(cfg: DictConfig):
 
     # create dir for saving data
     save_dir = gen_unique_experiment_folder(path_to_save=cfg.experiment.path_to_save, experiment_name=cfg.experiment.name)
+    cfg['experiment']['save_dir'] = save_dir
 
     # save copy of config to the save dir
     OmegaConf.save(config=cfg, f=save_dir+'heuristic_config.yaml')
 
     # print info
     print('\n\n\n')
-    print(f'~'*80)
+    print(f'~'*100)
     print(f'Initialised experiment save dir {save_dir}')
     print(f'Config:\n{OmegaConf.to_yaml(cfg)}')
-    print(f'~'*80)
+    print(f'~'*100)
 
     # eval_loop = hydra.utils.instantiate(actor=actor, env=env)
-    eval_loop = hydra.utils.instantiate(cfg.eval_loop)
+    eval_loop = hydra.utils.instantiate(cfg.eval_loop, wandb=wandb)
     print(f'Initialised {eval_loop}.')
 
     start_time = time.time()

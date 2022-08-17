@@ -154,7 +154,7 @@ class GNN(nn.Module):
         self.layers.append(agg(in_features_node=config['out_features_hidden'],
                                 in_features_edge=config['in_features_edge'],
                                 out_features_msg=config['out_features_msg'],
-                                out_features_reduce=config['out_features']))
+                                out_features_reduce=config['out_features_node']))
         
         self.layers = nn.ModuleList(self.layers)
 
