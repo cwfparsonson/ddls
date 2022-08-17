@@ -53,10 +53,10 @@ def run(cfg: DictConfig):
 
     # print info
     print('\n\n\n')
-    print(f'~'*80)
+    print(f'~'*100)
     print(f'Initialised experiment save dir {save_dir}')
     print(f'Config:\n{OmegaConf.to_yaml(cfg)}')
-    print(f'~'*80)
+    print(f'~'*100)
 
     # get rllib config
     _rllib_config = OmegaConf.to_container(cfg.epoch_loop.rllib_config, resolve=False)
