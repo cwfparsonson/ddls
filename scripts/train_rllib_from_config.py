@@ -33,6 +33,10 @@ def run(cfg: DictConfig):
     if 'cuda_visible_devices' in cfg.experiment:
         os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(str(gpu) for gpu in cfg.experiment.cuda_visible_devices)
 
+    # create dir for saving data
+    save_dir = gen_unique_experiment_folder(path_to_save=cfg.experiment.path_to_save, experiment_name=cfg.experiment.name)
+    cfg['experiment']['save_dir'] = save_dir
+
     # init weights and biases
     if 'wandb' in cfg:
         if cfg.wandb is not None:
@@ -47,10 +51,6 @@ def run(cfg: DictConfig):
     # seeding
     if 'train_seed' in cfg.experiment:
         seed_stochastic_modules_globally(cfg.experiment.train_seed)
-
-    # create dir for saving data
-    save_dir = gen_unique_experiment_folder(path_to_save=cfg.experiment.path_to_save, experiment_name=cfg.experiment.name)
-    cfg['experiment']['save_dir'] = save_dir
 
     # save copy of config to the save dir
     OmegaConf.save(config=cfg, f=save_dir+'rllib_config.yaml')
