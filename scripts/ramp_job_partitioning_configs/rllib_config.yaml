@@ -10,8 +10,14 @@ experiment:
     cuda_visible_devices:
         #- 0
         #- 1
-        #- 2
+        - 2
         - 3
+        - 4
+        - 5
+        - 6
+        - 7
+        - 8
+        - 9
     save_dir: null # placeholder, will be updated
 
 launcher:
@@ -71,7 +77,8 @@ epoch_loop:
                 path_to_files: /scratch/datasets/ddls/jobs/image_classification_and_translation/small_graphs/training/
                 max_files: null
                 #replication_factor: 1
-                replication_factor: 10
+                #replication_factor: 10
+                replication_factor: 20
                 #replication_factor: 200
                 #replication_factor: 1000
                 job_interarrival_time_dist:
@@ -125,6 +132,7 @@ epoch_loop:
                 max_files: null
                 #replication_factor: 1
                 #replication_factor: 10
+                replication_factor: 20
                 #replication_factor: 200
                 #replication_factor: 1000
                 job_sampling_mode: remove
@@ -150,7 +158,6 @@ epoch_loop:
             reward_function_kwargs:
                 fail_reward: job_sequential_completion_time
                 fail_reward_factor: 10
-                #fail_reward_factor: 2
                 #fail_reward_factor: 1
                 sign: -1
                 inverse: false
@@ -201,16 +208,16 @@ epoch_loop:
                 action_space_type: discrete # discrete continuous
 
         batch_mode: complete_episodes
-        #train_batch_size: 32
-        #sgd_minibatch_size: 32
-        train_batch_size: 4
-        sgd_minibatch_size: 4
+        train_batch_size: 32
+        sgd_minibatch_size: 32
+        #train_batch_size: 4
+        #sgd_minibatch_size: 4
         #train_batch_size: 1
         #sgd_minibatch_size: 1
 
         callbacks: ddls.environments.ramp_cluster.utils.RLlibRampClusterEnvironmentCallback
 
-        num_workers: 0 # num parallel cpu workers
+        num_workers: 2 # num parallel cpu workers
         num_gpus: 1 # num gpus available for RLlib
 
         framework: torch

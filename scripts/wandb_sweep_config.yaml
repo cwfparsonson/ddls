@@ -12,7 +12,7 @@ parameters:
         #values: [2, 4, 6, 8]
         
     epoch_loop.rllib_config.env_config.reward_function_kwargs.fail_reward_factor:
-        values: [1, 2, 4, 8]
+        values: [0.25, 0.50, 0.75, 1.25, 1.50, 1.75, 2.0]
 
 command:
   - ${env}

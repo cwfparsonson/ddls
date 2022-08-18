@@ -7,6 +7,7 @@ warnings.filterwarnings(action='ignore',
                         module='ray')  # noqa
 
 from ddls.utils import seed_stochastic_modules_globally, gen_unique_experiment_folder
+from ddls.ml_models.utils import get_least_used_gpu
 from ddls.launchers.launcher import Launcher
 from ddls.loops.env_loop import EnvLoop
 from ddls.loops.eval_loop import EvalLoop
@@ -18,11 +19,19 @@ import ray
 ray.shutdown()
 ray.init()
 
+import numpy as np
+
 import hydra
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 import shutil
 import os
+
+import subprocess
+import pandas as pd
+from io import StringIO
+
+import torch
 
 
 
@@ -32,6 +41,8 @@ import os
 def run(cfg: DictConfig):
     if 'cuda_visible_devices' in cfg.experiment:
         os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(str(gpu) for gpu in cfg.experiment.cuda_visible_devices)
+    least_used_gpu = get_least_used_gpu()
+    os.environ['CUDA_VISIBLE_DEVICES'] = str(least_used_gpu)
 
     # create dir for saving data
     save_dir = gen_unique_experiment_folder(path_to_save=cfg.experiment.path_to_save, experiment_name=cfg.experiment.name)

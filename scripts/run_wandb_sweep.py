@@ -28,14 +28,16 @@ if __name__ == '__main__':
                 '-n',
                 help='Number of runs to conduct in parallel.',
                 type=int,
-                default=2,
+                required=True,
+                # default=2,
             )
     parser.add_argument(
                 '--session_name',
                 '-s',
-                help='Name of sweep run to prefix tmux sessions with.',
+                help='Name of tmux session in which parallel sweep runs are being conducted.',
                 type=str,
-                default='sweep',
+                required=True,
+                # default='sweep',
             )
     parser.add_argument(
                 '--conda_env',
@@ -50,6 +52,13 @@ if __name__ == '__main__':
                 help='Command to run a pre-defined weights and biases sweep agent. Provide this argument if you have previously generated a sweep command and want to run more sweep agents in parallel. If None, this script will automatically generate a sweep command for you and use it to run parallel sweep agents.',
                 type=str,
                 default=None,
+            )
+    parser.add_argument(
+                '--run_start_stagger_delay',
+                '-d',
+                help='Delay (in seconds) with which to stagger parallel runs to decrease chance of conflicting save IDs etc.',
+                type=float,
+                default=10,
             )
     args = parser.parse_args()
 
@@ -96,4 +105,9 @@ if __name__ == '__main__':
         # run sweep agent
         pane.send_keys(run_sweep_cmd)
         print(f'Launched parallel run {i+1} of {args.num_parallel_windows} in tmux window {window} in {time.time() - start_t:.3f} s.')
+
+        if i != args.num_parallel_windows - 1:
+            print(f'Staggering launch of next parallel run by {args.run_start_stagger_delay} seconds...')
+            time.sleep(args.run_start_stagger_delay)
+
     print(f'~'*100)

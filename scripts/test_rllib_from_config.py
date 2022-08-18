@@ -15,6 +15,7 @@ warnings.filterwarnings(action='ignore',
                         module='ray')  # noqa
 
 from ddls.utils import seed_stochastic_modules_globally, gen_unique_experiment_folder, get_class_from_path, get_module_from_path, recursively_update_nested_dict
+from ddls.ml_models.utils import get_least_used_gpu
 
 import hydra
 from hydra.core.hydra_config import HydraConfig
@@ -31,6 +32,7 @@ from ray.rllib.models import ModelCatalog
 import time
 import pickle
 import gzip
+import os
 
 
 # to override from command line, do e.g.:
@@ -39,6 +41,8 @@ import gzip
 def run(cfg: DictConfig):
     if 'cuda_visible_devices' in cfg.experiment:
         os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(str(gpu) for gpu in cfg.experiment.cuda_visible_devices)
+    least_used_gpu = get_least_used_gpu()
+    os.environ['CUDA_VISIBLE_DEVICES'] = str(least_used_gpu)
 
     # create dir for saving data
     save_dir = gen_unique_experiment_folder(path_to_save=cfg.experiment.path_to_save, experiment_name=cfg.experiment.name)

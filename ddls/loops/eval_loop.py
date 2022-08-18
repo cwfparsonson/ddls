@@ -107,7 +107,7 @@ class EvalLoop:
 
         if self.wandb is not None:
             wandb_log = {}
-            for log_name, log in results.keys():
+            for log_name, log in results.items():
                 for key, val in log.items():
                     # record average of stat for validation run
                     wandb_log[f'valid/{log_name}/{key}'] = np.mean(val)

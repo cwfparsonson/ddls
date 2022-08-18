@@ -43,15 +43,16 @@ eval_loop:
                 worker_io_latency: 0.000000100
 
         jobs_config:
-            path_to_files: /scratch/datasets/ddls/jobs/pipedream_graphs/image_classification/profiles/alexnet/
+            #path_to_files: /scratch/datasets/ddls/jobs/pipedream_graphs/image_classification/profiles/alexnet/
             #path_to_files: /scratch/datasets/ddls/jobs/pipedream_graphs/image_classification/profiles/resnext50/
-            #path_to_files: /scratch/datasets/ddls/jobs/image_classification_and_translation/small_graphs/training/
+            path_to_files: /scratch/datasets/ddls/jobs/image_classification_and_translation/small_graphs/training/
             max_files: null
             #replication_factor: 1
             #replication_factor: 5
             #replication_factor: 10
+            replication_factor: 20
             #replication_factor: 100
-            replication_factor: 200
+            #replication_factor: 200
             #replication_factor: 1000
             job_interarrival_time_dist:
                 _target_: ddls.distributions.uniform.Uniform
@@ -65,8 +66,9 @@ eval_loop:
             max_partitions_per_op_in_observation: 1
 
         # CHANGE
+        #max_partitions_per_op: null
         #max_partitions_per_op: 2
-        max_partitions_per_op: null
+        max_partitions_per_op: 8
 
         # CHANGE
         min_op_run_time_quantum: 0.000006
@@ -76,7 +78,7 @@ eval_loop:
         reward_function: lookahead_job_completion_time
         reward_function_kwargs:
             fail_reward: job_sequential_completion_time
-            fail_reward_factor: 2
+            fail_reward_factor: 10
             #fail_reward_factor: 1
             sign: -1
             inverse: false
@@ -105,19 +107,19 @@ eval_loop:
 
         # CHANGE
         pad_obs_kwargs:
-            max_nodes: 100
+            max_nodes: 150
 
     # CHANGE
     actor:
         # HEURISTIC AGENTS
-        _target_: ddls.environments.ramp_job_partitioning.agents.random.Random
+        #_target_: ddls.environments.ramp_job_partitioning.agents.random.Random
 
         #_target_: ddls.environments.ramp_job_partitioning.agents.no_parallelism.NoParallelism
 
         #_target_: ddls.environments.ramp_job_partitioning.agents.max_parallelism.MaxParallelism
 
-        #_target_: ddls.environments.ramp_job_partitioning.agents.sip_ml.SiPML
-        #max_partitions_per_op: 8
+        _target_: ddls.environments.ramp_job_partitioning.agents.sip_ml.SiPML
+        max_partitions_per_op: 8
 
 
 wandb:

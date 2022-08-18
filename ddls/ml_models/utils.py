@@ -3,6 +3,10 @@ import random as rnd
 import numpy as np
 import dgl
 import torch
+import os
+import subprocess
+import pandas as pd
+from io import StringIO
 
 def stack_features(g,**kwargs):
 
@@ -105,3 +109,30 @@ def pad_graph(num_nodes,node_split,edge_split,edges_src,edges_dst,node_features,
         node_features = torch.cat((node_features,node_feature_padding),dim=0)
 
         return edges_src, edges_dst, node_features, edge_features, node_split, edge_split
+
+def get_least_used_gpu():
+    '''Returns the GPU index on the current server with the most available memory.'''
+    # get devices visible to cuda
+    cuda_visible_devices = [int(device) for device in os.environ["CUDA_VISIBLE_DEVICES"].split(',')]
+
+    # get string output of nvidia-smi memory query
+    gpu_stats = subprocess.run(["nvidia-smi", "--format=csv", "--query-gpu=memory.used,memory.free"], stdout=subprocess.PIPE).stdout.decode('utf-8')
+
+    # process query into StringIO object
+    gpu_stats_2 = u''.join(gpu_stats)
+    gpu_stats_3 = StringIO(gpu_stats_2)
+    gpu_stats_3.seek(0)
+
+    # read into dataframe
+    gpu_df = pd.read_csv(gpu_stats_3,
+                         names=['memory.used', 'memory.free'],
+                         skiprows=1)
+
+    # filter any devices not in cuda visible devices
+    gpu_df = gpu_df[gpu_df.index.isin(cuda_visible_devices)]
+
+    # get GPU with most free memory
+    gpu_df['memory.free'] = gpu_df['memory.free'].map(lambda x: x.rstrip(' MiB'))
+    idx = int(gpu_df['memory.free'].astype(float).idxmax())
+
+    return idx
