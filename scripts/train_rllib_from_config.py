@@ -44,6 +44,15 @@ def run(cfg: DictConfig):
     least_used_gpu = get_least_used_gpu()
     os.environ['CUDA_VISIBLE_DEVICES'] = str(least_used_gpu)
 
+    # seeding
+    if 'train_seed' in cfg.experiment:
+        seed_stochastic_modules_globally(cfg.experiment.train_seed)
+        if 'rllib_config' in cfg.epoch_loop:
+            # must seed rllib separately in config
+            cfg.epoch_loop.rllib_config.seed = cfg.experiment.train_seed
+            if 'test_seed' in cfg.experiment:
+                cfg.epoch_loop.validator_rllib_config.seed = cfg.experiment.test_seed
+
     # create dir for saving data
     save_dir = gen_unique_experiment_folder(path_to_save=cfg.experiment.path_to_save, experiment_name=cfg.experiment.name)
     cfg['experiment']['save_dir'] = save_dir
@@ -58,10 +67,6 @@ def run(cfg: DictConfig):
             wandb = None
     else:
         wandb = None
-
-    # seeding
-    if 'train_seed' in cfg.experiment:
-        seed_stochastic_modules_globally(cfg.experiment.train_seed)
 
     # save copy of config to the save dir
     OmegaConf.save(config=cfg, f=save_dir+'rllib_config.yaml')

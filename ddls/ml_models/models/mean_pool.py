@@ -1,3 +1,5 @@
+from ddls.ml_models.utils import get_torch_module_from_str
+
 import torch
 
 class MeanPool(torch.nn.Module):
@@ -42,31 +44,52 @@ class MeanPool(torch.nn.Module):
 
         super(MeanPool, self).__init__()
 
-        if aggregator_activation == 'leaky_relu':
-            self.activation_layer = torch.nn.LeakyReLU
-        else:
-            raise Exception(f'Unrecognised activation {aggregator_activation}')
+        if module_depth < 1:
+            raise Exception(f'Require module_depth >= 1.')
 
-        node_module = [torch.nn.LayerNorm(in_features_node)]
-        for _ in range(module_depth):
+        self.activation_layer = get_torch_module_from_str(aggregator_activation)
+
+        # NODE MODULE
+        # add input layer
+        node_module = [
+                torch.nn.LayerNorm(in_features_node), 
+                torch.nn.Linear(in_features_node, int(out_features_msg / 2)),
+                self.activation_layer(),
+                ]
+        # add any extra layers
+        for _ in range(module_depth-1):
             node_module.extend([
-                    torch.nn.Linear(in_features_node, int(out_features_msg / 2)),
+                    torch.nn.Linear(int(out_features_msg / 2), int(out_features_msg / 2)),
                     self.activation_layer(),
                 ])
         self.node_module = torch.nn.Sequential(*node_module)
 
-        edge_module = [torch.nn.LayerNorm(in_features_edge)]
-        for _ in range(module_depth):
+        # EDGE MODULE
+        # add input layer
+        edge_module = [
+                torch.nn.LayerNorm(in_features_edge), 
+                torch.nn.Linear(in_features_edge, int(out_features_msg / 2)),
+                self.activation_layer(),
+                ]
+        # add any extra layers
+        for _ in range(module_depth-1):
             edge_module.extend([
-                    torch.nn.Linear(in_features_edge, int(out_features_msg / 2)),
+                    torch.nn.Linear(int(out_features_msg / 2), int(out_features_msg / 2)),
                     self.activation_layer(),
                 ])
         self.edge_module = torch.nn.Sequential(*edge_module)
 
-        reduce_module = [torch.nn.LayerNorm(out_features_msg)]
-        for _ in range(module_depth):
+        # REDUCE MODULE
+        # add input layer
+        reduce_module = [
+                torch.nn.LayerNorm(out_features_msg), 
+                torch.nn.Linear(out_features_msg, out_features_reduce),
+                self.activation_layer(),
+                ]
+        # add any extra layers
+        for _ in range(module_depth-1):
             reduce_module.extend([
-                    torch.nn.Linear(out_features_msg, out_features_reduce),
+                    torch.nn.Linear(out_features_reduce, out_features_reduce),
                     self.activation_layer(),
                 ])
         self.reduce_module = torch.nn.Sequential(*reduce_module)

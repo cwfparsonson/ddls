@@ -163,12 +163,19 @@ class RampClusterEnvironment:
         else:
             self.path_to_save = None
 
-        self.jobs_generator = JobsGenerator(**jobs_config)
-
-        self.max_simulation_run_time = max_simulation_run_time 
+        # seed environment
         self.seed = seed
         if seed is not None:
             seed_stochastic_modules_globally(seed)
+
+        # reset stopwatch
+        self.stopwatch.reset()
+
+        # load jobs
+        self.jobs_generator = JobsGenerator(**jobs_config)
+
+        # set max sim time
+        self.max_simulation_run_time = max_simulation_run_time 
 
         # reset loggers
         self.save_thread = None
@@ -201,7 +208,6 @@ class RampClusterEnvironment:
         self.job_idx_to_job_id = {}
         self.job_id_to_job_idx = {}
 
-        self.stopwatch.reset()
         self.step_counter = 0
 
         self.action = None
@@ -242,12 +248,16 @@ class RampClusterEnvironment:
         step_stats['mean_num_mounted_workers'] = []
         step_stats['mean_num_mounted_channels'] = []
 
-        step_stats['mean_compute_throughput'] = []
-        step_stats['mean_comm_throughput'] = []
-        step_stats['mean_cluster_throughput'] = []
+        step_stats['mean_compute_throughput'] = 0
+        step_stats['mean_dep_throughput'] = 0
+        step_stats['mean_cluster_throughput'] = 0
+
+        step_stats['mean_demand_compute_throughput'] = 0
+        step_stats['mean_demand_dep_throughput'] = 0
+        step_stats['mean_demand_total_throughput'] = 0
         
         step_stats['mean_compute_overhead_frac'] = []
-        step_stats['mean_comm_overhead_frac'] = []
+        step_stats['mean_communication_overhead_frac'] = []
 
         step_stats['mean_mounted_worker_utilisation_frac'] = []
         # step_stats['mean_mounted_channel_utilisation_frac'] = []
@@ -269,6 +279,8 @@ class RampClusterEnvironment:
         episode_stats['num_jobs_arrived'] = 0
         episode_stats['num_jobs_completed'] = 0
         episode_stats['num_jobs_blocked'] = 0
+
+        episode_stats['episode_start_time'] = copy.deepcopy(self.stopwatch.time())
 
         return episode_stats
 
@@ -343,24 +355,8 @@ class RampClusterEnvironment:
 
                 # NON-FLOW DEPENDENCIES
                 # find any ready deps which never became flows and therefore have 0 run time
-                non_flow_deps = set()
                 # print(f'deps ready: {job.computation_graph.graph["deps_ready"]}')
-                for dep_id in job.computation_graph.graph['deps_ready']:
-                    u, v, k = dep_id
-                    src_job_op = gen_job_dep_str(job_idx, job.job_id, u)
-                    dst_job_op = gen_job_dep_str(job_idx, job.job_id, v)
-                    src_worker = self.job_op_to_worker[src_job_op]
-                    dst_worker = self.job_op_to_worker[dst_job_op]
-                    # print(f'dep_id {dep_id} | size: {job.computation_graph[u][v][k]["size"]} | src_worker: {src_worker} | dst_worker: {dst_worker}')
-                    if job.computation_graph[u][v][k]['size'] == 0:
-                        # 0 data transferred -> not a flow
-                        non_flow_deps.add(dep_id)
-                    elif self.topology.graph.graph['worker_to_node'][src_worker] == self.topology.graph.graph['worker_to_node'][dst_worker]:
-                        # src == dst server node -> not a flow
-                        non_flow_deps.add(dep_id)
-                    else:
-                        # is a flow
-                        pass
+                non_flow_deps = self.gather_job_ready_non_flow_deps(job)
 
                 # COMMUNICATION
                 priority_job_deps = set()
@@ -426,6 +422,9 @@ class RampClusterEnvironment:
                 # tick highest priority mounted ready ops and deps on each worker and channel and record any ops or deps which are completed
                 tick = min(shortest_remaining_run_time, shortest_remaining_communication_time)
 
+                # record deps ready before op is ticked so that do not tick future ready deps one step early (since job.computation_graph.graph['deps_ready'] is automatically updated by Jobs class when an op is ticked and completed)
+                deps_ready = copy.deepcopy(job.computation_graph.graph['deps_ready'])
+
                 # tick ops mounted on workers
                 job_idx_to_completed_op_ids = defaultdict(list)
                 # self.num_active_workers = 0
@@ -457,13 +456,13 @@ class RampClusterEnvironment:
                     u, v, k = dep_id
                     if verbose:
                         remaining_run_time = job.computation_graph[u][v][k]['remaining_run_time']
-                        print(f'Ticking dep {dep_id} with remaining run time {remaining_run_time} of job index {job_idx} by amount {tick}')
+                        print(f'Ticking non-flow dep {dep_id} with remaining run time {remaining_run_time} of job index {job_idx} by amount {tick}')
                     job.tick_dep(dep_id, tick=tick)
                     if dep_id in job.computation_graph.graph['deps_completed']:
                         # dep was completed
                         job_idx_to_completed_dep_ids[job_idx].append(dep_id)
                         if verbose:
-                            print(f'Dep {dep_id} of job index {job_idx} completed')
+                            print(f'Non-flow dep {dep_id} of job index {job_idx} completed')
 
                 # tick flows mounted on channels
                 ticked_flows = False
@@ -490,12 +489,13 @@ class RampClusterEnvironment:
 
                 # TODO NEW TEMP HACK: Tick all ready deps on each channel regardless of scheduling order (i.e. assume can transfer flows in parallel -> ignore need for scheduling)
                 job_idx_to_completed_dep_ids = defaultdict(list)
-                for dep_id in sorted(job.computation_graph.graph['deps_ready']):
+                # for dep_id in sorted(job.computation_graph.graph['deps_ready']):
+                for dep_id in sorted(deps_ready):
                     if dep_id not in non_flow_deps:
                         u, v, k = dep_id
                         if verbose:
                             remaining_run_time = job.computation_graph[u][v][k]['remaining_run_time']
-                            print(f'Ticking dep {dep_id} with remaining run time {remaining_run_time} of job index {job_idx} by amount {tick}')
+                            print(f'Ticking flow dep {dep_id} with remaining run time {remaining_run_time} of job index {job_idx} by amount {tick}')
                         job.tick_dep(dep_id, tick=tick)
                         ticked_flows = True
                         # tick_counter_to_active_channels_tick_size[lookahead_tick_counter][0] += 1
@@ -503,7 +503,7 @@ class RampClusterEnvironment:
                             # dep was completed
                             job_idx_to_completed_dep_ids[job_idx].append(dep_id)
                             if verbose:
-                                print(f'Dep {dep_id} of job index {job_idx} completed')
+                                print(f'Flow dep {dep_id} of job index {job_idx} completed')
                 # tick_counter_to_active_channels_tick_size[lookahead_tick_counter][1] = tick
 
                 # # record any communicaiton vs. computation bottleneck/overhead time
@@ -560,8 +560,13 @@ class RampClusterEnvironment:
                                             'mean_mounted_worker_utilisation_frac': mean_mounted_worker_utilisation_frac,
                                             # 'mean_mounted_channel_utilisation_frac': mean_mounted_channel_utilisation_frac,
                                             })
+                    job.details['job_total_flow_size'] = 0 # track info size of deps which became flows
                     for dep_id in job.computation_graph.edges:
-                        self.set_dep_init_run_time(job, dep_id)
+                        run_time = self.set_dep_init_run_time(job, dep_id)
+                        if run_time != 0:
+                            # dep became a flow, record flow size
+                            u, v, k = dep_id
+                            job.details['job_total_flow_size'] += job.computation_graph[u][v][k]['size']
 
                     # # record metrics
                     # self.step_stats['mean_num_mounted_workers'].append(len(self.mounted_workers))
@@ -585,6 +590,28 @@ class RampClusterEnvironment:
             if verbose:
                 print(f'Finished all new job lookaheads.')
 
+    def gather_job_ready_non_flow_deps(self, job):
+        job_idx = self.job_id_to_job_idx[job.job_id]
+        non_flow_deps = set()
+        for dep_id in job.computation_graph.graph['deps_ready']:
+            u, v, k = dep_id
+            src_job_op = gen_job_dep_str(job_idx, job.job_id, u)
+            dst_job_op = gen_job_dep_str(job_idx, job.job_id, v)
+            src_worker = self.job_op_to_worker[src_job_op]
+            dst_worker = self.job_op_to_worker[dst_job_op]
+            # print(f'dep_id {dep_id} | size: {job.computation_graph[u][v][k]["size"]} | src_worker: {src_worker} | dst_worker: {dst_worker}')
+            # print(f'Considering dep {dep_id} with src {self.topology.graph.graph["worker_to_node"][src_worker]} dst {self.topology.graph.graph["worker_to_node"][dst_worker]} size {job.computation_graph[u][v][k]["size"]}') # DEBUG
+            if job.computation_graph[u][v][k]['size'] == 0:
+                # 0 data transferred -> not a flow
+                non_flow_deps.add(dep_id)
+            elif (self.topology.graph.graph['worker_to_node'][src_worker] == self.topology.graph.graph['worker_to_node'][dst_worker]):
+                # src == dst server node -> not a flow
+                non_flow_deps.add(dep_id)
+            else:
+                # is a flow
+                pass
+        return non_flow_deps
+
     def set_dep_init_run_time(self, job, dep_id):
         u, v, k = dep_id
         job_idx = self.job_id_to_job_idx[job.job_id]
@@ -603,6 +630,7 @@ class RampClusterEnvironment:
         else:
             run_time = job.computation_graph[u][v][k]['init_run_time']
         job.set_dep_init_run_time(dep_id, run_time)
+        return run_time
 
     def _get_highest_priority_job_op(self, worker):
         '''
@@ -728,19 +756,26 @@ class RampClusterEnvironment:
                 tick = min(tick, remaining_run_time)
 
             # record stats this tick
-            compute_info_processed, comm_info_processed, cluster_info_processed = 0, 0, 0
+            compute_info_processed, dep_info_processed, flow_info_processed, cluster_info_processed = 0, 0, 0, 0
+            demand_compute_info_processed, demand_dep_info_processed, demand_total_info_processed = 0, 0, 0
             self.mounted_workers, self.mounted_channels = set(), set()
             # mounted_worker_utilisation, mounted_channel_utilisation = [], []
             mounted_worker_utilisation = []
             for job in self.jobs_running.values():
+
                 frac_job_completed_this_tick = tick / job.details['lookahead_job_completion_time']
 
-                compute_info_processed += (job.details['job_total_op_memory_cost'] * frac_job_completed_this_tick)
-                comm_info_processed += (job.details['job_total_dep_size'] * frac_job_completed_this_tick)
-                cluster_info_processed += ((job.details['job_total_op_memory_cost'] + job.details['job_total_dep_size']) * frac_job_completed_this_tick)
+                self.step_stats['compute_info_processed'] += (job.details['job_total_op_memory_cost'] * frac_job_completed_this_tick)
+                self.step_stats['dep_info_processed'] += (job.details['job_total_dep_size'] * frac_job_completed_this_tick)
+                self.step_stats['flow_info_processed'] += (job.details['job_total_flow_size'] * frac_job_completed_this_tick)
+                self.step_stats['cluster_info_processed'] += ((job.details['job_total_op_memory_cost'] + job.details['job_total_dep_size']) * frac_job_completed_this_tick)
 
-                self.step_stats['mean_compute_overhead_frac'].append(job.details['communication_overhead_time'] / job.details['lookahead_job_completion_time'])
-                self.step_stats['mean_comm_overhead_frac'].append(job.details['computation_overhead_time'] / job.details['lookahead_job_completion_time'])
+                self.step_stats['demand_compute_info_processed'] += (job.original_job.details['job_total_op_memory_cost'] * frac_job_completed_this_tick)
+                self.step_stats['demand_dep_info_processed'] += (job.original_job.details['job_total_dep_size'] * frac_job_completed_this_tick)
+                self.step_stats['demand_total_info_processed'] += ((job.original_job.details['job_total_op_memory_cost'] + job.original_job.details['job_total_dep_size']) * frac_job_completed_this_tick)
+
+                self.step_stats['mean_compute_overhead_frac'].append(job.details['computation_overhead_time'] / job.details['lookahead_job_completion_time'])
+                self.step_stats['mean_communication_overhead_frac'].append(job.details['communication_overhead_time'] / job.details['lookahead_job_completion_time'])
 
                 self.mounted_workers.update(job.details['mounted_workers'])
                 self.mounted_channels.update(job.details['mounted_channels'])
@@ -749,10 +784,6 @@ class RampClusterEnvironment:
                 # mounted_channel_utilisation.append(job.details['mean_mounted_channel_utilisation_frac'])
 
             self.step_stats['mean_num_jobs_running'].append(len(self.jobs_running))
-
-            self.step_stats['mean_compute_throughput'].append(compute_info_processed / tick)
-            self.step_stats['mean_comm_throughput'].append(comm_info_processed / tick)
-            self.step_stats['mean_cluster_throughput'].append(cluster_info_processed / tick)
 
             self.step_stats['mean_num_mounted_workers'].append(len(self.mounted_workers))
             self.step_stats['mean_num_mounted_channels'].append(len(self.mounted_channels))
@@ -818,18 +849,30 @@ class RampClusterEnvironment:
 
                        'mean_num_mounted_workers',
                        'mean_num_mounted_channels',
-                    
-                       'mean_compute_throughput',
-                       'mean_comm_throughput',
-                       'mean_cluster_throughput',
 
                        'mean_compute_overhead_frac',
-                       'mean_comm_overhead_frac',
+                       'mean_communication_overhead_frac',
                        ]:
             if len(self.step_stats[metric]) > 0:
                 self.step_stats[metric] = np.mean(self.step_stats[metric])
             else:
                 self.step_stats[metric] = 0
+
+        self.step_stats['step_time'] = self.step_stats['step_end_time'] - self.step_stats['step_start_time']
+        for throughput_metric, info_processed in {
+                'mean_compute_throughput': 'compute_info_processed',
+                'mean_dep_throughput': 'dep_info_processed',
+                'mean_flow_throughput': 'flow_info_processed',
+                'mean_cluster_throughput': 'cluster_info_processed',
+
+                'mean_demand_compute_throughput': 'demand_compute_info_processed',
+                'mean_demand_dep_throughput': 'demand_dep_info_processed',
+                'mean_demand_total_throughput': 'demand_total_info_processed',
+                }.items():
+            if self.step_stats[info_processed] != 0 and self.step_stats['step_time'] != 0:
+                self.step_stats[throughput_metric] = self.step_stats[info_processed] / self.step_stats['step_time'] 
+            else:
+                self.step_stats[throughput_metric] = 0
 
         # self.step_stats['mean_num_mounted_workers'] = len(self.mounted_workers)
         # self.step_stats['mean_num_mounted_channels'] = len(self.mounted_channels)
@@ -837,8 +880,44 @@ class RampClusterEnvironment:
         self.step_stats['job_queue_length'] = len(self.job_queue)
         self._update_steps_log(copy.deepcopy(self.step_stats))
 
+        # log episode-level data
+        for metric in [
+                    'compute_info_processed',
+                    'dep_info_processed',
+                    'flow_info_processed',
+                    'cluster_info_processed',
+
+                    'demand_compute_info_processed',
+                    'demand_dep_info_processed',
+                    'demand_total_info_processed',
+                    ]:
+            self.episode_stats[metric].append(self.step_stats[metric])
+
         # move to next step
         self.step_counter += 1
+
+        if self.is_done():
+            # update episode-level data as necessary
+
+            self.episode_stats['episode_end_time'] = copy.deepcopy(self.stopwatch.time())
+
+            self.episode_stats['episode_time'] = self.episode_stats['episode_end_time'] - self.episode_stats['episode_start_time']
+
+            for throughput_metric, info_processed in {
+                        'mean_compute_throughput': 'compute_info_processed',
+                        'mean_dep_throughput': 'dep_info_processed',
+                        'mean_flow_throughput': 'flow_info_processed',
+                        'mean_cluster_throughput': 'cluster_info_processed',
+
+                        'mean_demand_compute_throughput': 'demand_compute_info_processed',
+                        'mean_demand_dep_throughput': 'demand_dep_info_processed',
+                        'mean_demand_total_throughput': 'demand_total_info_processed',
+                        }.items():
+                self.episode_stats[info_processed] = np.sum(self.episode_stats[info_processed])
+                if self.episode_stats[info_processed] != 0 and self.episode_stats['episode_time'] != 0:
+                    self.episode_stats[throughput_metric] = self.episode_stats[info_processed] / self.episode_stats['episode_time'] 
+                else:
+                    self.episode_stats[throughput_metric] = 0
 
         # save logs
         if self.path_to_save is not None:
@@ -848,6 +927,7 @@ class RampClusterEnvironment:
                     self.save_thread.join()
 
         obs, action_set, reward, done, info = None, None, None, self.is_done(), None
+
 
         return obs, action_set, reward, done, info
 
@@ -1000,20 +1080,26 @@ class RampClusterEnvironment:
         self.jobs_completed[job.details['job_idx']] = job
         self.step_stats['num_jobs_completed'] += 1
 
-        # self.sim_log['job_completion_time'].append(job.details['time_completed'] - job.details['time_arrived'])
-        # self.sim_log['jobs_completed_num_nodes'].append(len(job.computation_graph.nodes))
-        # self.sim_log['jobs_completed_num_edges'].append(len(job.computation_graph.edges))
-        # self.sim_log['jobs_completed_total_operation_memory_cost'].append(job.job_total_operation_memory_cost)
-        # self.sim_log['jobs_completed_total_dependency_size'].append(job.job_total_dependency_size)
-
         self.episode_stats['num_jobs_completed'] += 1
+
+        # TODO HACK TEMP: Assume all workers have same device_type
+        device_type = list(self.cluster.topology.graph.graph['worker_types'])[0]
+
         self.episode_stats['job_completion_time'].append(job.details['time_completed'] - job.details['time_arrived'])
+        self.episode_stats['job_completion_time_speedup'].append(job.details['job_sequential_completion_time'][device_type] / (job.details['time_completed'] - job.details['time_arrived']))
         self.episode_stats['job_communication_overhead_time'].append(job.details['communication_overhead_time'])
         self.episode_stats['job_computation_overhead_time'].append(job.details['computation_overhead_time'])
+
         self.episode_stats['jobs_completed_num_nodes'].append(len(job.computation_graph.nodes))
         self.episode_stats['jobs_completed_num_edges'].append(len(job.computation_graph.edges))
         self.episode_stats['jobs_completed_total_operation_memory_cost'].append(job.job_total_operation_memory_cost)
         self.episode_stats['jobs_completed_total_dependency_size'].append(job.job_total_dependency_size)
+        self.episode_stats['jobs_completed_max_partitions_per_op'].append(len(job.details['max_partitions_per_op']))
+
+        self.episode_stats['jobs_completed_original_demand_num_nodes'].append(len(job.original_job.computation_graph.nodes))
+        self.episode_stats['jobs_completed_original_demand_num_edges'].append(len(job.original_job.computation_graph.edges))
+        self.episode_stats['jobs_completed_original_demand_total_operation_memory_cost'].append(job.original_job.job_total_operation_memory_cost)
+        self.episode_stats['jobs_completed_original_demand_total_dependency_size'].append(job.original_job.job_total_dependency_size)
 
         # update simulator workers and channels
         del self.jobs_running[job.details['job_idx']]
@@ -1057,16 +1143,17 @@ class RampClusterEnvironment:
         # TODO: Record cause_of_block
         # self.step_stats['jobs_blocked_cause'] = cause_of_block
 
-        # self.sim_log['jobs_blocked_num_nodes'].append(len(job.computation_graph.nodes))
-        # self.sim_log['jobs_blocked_num_edges'].append(len(job.computation_graph.edges))
-        # self.sim_log['jobs_blocked_total_operation_memory_cost'].append(job.job_total_operation_memory_cost)
-        # self.sim_log['jobs_blocked_total_dependency_size'].append(job.job_total_dependency_size)
-
         self.episode_stats['num_jobs_blocked'] += 1
+
         self.episode_stats['jobs_blocked_num_nodes'].append(len(job.computation_graph.nodes))
         self.episode_stats['jobs_blocked_num_edges'].append(len(job.computation_graph.edges))
         self.episode_stats['jobs_blocked_total_operation_memory_cost'].append(job.job_total_operation_memory_cost)
         self.episode_stats['jobs_blocked_total_dependency_size'].append(job.job_total_dependency_size)
+
+        self.episode_stats['jobs_blocked_original_demand_num_nodes'].append(len(job.original_job.computation_graph.nodes))
+        self.episode_stats['jobs_blocked_original_demand_num_edges'].append(len(job.original_job.computation_graph.edges))
+        self.episode_stats['jobs_blocked_original_demand_total_operation_memory_cost'].append(job.original_job.job_total_operation_memory_cost)
+        self.episode_stats['jobs_blocked_original_demand_total_dependency_size'].append(job.original_job.job_total_dependency_size)
 
     def is_done(self, verbose=False):
         '''Checks if simulation has finished.'''

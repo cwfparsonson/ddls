@@ -72,6 +72,27 @@ def stack_features(g,**kwargs):
 
     return g
     
+def get_torch_module_from_str(module_str):
+    if module_str == 'leaky_relu':
+        torch_module = torch.nn.LeakyReLU
+    elif module_str == 'sigmoid':
+        torch_module = torch.nn.Sigmoid
+    elif module_str == 'relu':
+        torch_module = torch.nn.ReLU
+    elif module_str == 'elu':
+        torch_module = torch.nn.ELU
+    elif module_str == 'hard_swish':
+        torch_module = torch.nn.Hardswish
+    elif module_str == 'softplus':
+        torch_module = torch.nn.Softplus
+    elif module_str == 'mish':
+        torch_module = torch.nn.Mish
+    elif module_str == 'softsign':
+        torch_module = torch.nn.Softsign
+    else:
+        raise Exception(f'Unrecognised module string {module_str} when retrieving uninstantiated torch module.')
+    return torch_module
+
 
 def pad_graph(num_nodes,node_split,edge_split,edges_src,edges_dst,node_features,edge_features):
         '''

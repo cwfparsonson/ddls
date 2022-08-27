@@ -12,6 +12,10 @@ from ddls.environments.ramp_cluster.agents.schedulers.srpt_dep_scheduler import 
 
 from ddls.environments.ramp_job_partitioning.rewards.lookahead_job_completion_time import LookaheadJobCompletionTime
 from ddls.environments.ramp_job_partitioning.rewards.job_acceptance import JobAcceptance
+from ddls.environments.ramp_job_partitioning.rewards.mean_compute_throughput import MeanComputeThroughput
+from ddls.environments.ramp_job_partitioning.rewards.mean_cluster_throughput import MeanClusterThroughput
+from ddls.environments.ramp_job_partitioning.rewards.mean_demand_total_throughput import MeanDemandTotalThroughput
+from ddls.environments.ramp_job_partitioning.rewards.multi_objective_jct_blocking import MultiObjectiveJCTBlocking
 
 from ddls.environments.ramp_job_partitioning.observations.ramp_job_partitioning_observation import RampJobPartitioningObservation
 
@@ -57,7 +61,7 @@ class RampJobPartitioningEnvironment(gym.Env):
                  observation_function: Union['ramp_job_partitioning_observation'] = 'ramp_job_partitioning_observation',
                  pad_obs_kwargs: dict = None,
                  information_function: Union['default'] = 'default',
-                 reward_function: Union['lookahead_job_completion_time', 'job_acceptance'] = 'lookahead_job_completion_time',
+                 reward_function: Union['lookahead_job_completion_time', 'job_acceptance', 'mean_compute_throughput', 'mean_cluster_throughput', 'mean_demand_total_throughput', 'multi_objective_jct_blocking'] = 'lookahead_job_completion_time',
                  reward_function_kwargs: dict = None,
                  max_simulation_run_time: Union[int, float] = float('inf'),
                  job_queue_capacity: int = 10,
@@ -102,6 +106,9 @@ class RampJobPartitioningEnvironment(gym.Env):
         self.action_set = [action for action in range(self.max_partitions_per_op+1)] # 0 -> corresponds to do not place job
         self.action_space = gym.spaces.Discrete(int(len(self.action_set)))
 
+        # init observation space
+        self.observation_space = gym.spaces.Dict({})
+
         # init info
         self.information_function_str = information_function
         if information_function == 'default':
@@ -118,6 +125,14 @@ class RampJobPartitioningEnvironment(gym.Env):
             self.reward_function = LookaheadJobCompletionTime(**reward_function_kwargs)
         elif reward_function == 'job_acceptance':
             self.reward_function = JobAcceptance(**reward_function_kwargs)
+        elif reward_function == 'mean_compute_throughput':
+            self.reward_function = MeanComputeThroughput(**reward_function_kwargs)
+        elif reward_function == 'mean_cluster_throughput':
+            self.reward_function = MeanClusterThroughput(**reward_function_kwargs)
+        elif reward_function == 'mean_demand_total_throughput':
+            self.reward_function = MeanDemandTotalThroughput(**reward_function_kwargs)
+        elif reward_function == 'multi_objective_jct_blocking':
+            self.reward_function = MultiObjectiveJCTBlocking(**reward_function_kwargs)
         else:
             raise Exception(f'Unrecognised reward_function {self.reward_function_str}')
 
@@ -156,6 +171,9 @@ class RampJobPartitioningEnvironment(gym.Env):
 
         # self.op_partitioner, self.op_placer, self.op_scheduler, self.dep_placer, self.dep_scheduler = self._init_cluster_managers()
         self.job_placement_shaper, self.op_placer, self.op_scheduler, self.dep_placer, self.dep_scheduler = self._init_cluster_managers()
+
+        # TODO: Is this really needed? NEW
+        self.reset()
 
     def _get_action_to_job_placement_shape(self):
         '''Returns a mapping of action (int) -> job_placement_shape (tuple).'''
@@ -237,7 +255,7 @@ class RampJobPartitioningEnvironment(gym.Env):
         self.observation_space = self.observation_function.observation_space
 
         # reset the reward function
-        self.reward_function.reset(self.cluster)
+        self.reward_function.reset(env=self)
 
         # extract current MDP info and save so can access for next env.step() call
         self.obs = self._get_observation() # encoded obs of job to place
@@ -261,6 +279,13 @@ class RampJobPartitioningEnvironment(gym.Env):
     def _get_info(self):
         return {}
 
+    def _step_cluster(self, action, verbose=False):
+        # step cluster
+        self.cluster.step(action=action, verbose=False)
+
+        # update cluster step stats tracker
+        self.cluster_step_stats[self.cluster.step_counter] = self.cluster.step_stats
+
     def step(self, action: int, verbose=False):
         # verbose = True # DEBUG
 
@@ -268,12 +293,17 @@ class RampJobPartitioningEnvironment(gym.Env):
         # action = 4 # DEBUG
         # action = 0 # DEBUG
 
+
         if verbose:
             print(f'\n~~~~~~~~~~~~~~~~~~~ Step {self.step_counter} ~~~~~~~~~~~~~~~~~~~~~')
+
+        # init cluster step stats tracker for this step
+        self.cluster_step_stats = {}
 
         # # PROCESS AGENT DECISION
         if action not in self.obs['action_set']:
             raise Exception(f'Action {action} not in action set {self.obs["action_set"]}')
+        # TODO TEMP: Checking if RLlib pre-checks are crashing scripts
         if not self.obs['action_mask'][action]:
             raise Exception(f'Action {action} is invalid given action mask {self.obs["action_mask"]} for action set {self.obs["action_set"]}')
 
@@ -332,14 +362,14 @@ class RampJobPartitioningEnvironment(gym.Env):
         self.last_job_arrived_job_idx = copy.deepcopy(self.cluster.last_job_arrived_job_idx)
 
         # step the cluster
-        self.cluster.step(self.action, verbose=False)
+        self._step_cluster(action=self.action, verbose=False)
 
         # get the reward
         self.reward = self._get_reward()
 
         # continue stepping cluster until there is a job to place or until sim is completed
         while len(self.cluster.job_queue) == 0 and not self.cluster.is_done():
-            self.cluster.step(action=Action(), verbose=False)
+            self._step_cluster(action=Action(), verbose=False)
 
         # extract current MDP info and save so can access for next env.step() call
         self.done = self._is_done()
@@ -360,6 +390,10 @@ class RampJobPartitioningEnvironment(gym.Env):
 
         
         self.step_counter += 1
+
+        # # DEBUG
+        # if self.step_counter == 8:
+            # raise Exception()
 
         return self.obs, self.reward, self.done, self.info
 

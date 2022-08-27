@@ -1,5 +1,5 @@
 class SiPML:
-    def __init__(self, max_partitions_per_op: int = 2, name: str = 'sip_ml'):
+    def __init__(self, max_partitions_per_op: int = 2, name: str = 'sip_ml', **kwargs):
         '''Will always partition all jobs upto a statically fixed max_partitions_per_op number of times.'''
         self.max_partitions_per_op = max_partitions_per_op
         self.name = name

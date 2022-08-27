@@ -8,24 +8,25 @@ experiment:
     test_seed: 1799
     path_to_save: '/scratch/datasets/ddls/sims'
     cuda_visible_devices:
-        #- 0
-        #- 1
+        - 0
+        - 1
         - 2
         - 3
-        - 4
-        - 5
-        - 6
-        - 7
-        - 8
-        - 9
+        #- 4
+        #- 5
+        #- 6
+        #- 7
+        #- 8
+        #- 9
     save_dir: null # placeholder, will be updated
 
 launcher:
     #num_epochs: 1
     #num_epochs: 10
     #num_epochs: 50 # 500
-    num_epochs: 100 # 500
-    #num_epochs: 500 # 500
+    #num_epochs: 100 # 500
+    #num_epochs: 200 # 500
+    num_epochs: 500 # 500
     num_episodes: null
     num_actor_steps: null
     num_eval_episodes: null
@@ -67,8 +68,8 @@ epoch_loop:
     path_to_validator_cls: ddls.loops.rllib_eval_loop.RLlibEvalLoop
     test_time_checkpoint_path: /scratch/datasets/ddls/sims/ramp_job_partitioning/ramp_job_partitioning_1/checkpoints/checkpoint_000002/checkpoint-2 # USE FOR TESTING SPECIFIC CHECKPOINT (is ignored during training)
     validator_rllib_config:
+        seed: null # will automatically be overwritten with experiment.test_seed
         explore: False
-        #seed: 1799
         env_config:
             jobs_config:
                 #path_to_files: /scratch/datasets/ddls/jobs/pipedream_graphs/image_classification/profiles/alexnet/
@@ -77,8 +78,10 @@ epoch_loop:
                 path_to_files: /scratch/datasets/ddls/jobs/image_classification_and_translation/small_graphs/training/
                 max_files: null
                 #replication_factor: 1
+                #replication_factor: 2
                 #replication_factor: 10
-                replication_factor: 20
+                #replication_factor: 20
+                replication_factor: 100
                 #replication_factor: 200
                 #replication_factor: 1000
                 job_interarrival_time_dist:
@@ -91,13 +94,17 @@ epoch_loop:
                 shuffle_files: False
                 num_training_steps: 50
                 max_partitions_per_op_in_observation: 1
-        num_workers: 0 # num parallel cpu workers
-        num_gpus: 0 # num gpus available for RLlib
+        num_workers: 1 # num parallel cpu workers
+        num_gpus: 1 # num gpus available for RLlib
 
     # define the rllib config as usual
     rllib_config:
         #env: job_placing_all_nodes_environment
         env: ramp_job_partitioning_environment
+
+        seed: null # will automatically be overwritten with experiment.train_seed
+
+        disable_env_checking: true
 
         env_config:
             node_config:
@@ -132,7 +139,8 @@ epoch_loop:
                 max_files: null
                 #replication_factor: 1
                 #replication_factor: 10
-                replication_factor: 20
+                #replication_factor: 20
+                replication_factor: 100
                 #replication_factor: 200
                 #replication_factor: 1000
                 job_sampling_mode: remove
@@ -148,28 +156,51 @@ epoch_loop:
                 
             #max_partitions_per_op: null
             #max_partitions_per_op: 2
-            max_partitions_per_op: 8
+            #max_partitions_per_op: 8
+            max_partitions_per_op: 16
 
-            min_op_run_time_quantum: 0.000006
+            #min_op_run_time_quantum: 0.000006
+            #min_op_run_time_quantum: 0.1
+            #min_op_run_time_quantum: 0.01
+            min_op_run_time_quantum: 10
+            #min_op_run_time_quantum: 1000
 
             #reward_function: mean_job_completion_time
 
-            reward_function: lookahead_job_completion_time
-            reward_function_kwargs:
-                fail_reward: job_sequential_completion_time
-                fail_reward_factor: 10
-                #fail_reward_factor: 1
-                sign: -1
-                inverse: false
-                #transform_with_log: true
-                transform_with_log: false
-                #normaliser: job_sequential_completion_time
-                normaliser: job_sequential_completion_time_times_fail_reward_factor
+            #reward_function: lookahead_job_completion_time
+            #reward_function_kwargs:
+                #fail_reward: job_sequential_completion_time
+                #fail_reward_factor: 10
+                ##fail_reward_factor: 1
+                #sign: -1
+                #inverse: false
+                ##transform_with_log: true
+                #transform_with_log: false
+                ##normaliser: job_sequential_completion_time
+                #normaliser: job_sequential_completion_time_times_fail_reward_factor
 
             #reward_function: job_acceptance
             #reward_function_kwargs:
                 #fail_reward: -1
                 #success_reward: 1
+
+            #reward_function: mean_compute_throughput
+            #reward_function_kwargs:
+                #sign: 1
+                #transform_with_log: true
+                #normalise: true
+
+            ##reward_function: mean_cluster_throughput
+            #reward_function: mean_demand_total_throughput
+            #reward_function_kwargs:
+                #sign: 1
+                #transform_with_log: false
+                #normalise: true
+
+            reward_function: multi_objective_jct_blocking
+            reward_function_kwargs:
+                sign: -1
+                blocking_weight: 1
 
             # CHANGE
             #job_placement_shaper: ramp_random_job_placement_shaper
@@ -187,11 +218,14 @@ epoch_loop:
                 #max_nodes: 100
                 max_nodes: 150
 
+        lr: 0.0001
+        gamma: 0.9
+
         model:
             fcnet_hiddens: # number of hidden layers and their corresponding dimensions to use in the final logit layer
                 - 16
                 - 16
-            fcnet_activation: relu # activation function to use in final logit readout module
+            fcnet_activation: swish # activation function to use in final logit readout module
             custom_model: my_model
             custom_model_config:
                 in_features_node: 5 # dimension of node features
@@ -208,7 +242,9 @@ epoch_loop:
                 action_space_type: discrete # discrete continuous
 
         batch_mode: complete_episodes
-        train_batch_size: 32
+
+        # need sgd_minibatch_size <= train_batch_size
+        train_batch_size: 64
         sgd_minibatch_size: 32
         #train_batch_size: 4
         #sgd_minibatch_size: 4
@@ -217,7 +253,9 @@ epoch_loop:
 
         callbacks: ddls.environments.ramp_cluster.utils.RLlibRampClusterEnvironmentCallback
 
-        num_workers: 2 # num parallel cpu workers
+        #num_workers: 4 # num parallel cpu workers
+        #num_workers: 2 # num parallel cpu workers
+        num_workers: 1
         num_gpus: 1 # num gpus available for RLlib
 
         framework: torch

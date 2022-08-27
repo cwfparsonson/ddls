@@ -21,7 +21,8 @@ eval_loop:
         node_config:
             type_1:
                 #num_nodes: 8
-                num_nodes: 32
+                #num_nodes: 32
+                num_nodes: 512
                 workers_config:
                     #- num_workers: 4
                     - num_workers: 1
@@ -34,9 +35,16 @@ eval_loop:
                 #y_dims: 4
             type: ramp 
             kwargs:
-                num_communication_groups: 4
-                num_racks_per_communication_group: 4
-                num_servers_per_rack: 2
+                ## 32 nodes
+                #num_communication_groups: 4
+                #num_racks_per_communication_group: 4
+                #num_servers_per_rack: 2
+
+                # 512 nodes
+                num_communication_groups: 8
+                num_racks_per_communication_group: 8
+                num_servers_per_rack: 8
+                
                 num_channels: 1
                 channel_bandwidth: 1250000000
                 switch_reconfiguration_latency: 0.00000125
@@ -49,9 +57,11 @@ eval_loop:
             max_files: null
             #replication_factor: 1
             #replication_factor: 5
+            #replication_factor: 2
+            #replication_factor: 5
             #replication_factor: 10
-            replication_factor: 20
-            #replication_factor: 100
+            #replication_factor: 20
+            replication_factor: 100
             #replication_factor: 200
             #replication_factor: 1000
             job_interarrival_time_dist:
@@ -68,24 +78,41 @@ eval_loop:
         # CHANGE
         #max_partitions_per_op: null
         #max_partitions_per_op: 2
-        max_partitions_per_op: 8
+        #max_partitions_per_op: 8
+        #max_partitions_per_op: 16
+        max_partitions_per_op: 256
 
         # CHANGE
-        min_op_run_time_quantum: 0.000006
+        #min_op_run_time_quantum: 0.000006 # original SiP-ML
+        #min_op_run_time_quantum: 0.01
+        min_op_run_time_quantum: 10
+        #min_op_run_time_quantum: 25
 
         #reward_function: mean_job_completion_time
 
-        reward_function: lookahead_job_completion_time
+        #reward_function: lookahead_job_completion_time
+        #reward_function_kwargs:
+            #fail_reward: job_sequential_completion_time
+            #fail_reward_factor: 10
+            ##fail_reward_factor: 1
+            #sign: -1
+            #inverse: false
+            ##transform_with_log: true
+            #transform_with_log: false
+            ##normaliser: job_sequential_completion_time
+            #normaliser: job_sequential_completion_time_times_fail_reward_factor
+            
+        ##reward_function: mean_cluster_throughput
+        #reward_function: mean_demand_total_throughput
+        #reward_function_kwargs:
+            #sign: 1
+            #transform_with_log: false
+            #normalise: true
+
+        reward_function: multi_objective_jct_blocking
         reward_function_kwargs:
-            fail_reward: job_sequential_completion_time
-            fail_reward_factor: 10
-            #fail_reward_factor: 1
             sign: -1
-            inverse: false
-            #transform_with_log: true
-            transform_with_log: false
-            #normaliser: job_sequential_completion_time
-            normaliser: job_sequential_completion_time_times_fail_reward_factor
+            blocking_weight: 1
 
         # CHANGE
         #op_partitioner: sip_ml_op_partitioner
@@ -119,7 +146,8 @@ eval_loop:
         #_target_: ddls.environments.ramp_job_partitioning.agents.max_parallelism.MaxParallelism
 
         _target_: ddls.environments.ramp_job_partitioning.agents.sip_ml.SiPML
-        max_partitions_per_op: 8
+        #max_partitions_per_op: 16
+        max_partitions_per_op: 256
 
 
 wandb:

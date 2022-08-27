@@ -1,5 +1,5 @@
 class MaxParallelism:
-    def __init__(self, name: str = 'max_parallelism'):
+    def __init__(self, name: str = 'max_parallelism', **kwargs):
         self.name = name
 
     def compute_action(self, obs, *args, **kwargs):

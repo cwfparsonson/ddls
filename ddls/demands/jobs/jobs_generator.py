@@ -56,10 +56,14 @@ class JobsGenerator:
         jobs = []
         for _ in range(replication_factor):
             for graph in ddls_computation_graphs:
-                # # set model name as graph.txt file's parent folder
-                # details = {'model': graph.graph['file_path'].split('/')[-2]}
-                # set model name as <model>.txt file name
-                details = {'model': graph.graph['file_path'].split('/')[-1].replace('.txt', '')}
+                if graph.graph['file_path'].split('/')[-1] == 'graph.txt':
+                    # set model name as graph.txt file's parent folder
+                    model = graph.graph['file_path'].split('/')[-2]
+                else:
+                    # set model name as .txt's file name
+                    model = graph.graph['file_path'].split('/')[-1].replace('.txt', '')
+                details = {'model': model}
+
                 jobs.append(Job(computation_graph=graph,
                                 num_training_steps=num_training_steps,
                                 details=details))
@@ -108,6 +112,10 @@ class JobsGenerator:
             jobs_params['job_total_num_ops'].append(len(list(job.computation_graph.nodes())))
             jobs_params['job_total_num_deps'].append(len(list(job.computation_graph.edges())))
             jobs_params['job_num_training_steps'].append(job.num_training_steps)
+            jobs_params['job_max_op_compute_throughputs'].append(job.details['max_node_throughput'][device_type])
+            # print(f'jobs_params: {jobs_params}')
+            # print(f'job details: {job.details}')
+            jobs_params['job_max_dep_size'].append(job.details['max_dep_size'])
 
         updated_jobs_params = {}
         for key, vals in jobs_params.items():
@@ -142,6 +150,7 @@ class JobsGenerator:
                     raise Exception(f'Handling param {key} not implemented.')
             else:
                 updated_jobs_params[f'max_{key}'] = np.max(vals)
+                updated_jobs_params[f'min_{key}'] = np.min(vals) # useful
             # updated_jobs_params[f'mean_{key}'] = np.mean(vals)
             # updated_jobs_params[f'std_{key}'] = np.std(vals)
 

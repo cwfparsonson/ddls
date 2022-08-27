@@ -8,6 +8,8 @@ import numpy as np
 
 import copy
 
+from decimal import Decimal
+
 class EvalLoop:
     def __init__(self,
                  # seed: int = None,
@@ -37,7 +39,7 @@ class EvalLoop:
             obs, reward, done, info = self.env.step(action)
 
             if verbose:
-                print(f'Step {step_counter} | Action: {action} | Reward: {reward:.3f} | Jobs arrived: {self.env.cluster.num_jobs_arrived} | Jobs running: {len(self.env.cluster.jobs_running)} | Jobs completed: {len(self.env.cluster.jobs_completed)} | Jobs blocked: {len(self.env.cluster.jobs_blocked)}')
+                print(f'Step {step_counter} | Action: {action} | Reward: {reward:.8f} | Jobs arrived: {self.env.cluster.num_jobs_arrived} | Jobs running: {len(self.env.cluster.jobs_running)} | Jobs completed: {len(self.env.cluster.jobs_completed)} | Jobs blocked: {len(self.env.cluster.jobs_blocked)} | Stopwatch: {Decimal(self.env.cluster.stopwatch.time()):.3E}')
 
             results['step_stats']['action'].append(action)
             results['step_stats']['reward'].append(reward)
@@ -104,6 +106,7 @@ class EvalLoop:
             except TypeError:
                 # val is not numeric (is e.g. a string)
                 results['episode_stats'][key] = val
+        results['episode_stats']['return'] = np.sum(results['step_stats']['reward'])
 
         if self.wandb is not None:
             wandb_log = {}

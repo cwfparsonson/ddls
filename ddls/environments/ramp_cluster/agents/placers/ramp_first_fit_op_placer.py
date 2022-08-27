@@ -27,7 +27,8 @@ class RampFirstFitOpPlacer(Placer):
     def get(self, 
             op_partition: OpPartition,
             job_placement_shape: JobPlacementShape,
-            cluster: RampClusterEnvironment):
+            cluster: RampClusterEnvironment,
+            verbose=False):
         '''
         Places operations in a job onto available worker(s) in a cluster, where the clusters
         nodes are servers which contain >=1 worker(s) which may or may not have sufficient 
@@ -36,6 +37,8 @@ class RampFirstFitOpPlacer(Placer):
         Returns a mapping of job_id -> operation_id -> worker_id. If no valid placement for the operation
         could be found, the job will not be included in the placement mapping.
         '''
+        # verbose = True # DEBUG
+
         # gather jobs which are requesting to be placed
         jobs = op_partition.partitioned_jobs.values()
 
@@ -68,35 +71,47 @@ class RampFirstFitOpPlacer(Placer):
             sequence, splits, op_server_info, parents, children = get_allocation_preamble(forward_graph, mp_split_ids, mp_splits)
 
             # get a meta-block of a particular shape which the heuristic allocator will try to pack the job fully into
+            # meta_block_info = find_meta_block(ramp_topology, ramp_shape, meta_shape, job_max_partition_degree=op_partition.job_max_partition_degree[job_id])
             meta_block_info = find_meta_block(ramp_topology, ramp_shape, meta_shape)
 
-            # # DEBUG
-            # print(f'\nramp_topology: {ramp_topology}')
-            # print(f'ramp_shape: {ramp_shape}')
-            # print(f'forward_graph: {forward_graph}')
-            # print(f'sequence: {sequence}')
-            # print(f'splits: {splits}')
-            # print(f'meta_block_info: {meta_block_info}')
-            # print(f'parents: {parents}')
-            # print(f'op_server_info: {op_server_info}')
+            if verbose:
+                print(f'\nramp_topology: {ramp_topology}')
+                print(f'ramp_shape: {ramp_shape}')
+                print(f'forward_graph: {forward_graph}')
+                print(f'sequence: {sequence}')
+                print(f'splits: {splits}')
+                print(f'meta_block_info: {meta_block_info}')
+                print(f'parents: {parents}')
+                print(f'op_server_info: {op_server_info}')
+                print(f'chosen job_max_partition_degree: {op_partition.job_id_to_max_partition_degree[job_id]}')
 
             if meta_block_info:
                 # valid meta block successfully found, try to allocate the job
                 allocated = allocate(ramp_topology,ramp_shape,forward_graph,sequence,splits,meta_block_info,parents,op_server_info)
-                # print(f'allocated: {allocated}') # DEBUG
+                if verbose:
+                    print(f'allocated: {allocated}')
                 if allocated:
                     # update the topology and op-server info for use in the next job allocation
                     ramp_topology, op_server_info = allocated
-
-                # update job placement dict
-                for n in ramp_topology.keys():
-                    c, r, s = n
-                    node_id = f'{c}-{r}-{s}'
-                    # HACK: assume 1 worker per server
-                    worker_id = list(cluster.topology.graph.nodes[node_id]['workers'].keys())[0]
-                    for op_id in ramp_topology[n]['ops']:
-                        # ensure op_id is string for consistency
-                        job_to_operation_to_worker[job_id][str(op_id)] = worker_id
+                    
+                    # TODO: CHECK WITH ZAK
+                    '''
+                    When had min_op_run_time_quantum=0.1, had bug where op partition chosen was not masked in env
+                    but when passed to placer, placer could not find a valid meta block shape. Is there some 
+                    inconsistency where valid meta block shapes are not being found for some reason? Need to check.
+                    To 'fix' this (by stopping error), had to indent the below so that only add op_id to
+                    job_to_operation_to_worker if found placement, but should always find placement if was able
+                    to partition since if no placement is available then no partition should be available before.
+                    '''
+                    # update job placement dict
+                    for n in ramp_topology.keys():
+                        c, r, s = n
+                        node_id = f'{c}-{r}-{s}'
+                        # HACK: assume 1 worker per server
+                        worker_id = list(cluster.topology.graph.nodes[node_id]['workers'].keys())[0]
+                        for op_id in ramp_topology[n]['ops']:
+                            # ensure op_id is string for consistency
+                            job_to_operation_to_worker[job_id][str(op_id)] = worker_id
 
             else:
                 # unable to find valid meta block

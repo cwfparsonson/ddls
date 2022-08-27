@@ -35,6 +35,7 @@ class RampJobPartitioningObservation(DDLSObservationFunction):
 
         # init obs space
         self._observation_space = None
+        # self.observation_space = gym.spaces.Dict({})
 
         # init any hard-coded feature min and max values
         self.node_features_low, self.node_features_high = 0, 1

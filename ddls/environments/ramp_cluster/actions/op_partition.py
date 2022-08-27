@@ -49,10 +49,14 @@ class OpPartition:
             partitioned_computation_graph = model_split_node(partitioned_computation_graph, mp_split_ids=self.job_id_to_mp_split_forward_op_ids[job_id], mp_splits=self.job_id_to_mp_splits[job_id])
 
             # record partitioned job
+            details = copy.deepcopy(job.details)
+            details['max_partitions_per_op'] = self.job_id_to_max_partition_degree[job_id]
             self.partitioned_jobs[job_id] = Job(computation_graph=partitioned_computation_graph,
-                    num_training_steps=copy.deepcopy(job.num_training_steps),
+                                                num_training_steps=copy.deepcopy(job.num_training_steps),
                                                 job_id=copy.deepcopy(job_id),
-                                                details=copy.deepcopy(job.details))
+                                                original_job=job,
+                                                details=details
+                                                )
 
     def __len__(self):
         return len(list(self.action.keys()))

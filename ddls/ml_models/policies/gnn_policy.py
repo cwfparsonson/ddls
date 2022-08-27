@@ -1,4 +1,5 @@
 from ddls.ml_models.models.gnn import GNN
+from ddls.ml_models.utils import get_torch_module_from_str
 
 from typing import Sequence, Union
 import gym
@@ -81,14 +82,18 @@ class GNNPolicy(TorchModelV2, nn.Module):
         self.gnn_module = GNN(self.config)
 
         # init a graph module which will generate a graph-level embedding using graph features
-        if self.config['aggregator_activation'] == 'leaky_relu':
-            self.activation_layer = torch.nn.LeakyReLU
-        else:
-            raise Exception(f'Unrecognised activation {self.config["aggregator_activation"]}')
-        graph_module = [torch.nn.LayerNorm(self.config['in_features_graph'] + action_space.n)]
-        for _ in range(self.config['module_depth']):
+        if self.config['module_depth'] < 1:
+            raise Exception(f'Require config[\"module_depth\"] >= 1.')
+        self.activation_layer = get_torch_module_from_str(self.config['aggregator_activation'])
+        # add input layer
+        graph_module = [
+                torch.nn.LayerNorm(self.config['in_features_graph'] + action_space.n),
+                torch.nn.Linear(self.config['in_features_graph'] + action_space.n, self.config['out_features_graph']), 
+                ]
+        # add any extra layers
+        for _ in range(self.config['module_depth']-1):
             graph_module.extend([
-                    torch.nn.Linear(self.config['in_features_graph'] + action_space.n, self.config['out_features_graph']),
+                    torch.nn.Linear(self.config['out_features_graph'], self.config['out_features_graph']),
                     self.activation_layer(),
                 ])
         self.graph_module = torch.nn.Sequential(*graph_module)

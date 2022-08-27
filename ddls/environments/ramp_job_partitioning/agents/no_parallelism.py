@@ -1,5 +1,5 @@
 class NoParallelism:
-    def __init__(self, name: str = 'no_parallelism'):
+    def __init__(self, name: str = 'no_parallelism', **kwargs):
         self.name = name
 
     def compute_action(self, obs, *args, **kwargs):
