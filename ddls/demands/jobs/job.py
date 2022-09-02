@@ -11,6 +11,7 @@ class Job:
     def __init__(self,
                  computation_graph: nx.MultiDiGraph,
                  num_training_steps: int,
+                 max_acceptable_job_completion_time_frac: float,
                  job_id: int = None,
                  original_job = None,
                  details: dict = None):
@@ -30,12 +31,22 @@ class Job:
                 of the model (i.e. a forward and backward pass).
             num_training_steps: Number of epochs/iterations/updates/training step to perform on the model
                 (i.e. number of times to run the computation graph).
+            max_acceptable_job_completion_time_frac: 0 < max_acceptable_job_completion_time_frac <= 1. Defines the maximum
+                acceptable completion time of the job as a fraction of the job's sequential
+                completion time. If the completion time of the job exceeds the maximum
+                acceptable completion time, the job is considered blocked. This
+                fraction defaults to 1 (i.e. the maximum acceptable job completion
+                time is just the sequential completion time (the completion time
+                when the job is sequentially executed on one worker)).
             original_job: The original ddls.demands.jobs.job.Job object before any partitioning etc. was applied.
                 Use for when creating a partitioned Job() object from some original Job().
                 If no original_job is supplied, initialises original_job as itself.
         '''
         self.computation_graph = computation_graph
         self.num_training_steps = num_training_steps
+        if max_acceptable_job_completion_time_frac <= 0 or max_acceptable_job_completion_time_frac > 1:
+            raise Exception(f'max_acceptable_job_completion_time_frac must be 0 < max_acceptable_job_completion_time_frac <= 1, but is {max_acceptable_job_completion_time_frac}')
+        self.max_acceptable_job_completion_time_frac = max_acceptable_job_completion_time_frac
         self.training_step_counter = 0
 
         if job_id is None:
@@ -66,6 +77,9 @@ class Job:
         details['max_compute_node'], details['max_compute_cost'], details['max_memory_node'], details['max_memory_cost'], details['max_throughput_node'], details['max_node_throughput'], details['max_depth_node'], details['max_depth'] = self.get_max_node_details()
         details['max_dep_size_dep'], details['max_dep_size'] = self.get_max_edge_details()
         details['job_sequential_completion_time'] = self.get_job_sequential_completion_time()
+        details['max_acceptable_job_completion_time'] = defaultdict(lambda: 0)
+        for device_type, jct in details['job_sequential_completion_time'].items():
+            details['max_acceptable_job_completion_time'][device_type] = self.max_acceptable_job_completion_time_frac * jct
         details['job_total_op_memory_cost'] = self.get_job_total_memory_cost()
         details['job_total_dep_size'] = self.get_job_total_dep_size()
 
@@ -96,7 +110,7 @@ class Job:
     def get_job_sequential_completion_time(self):
         '''
         Assuming all job ops are loaded onto one device, computes the total 
-        compute cost of sequentially computing these ops.
+        compute cost of sequentially computing these ops for num_training_steps.
         '''
         job_sequential_completion_time = defaultdict(lambda: 0)
         for op in self.computation_graph.nodes:

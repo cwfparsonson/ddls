@@ -63,7 +63,7 @@ class RampJobPartitioningEnvironment(gym.Env):
                  information_function: Union['default'] = 'default',
                  reward_function: Union['lookahead_job_completion_time', 'job_acceptance', 'mean_compute_throughput', 'mean_cluster_throughput', 'mean_demand_total_throughput', 'multi_objective_jct_blocking'] = 'lookahead_job_completion_time',
                  reward_function_kwargs: dict = None,
-                 max_simulation_run_time: Union[int, float] = float('inf'),
+                 max_simulation_run_time: Union[int, float] = None,
                  job_queue_capacity: int = 10,
                  name: str = 'ramp_job_partitioning',
                  path_to_save: str = None,
@@ -74,7 +74,10 @@ class RampJobPartitioningEnvironment(gym.Env):
         self.node_config = node_config
         self.jobs_config = jobs_config
 
-        self.max_simulation_run_time = max_simulation_run_time
+        if max_simulation_run_time is None:
+            self.max_simulation_run_time = float('inf')
+        else:
+            self.max_simulation_run_time = max_simulation_run_time
         self.job_queue_capacity = job_queue_capacity
 
         self.name = name
@@ -338,9 +341,10 @@ class RampJobPartitioningEnvironment(gym.Env):
             print(f'Agent action: {action} -> Action set: {self.obs["action_set"]} | Action mask: {self.obs["action_mask"]}')
 
         # get env decisions
-        self.job_placement_shape = self.job_placement_shaper.get(op_partition=self.op_partition, cluster=self.cluster)
-        # print(f'job_placement_shape: {self.job_placement_shape}')
-        self.op_placement = self.op_placer.get(op_partition=self.op_partition, job_placement_shape=self.job_placement_shape, cluster=self.cluster)
+        # self.job_placement_shape = self.job_placement_shaper.get(op_partition=self.op_partition, cluster=self.cluster)
+        # # print(f'job_placement_shape: {self.job_placement_shape}')
+        # self.op_placement = self.op_placer.get(op_partition=self.op_partition, job_placement_shape=self.job_placement_shape, cluster=self.cluster)
+        self.op_placement = self.op_placer.get(op_partition=self.op_partition, cluster=self.cluster)
         # print(f'op_placement: {self.op_placement}')
         self.op_schedule = self.op_scheduler.get(op_partition=self.op_partition, op_placement=self.op_placement, cluster=self.cluster)      
         # print(f'op_schedule: {self.op_schedule}')
@@ -351,18 +355,26 @@ class RampJobPartitioningEnvironment(gym.Env):
 
         # syncronise decisions into a valid ClusterEnvironment action
         self.action = Action(op_partition=self.op_partition,
-                             job_placement_shape=self.job_placement_shape,
+                             # job_placement_shape=self.job_placement_shape,
                              op_placement=self.op_placement,
                              op_schedule=self.op_schedule,
                              dep_placement=self.dep_placement,
                              dep_schedule=self.dep_schedule)
-        self.placed_job_idxs = self.action.job_idxs # useful for external methods accessing placed job info
 
         # record job idx of most recently arrived job
         self.last_job_arrived_job_idx = copy.deepcopy(self.cluster.last_job_arrived_job_idx)
 
         # step the cluster
         self._step_cluster(action=self.action, verbose=False)
+
+        # check which jobs were placed (useful for accessing externally with e.g. reward functions)
+        self.placed_job_idxs, jobs_blocked = self.action.job_idxs, []
+        for job_idx in self.placed_job_idxs:
+            if job_idx in self.cluster.jobs_blocked:
+                # job was blocked due to exceeding its maximum acceptable job completion time
+                jobs_blocked.append(job_idx)
+        for job_idx in jobs_blocked:
+            self.placed_job_idxs.remove(job_idx)
 
         # get the reward
         self.reward = self._get_reward()
@@ -392,7 +404,7 @@ class RampJobPartitioningEnvironment(gym.Env):
         self.step_counter += 1
 
         # # DEBUG
-        # if self.step_counter == 8:
+        # if self.step_counter == 2:
             # raise Exception()
 
         return self.obs, self.reward, self.done, self.info

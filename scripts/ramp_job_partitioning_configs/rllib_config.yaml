@@ -68,36 +68,16 @@ epoch_loop:
     path_to_validator_cls: ddls.loops.rllib_eval_loop.RLlibEvalLoop
     test_time_checkpoint_path: /scratch/datasets/ddls/sims/ramp_job_partitioning/ramp_job_partitioning_1/checkpoints/checkpoint_000002/checkpoint-2 # USE FOR TESTING SPECIFIC CHECKPOINT (is ignored during training)
     validator_rllib_config:
+        # overwrite any train env config values you want to be different at test time
         seed: null # will automatically be overwritten with experiment.test_seed
         explore: False
         env_config:
             jobs_config:
-                #path_to_files: /scratch/datasets/ddls/jobs/pipedream_graphs/image_classification/profiles/alexnet/
-                #path_to_files: /scratch/datasets/ddls/jobs/pipedream_graphs/translation/profiles/gnmt/
-                #path_to_files: /scratch/datasets/ddls/jobs/pipedream_graphs/image_classification/profiles/resnext50/
-                path_to_files: /scratch/datasets/ddls/jobs/image_classification_and_translation/small_graphs/training/
-                max_files: null
-                #replication_factor: 1
-                #replication_factor: 2
-                #replication_factor: 10
-                #replication_factor: 20
-                replication_factor: 100
-                #replication_factor: 200
-                #replication_factor: 1000
-                job_interarrival_time_dist:
-                    _target_: ddls.distributions.uniform.Uniform
-                    #min_val: 1
-                    #max_val: 1000
-                    min_val: 1000
-                    max_val: 1000
-                job_sampling_mode: remove
                 shuffle_files: False
-                num_training_steps: 50
-                max_partitions_per_op_in_observation: 1
         num_workers: 1 # num parallel cpu workers
         num_gpus: 1 # num gpus available for RLlib
 
-    # define the rllib config as usual
+    # define the rllib training config as usual
     rllib_config:
         #env: job_placing_all_nodes_environment
         env: ramp_job_partitioning_environment
@@ -138,10 +118,11 @@ epoch_loop:
                 path_to_files: /scratch/datasets/ddls/jobs/image_classification_and_translation/small_graphs/training/
                 max_files: null
                 #replication_factor: 1
+                #replication_factor: 2
                 #replication_factor: 10
                 #replication_factor: 20
-                replication_factor: 100
-                #replication_factor: 200
+                #replication_factor: 100
+                replication_factor: 200
                 #replication_factor: 1000
                 job_sampling_mode: remove
                 job_interarrival_time_dist:
@@ -150,9 +131,19 @@ epoch_loop:
                     #max_val: 1000
                     min_val: 1000
                     max_val: 1000
+                max_acceptable_job_completion_time_frac_dist:
+                    _target_: ddls.distributions.probability_mass_function.ProbabilityMassFunction
+                    probability_mass_function:
+                        0.25: 0.25
+                        0.50: 0.25
+                        0.75: 0.25
+                        1.00: 0.25
                 shuffle_files: true
                 num_training_steps: 50
                 max_partitions_per_op_in_observation: 1
+                
+            #max_simulation_run_time: null
+            max_simulation_run_time: 1000000
                 
             #max_partitions_per_op: null
             #max_partitions_per_op: 2
@@ -179,10 +170,10 @@ epoch_loop:
                 ##normaliser: job_sequential_completion_time
                 #normaliser: job_sequential_completion_time_times_fail_reward_factor
 
-            #reward_function: job_acceptance
-            #reward_function_kwargs:
-                #fail_reward: -1
-                #success_reward: 1
+            reward_function: job_acceptance
+            reward_function_kwargs:
+                fail_reward: -1
+                success_reward: 1
 
             #reward_function: mean_compute_throughput
             #reward_function_kwargs:
@@ -197,14 +188,14 @@ epoch_loop:
                 #transform_with_log: false
                 #normalise: true
 
-            reward_function: multi_objective_jct_blocking
-            reward_function_kwargs:
-                sign: -1
-                blocking_weight: 1
+            #reward_function: multi_objective_jct_blocking
+            #reward_function_kwargs:
+                #sign: -1
+                #blocking_weight: 1
 
             # CHANGE
             #job_placement_shaper: ramp_random_job_placement_shaper
-            job_placement_shaper: ramp_first_fit_job_placement_shaper # TODO: need to test
+            #job_placement_shaper: ramp_first_fit_job_placement_shaper # TODO: need to test
 
             op_placer: ramp_first_fit_op_placer
 
@@ -233,7 +224,7 @@ epoch_loop:
                 out_features_msg: 8 # dimension of message sent between nodes during message passing
                 out_features_hidden: 16 # embedding dimension of the hidden layer(s) during message passing
                 out_features_node: 8 # per-node-level output embedding size after message passing N.B. changed out_features -> out_features_node
-                in_features_graph: 14 # dimension of graph features (gets concatenated with action_space so that graph embedding includes representation of action mask)
+                in_features_graph: 17 # 14 # dimension of graph features (gets concatenated with action_space so that graph embedding includes representation of action mask)
                 out_features_graph: 8 # graph-level output embedding size (gets concatenated with out_features_node and passed through readout module to get final output logits)
                 num_rounds: 2 # number of message passing rounds to conduct (i.e. calls to aggregator module) when generating per-node embeddings. Includes input and output layers, so must be >=2.
                 aggregator_type: mean

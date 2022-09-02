@@ -60,7 +60,7 @@ def run(cfg: DictConfig):
     start_time = time.time()
     results = eval_loop.run(verbose=True)
     print(f'Finished validation in {time.time() - start_time:.3f} s.')
-    print(f'Validation results:\n{results}')
+    # print(f'Validation results:\n{results}')
 
     base_path = '/'.join(save_dir.split('/')[:-1])
     for log_name, log in results.items():

@@ -135,7 +135,7 @@ def ff_meta_block(block_shapes,ramp_shape,ramp,mode,op_size=None,meta_block_orig
         For each block shape, create the block.
 
         When a block has been created, check it using
-        check_block to see if it's OK for allocation
+        check block to see if it's OK for allocation
         w.r.t. server-resources. If OK, return the block.
         Otherwise, return None.
 
@@ -212,7 +212,7 @@ def get_meta_block(C,R,S,ramp_shape,origin=(0,0,0)):
                     block.append(((i+c)%ramp_shape[0],(j+r)%ramp_shape[1],(k+s)%ramp_shape[2]))
         return block
 
-def check_block(ramp,block,op_size,mode):
+def check_block(ramp,block,op_size,job_idx):
         '''
         Iterate through each server in a block.
 
@@ -222,13 +222,14 @@ def check_block(ramp,block,op_size,mode):
         if block == []:
             return False
         for server in block:
-            if mode == 'sub':
-                if ramp[server]['mem'] < op_size:
+            # if ramp[server]['ops'] != []:
+            # if ramp[server]['occupied'] or ramp[server]['mem'] < op_size:
+            if len(ramp[server]['job_idxs']) != 0:
+                if job_idx not in ramp[server]['job_idxs']:
+                    # another job is already mounted on this server, cannot mount this job
                     return False
-            if mode == 'meta':
-                # if ramp[server]['ops'] != []:
-                if ramp[server]['occupied']:
-                    return False
+            if ramp[server]['mem'] < op_size:
+                return False
         return True
 
 def dummy_ramp(shape, cluster):
@@ -245,12 +246,11 @@ def dummy_ramp(shape, cluster):
             for k in range(s):
                 node = f'{i}-{j}-{k}'
                 mem, ops = 0, []
-                ramp[(i, j, k)] = {'mem': 0, 'ops': [], 'occupied': False}
+                ramp[(i, j, k)] = {'mem': 0, 'ops': [], 'job_idxs': set()}
                 for worker in cluster.topology.graph.nodes[node]['workers'].values():
                     ramp[(i, j, k)]['mem'] += (worker.memory_capacity - worker.memory_occupied)
                     if len(list(worker.mounted_job_op_to_priority.keys())) != 0:
-                        ramp[(i, j, k)]['occupied'] = True
-                    # ramp[(i, j, k)]['ops'].extend(list(worker.mounted_job_op_to_priority.keys()))
+                        ramp[(i, j, k)]['job_idxs'] = set(list(worker.mounted_job_idx_to_ops.keys()))
     return ramp
 
 def parent_collective_placement(ramp,job_graph,op,split,meta_block_info,parents,op_server_info):
@@ -285,7 +285,9 @@ def parent_collective_placement(ramp,job_graph,op,split,meta_block_info,parents,
 
     #for each set of servers
     for servers in parents_servers:
-        if split < len(servers):
+        # if split < len(servers):
+            # continue
+        if split != len(servers):
             continue
         else:
             #check if ops can fit evenly across the servers
@@ -326,7 +328,7 @@ def get_partitioned_op_id(op_id, split_id):
     return op_id
 
 
-def regular_collective_placement(ramp,ramp_shape,job_graph,op,split,meta_block_info,op_server_info):
+def regular_collective_placement(ramp,ramp_shape,job_graph,op,split,meta_block_info,op_server_info,job_idx):
     '''
     This function allocates a split op to a set of servers in a meta-block nd returns a dictionary 
     of which sub-ops are allocated to which servers, and another dictionary indicating across which
@@ -356,7 +358,7 @@ def regular_collective_placement(ramp,ramp_shape,job_graph,op,split,meta_block_i
     op_size = job_graph.nodes[op]['memory_cost']/split
     meta_block = {server:ramp[server] for server in meta_block}
 
-    block = find_sub_block(ramp,ramp_shape,meta_block_shape,meta_block_origin,num_servers,op_size)
+    block = find_sub_block(ramp,ramp_shape,meta_block_shape,meta_block_origin,num_servers,op_size,job_idx)
 
     if not block: #if no block can be found (memory errors) then return None
         if VERBOSE:
@@ -378,16 +380,16 @@ def regular_collective_placement(ramp,ramp_shape,job_graph,op,split,meta_block_i
     #if allocation was feasible, return the updated (i.e. with server-memory reduced) RAMP topology for further allocations
     return ramp, op_server_info
 
-def find_sub_block(ramp_topology,ramp_shape,meta_block_shape,meta_block_origin,num_servers,op_size):
+def find_sub_block(ramp_topology,ramp_shape,meta_block_shape,meta_block_origin,num_servers,op_size,job_idx):
         pairs = get_factor_pairs(num_servers)
         # pairs = get_factor_pairs(meta_block_shape[0]*meta_block_shape[1]*meta_block_shape[2])
         block_shapes = get_block_shapes(pairs,meta_block_shape)
         #if no possible shapes try rack and CG distributed
         block_shapes += [(num_servers,num_servers,-1),(num_servers,1,1)]
-        block = ff_block(block_shapes,meta_block_shape,ramp_shape,ramp_topology,'sub',op_size=op_size,meta_block_origin=meta_block_origin)
+        block = ff_block(block_shapes,meta_block_shape,ramp_shape,ramp_topology,'sub',job_idx,op_size=op_size)
         return block
 
-def ff_block(block_shapes,meta_shape,ramp_shape,ramp,mode,op_size=None,meta_block_origin=(0,0,0)):
+def ff_block(block_shapes,meta_shape,ramp_shape,ramp,mode,job_idx,op_size=None,meta_block_origin=(0,0,0)):
         '''
         For each block shape, create the block.
 
@@ -433,11 +435,8 @@ def ff_block(block_shapes,meta_shape,ramp_shape,ramp,mode,op_size=None,meta_bloc
                             block = get_block(C,R,S,ramp_shape,origin=(orgn_c+i,orgn_r+j,orgn_s+k))
                             if VERBOSE:
                                 print(f'sub block: {block}')
-                            if check_block(ramp,block,op_size,mode):
-                                if mode == 'sub':
-                                    return block
-                                if mode == 'meta':
-                                    return (block, shape, (orgn_c+i,orgn_r+j,orgn_s+k))
+                            if check_block(ramp,block,op_size,job_idx):
+                                return block
 
         return None
 
@@ -478,7 +477,8 @@ def get_block(C,R,S,ramp_shape,origin=(0,0,0)):
 
         if S == -1:
             for n in range(C):
-                block.append(((i+n)%(ramp_shape[0]+1),(j+n)%(ramp_shape[1]+1),k))
+                # block.append(((i+n)%(ramp_shape[0]+1),(j+n)%(ramp_shape[1]+1),k))
+                block.append(((i+n)%(ramp_shape[0]+1),(j+n)%(ramp_shape[1]+1),k%ramp_shape[2]))
         else:
             for c in range(C):
                 for r in range(R):
@@ -504,20 +504,11 @@ def get_block_shapes(pairs,meta_block_shape):
         for pair in pairs:
             var = math.sqrt(pair[0])
             if VERBOSE:
-                print(f'pair {pair} -> var {var}')
-            # if var % 1 == 0:
-                # if VERBOSE:
-                    # print(f'Sqrt of first pair\'s element ({math.sqrt(pair[0])}) is a whole number. Check if pair valid...')
-                # if var <= meta_block_shape[0] and var <= meta_block_shape[1] and pair[1] <= meta_block_shape[2]:
-                    # blocks.append((int(var), int(var), pair[1]))
-                    # if VERBOSE:
-                        # print(f'Adding block: {(int(var), int(var), pair[1])}')
-                # else:
-                    # continue
+                print(f'Checking pair {pair} with var {var}')
             if (var % 1 == 0) and (var <= meta_block_shape[0] and var <= meta_block_shape[1] and pair[1] <= meta_block_shape[2]):
                 blocks.append((int(var), int(var), pair[1]))
                 if VERBOSE:
-                    print(f'Adding block {(int(var), int(var), pair[1])}')
+                    print(f'Var is valid. Adding block {(int(var), int(var), pair[1])}')
             else:
                 if VERBOSE:
                     if not (var % 1 == 0):
@@ -529,18 +520,25 @@ def get_block_shapes(pairs,meta_block_shape):
                     print(f'Pair is invalid since need pair[0] ({pair[0]}) < meta_block_shape[0] ({meta_block_shape[0]}) and pair[0] ({pair[0]}) < meta_block_shape[1] ({meta_block_shape[1]}) and pair[1] ({pair[1]}) < meta_block_shape[2] ({meta_block_shape[2]})')
                 continue
             else:
-                # blocks.append((pair[0],pair[0],pair[1]))
                 blocks.append((pair[0],1,pair[1]))
                 blocks.append((pair[0],pair[1],1))
                 if VERBOSE:
-                    print(f'Adding blocks {(pair[0],1,pair[1])} and {(pair[0],pair[1],1)}')
+                    print(f'Pair is valid. Adding blocks {(pair[0],1,pair[1])} and {(pair[0],pair[1],1)}')
                 
         return blocks
 
-def allocate(ramp,ramp_shape,job_graph,sequence,splits,meta_block_info,parents,op_server_info):
+def allocate(ramp,ramp_shape,job_graph,sequence,splits,meta_block_info,parents,op_server_info,job_idx):
     # op_server_info = {op:[] for op in job_graph.nodes()}
     if VERBOSE:
         print(f'-------------------- Performing job ops allocation ------------------------')
+        servers, _, _ = meta_block_info
+        servers_occupied = [] 
+        for server in servers:
+            if len(ramp[server]['job_idxs']) != 0:
+                servers_occupied.append(server)
+        print(f'{len(servers_occupied)} of {len(servers)} servers occupied before allocation begun')
+        print(f'Occupied servers: {servers_occupied}')
+
     for i in range(len(sequence)):
         op = sequence[i]
         split = splits[i]
@@ -549,7 +547,7 @@ def allocate(ramp,ramp_shape,job_graph,sequence,splits,meta_block_info,parents,o
         
         #try allocating on same servers as parents
         if VERBOSE:
-            print(f'> Attempting parent collective alloaction <')
+            print(f'> Attempting parent collective allocation <')
         alloc = parent_collective_placement(ramp,job_graph,op,split,meta_block_info,parents,op_server_info)
         
         #if this doesn't work, try allocating somewhere else
@@ -557,7 +555,7 @@ def allocate(ramp,ramp_shape,job_graph,sequence,splits,meta_block_info,parents,o
             if VERBOSE:
                 print('Parent collective allocation unsuccessful.')
                 print('> Attempting regular collective allocation <')
-            alloc = regular_collective_placement(ramp,ramp_shape,job_graph,op,split,meta_block_info,op_server_info)
+            alloc = regular_collective_placement(ramp,ramp_shape,job_graph,op,split,meta_block_info,op_server_info,job_idx)
             
         #if that didn't work either, return None (this means the allocation has failed)
         if not alloc:
@@ -570,5 +568,8 @@ def allocate(ramp,ramp_shape,job_graph,sequence,splits,meta_block_info,parents,o
             if VERBOSE:
                 print(f'Collective allocation successful!')
             ramp, op_server_info = alloc[0], alloc[1]
+
+    if VERBOSE:
+        print(f'Final allocation op_server_info: {op_server_info}')
             
     return ramp, op_server_info

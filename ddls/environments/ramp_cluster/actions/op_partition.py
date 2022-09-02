@@ -53,6 +53,7 @@ class OpPartition:
             details['max_partitions_per_op'] = self.job_id_to_max_partition_degree[job_id]
             self.partitioned_jobs[job_id] = Job(computation_graph=partitioned_computation_graph,
                                                 num_training_steps=copy.deepcopy(job.num_training_steps),
+                                                max_acceptable_job_completion_time_frac=copy.deepcopy(job.max_acceptable_job_completion_time_frac),
                                                 job_id=copy.deepcopy(job_id),
                                                 original_job=job,
                                                 details=details

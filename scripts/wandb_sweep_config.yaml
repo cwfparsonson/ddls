@@ -1,5 +1,5 @@
-#program: train_rllib_from_config.py # RLLIB
-program: test_heuristic_from_config.py # HEURISTIC
+program: train_rllib_from_config.py # RLLIB
+#program: test_heuristic_from_config.py # HEURISTIC
 
 method: grid
 #method: bayes
@@ -18,8 +18,8 @@ parameters:
 
     ## TRAIN RLLIB
 
-    #experiment.train_seed:
-        #values: [0, 1, 2, 3]
+    experiment.train_seed:
+        values: [0, 1, 2]
 
     #epoch_loop.rllib_config.env_config.max_partitions_per_op:
         #values: [2, 4, 6, 8]
@@ -70,9 +70,9 @@ parameters:
 
     ## TEST HEURISTIC
     
-    eval_loop.actor._target_: 
-        #values: ['ddls.environments.ramp_job_partitioning.agents.random.Random', 'ddls.environments.ramp_job_partitioning.agents.no_parallelism.NoParallelism', 'ddls.environments.ramp_job_partitioning.agents.max_parallelism.MaxParallelism', 'ddls.environments.ramp_job_partitioning.agents.sip_ml.SiPML']
-        values: ['ddls.environments.ramp_job_partitioning.agents.random.Random', 'ddls.environments.ramp_job_partitioning.agents.no_parallelism.NoParallelism', 'ddls.environments.ramp_job_partitioning.agents.sip_ml.SiPML']
+    #eval_loop.actor._target_: 
+        ##values: ['ddls.environments.ramp_job_partitioning.agents.random.Random', 'ddls.environments.ramp_job_partitioning.agents.no_parallelism.NoParallelism', 'ddls.environments.ramp_job_partitioning.agents.max_parallelism.MaxParallelism', 'ddls.environments.ramp_job_partitioning.agents.sip_ml.SiPML']
+        #values: ['ddls.environments.ramp_job_partitioning.agents.random.Random', 'ddls.environments.ramp_job_partitioning.agents.no_parallelism.NoParallelism', 'ddls.environments.ramp_job_partitioning.agents.sip_ml.SiPML', 'ddls.environments.ramp_job_partitioning.agents.acceptable_jct.AcceptableJCT']
 
     #eval_loop.env.min_op_run_time_quantum:
         ##values: [0.000001, 0.00001, 0.0001, 0.001, 0.01, 0.1, 1, 10, 25, 50, 75, 100]

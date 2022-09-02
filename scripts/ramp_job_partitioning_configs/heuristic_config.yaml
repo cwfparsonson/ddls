@@ -21,8 +21,8 @@ eval_loop:
         node_config:
             type_1:
                 #num_nodes: 8
-                #num_nodes: 32
-                num_nodes: 512
+                num_nodes: 32
+                #num_nodes: 512
                 workers_config:
                     #- num_workers: 4
                     - num_workers: 1
@@ -35,15 +35,15 @@ eval_loop:
                 #y_dims: 4
             type: ramp 
             kwargs:
-                ## 32 nodes
-                #num_communication_groups: 4
-                #num_racks_per_communication_group: 4
-                #num_servers_per_rack: 2
+                # 32 nodes
+                num_communication_groups: 4
+                num_racks_per_communication_group: 4
+                num_servers_per_rack: 2
 
-                # 512 nodes
-                num_communication_groups: 8
-                num_racks_per_communication_group: 8
-                num_servers_per_rack: 8
+                ## 512 nodes
+                #num_communication_groups: 8
+                #num_racks_per_communication_group: 8
+                #num_servers_per_rack: 8
                 
                 num_channels: 1
                 channel_bandwidth: 1250000000
@@ -61,26 +61,39 @@ eval_loop:
             #replication_factor: 5
             #replication_factor: 10
             #replication_factor: 20
-            replication_factor: 100
-            #replication_factor: 200
+            #replication_factor: 100
+            replication_factor: 200
             #replication_factor: 1000
             job_interarrival_time_dist:
                 _target_: ddls.distributions.uniform.Uniform
                 #min_val: 1
                 #max_val: 1000
-                min_val: 1000 
+                min_val: 1000
                 max_val: 1000 
+                #min_val: 1
+                #max_val: 1
+            max_acceptable_job_completion_time_frac_dist:
+                _target_: ddls.distributions.probability_mass_function.ProbabilityMassFunction
+                probability_mass_function:
+                    0.25: 0.25
+                    0.50: 0.25
+                    0.75: 0.25
+                    1.00: 0.25
+
             job_sampling_mode: remove
             shuffle_files: False
             num_training_steps: 50
             max_partitions_per_op_in_observation: 1
 
+        #max_simulation_run_time: null
+        max_simulation_run_time: 1000000
+
         # CHANGE
         #max_partitions_per_op: null
         #max_partitions_per_op: 2
         #max_partitions_per_op: 8
-        #max_partitions_per_op: 16
-        max_partitions_per_op: 256
+        max_partitions_per_op: 16
+        #max_partitions_per_op: 256
 
         # CHANGE
         #min_op_run_time_quantum: 0.000006 # original SiP-ML
@@ -122,7 +135,7 @@ eval_loop:
         
         # CHANGE
         #job_placement_shaper: ramp_random_job_placement_shaper
-        job_placement_shaper: ramp_first_fit_job_placement_shaper # TODO: need to test
+        #job_placement_shaper: ramp_first_fit_job_placement_shaper # TODO: need to test
 
         op_placer: ramp_first_fit_op_placer
 
@@ -145,9 +158,11 @@ eval_loop:
 
         #_target_: ddls.environments.ramp_job_partitioning.agents.max_parallelism.MaxParallelism
 
-        _target_: ddls.environments.ramp_job_partitioning.agents.sip_ml.SiPML
+        #_target_: ddls.environments.ramp_job_partitioning.agents.sip_ml.SiPML
         #max_partitions_per_op: 16
-        max_partitions_per_op: 256
+        ##max_partitions_per_op: 256
+        
+        _target_: ddls.environments.ramp_job_partitioning.agents.acceptable_jct.AcceptableJCT
 
 
 wandb:
