@@ -1,7 +1,7 @@
 import numpy as np
 
 class Random:
-    def __init__(self, name: str = 'random'):
+    def __init__(self, name: str = 'random', **kwargs):
         self.name = name
 
     def compute_action(self, obs, *args, **kwargs):

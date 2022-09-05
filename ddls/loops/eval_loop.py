@@ -8,6 +8,8 @@ import numpy as np
 
 import copy
 
+from decimal import Decimal
+
 class EvalLoop:
     def __init__(self,
                  # seed: int = None,
@@ -33,11 +35,13 @@ class EvalLoop:
         prev_idx = 0
         step_counter = 1
         while not done:
-            action = self.actor.compute_action(obs) 
+            start_step_mounted_workers = len(self.env.cluster.mounted_workers)
+            job_to_place = list(self.env.cluster.job_queue.jobs.values())[0] # assume event-driven where only ever have one job to queue. Use job_to_place for useful info for heuristics
+            action = self.actor.compute_action(obs, job_to_place=job_to_place) 
             obs, reward, done, info = self.env.step(action)
 
             if verbose:
-                print(f'Step {step_counter} | Action: {action} | Reward: {reward:.3f} | Jobs arrived: {self.env.cluster.num_jobs_arrived} | Jobs running: {len(self.env.cluster.jobs_running)} | Jobs completed: {len(self.env.cluster.jobs_completed)} | Jobs blocked: {len(self.env.cluster.jobs_blocked)}')
+                print(f'Step {step_counter} | Action: {action} | Reward: {reward:.8f} | Jobs arrived: {self.env.cluster.num_jobs_arrived} | Jobs running: {len(self.env.cluster.jobs_running)} | Jobs completed: {len(self.env.cluster.jobs_completed)} | Jobs blocked: {len(self.env.cluster.jobs_blocked)} | Start->end of step mounted workers: {start_step_mounted_workers}->{len(self.env.cluster.mounted_workers)} | Stopwatch: {Decimal(self.env.cluster.stopwatch.time().astype(float)):.3E}')
 
             results['step_stats']['action'].append(action)
             results['step_stats']['reward'].append(reward)
@@ -104,10 +108,11 @@ class EvalLoop:
             except TypeError:
                 # val is not numeric (is e.g. a string)
                 results['episode_stats'][key] = val
+        results['episode_stats']['return'] = np.sum(results['step_stats']['reward'])
 
         if self.wandb is not None:
             wandb_log = {}
-            for log_name, log in results.keys():
+            for log_name, log in results.items():
                 for key, val in log.items():
                     # record average of stat for validation run
                     wandb_log[f'valid/{log_name}/{key}'] = np.mean(val)

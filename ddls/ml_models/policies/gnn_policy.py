@@ -1,4 +1,5 @@
-from ddls.ml_models.models import GNN
+from ddls.ml_models.models.gnn import GNN
+from ddls.ml_models.utils import get_torch_module_from_str
 
 from typing import Sequence, Union
 import gym
@@ -55,6 +56,8 @@ class GNNPolicy(TorchModelV2, nn.Module):
         name,
     ):
         '''
+        Uses a custom GNN to parameterise an RLlib policy and output logits. 
+
         model_config:
             action_space_type ('continuous', 'discrete'): Whether the action space
                 is continuous or discrete. If continuous, policy will output
@@ -75,17 +78,34 @@ class GNNPolicy(TorchModelV2, nn.Module):
         
         self.config = model_config['custom_model_config']
         
-        self.gnn = GNN(self.config)
+        # init message passing GNN which will generate per-node embeddings using node and edge features
+        self.gnn_module = GNN(self.config)
 
-        self.graph_layer = nn.Linear(self.config['in_features_graph'] + action_space.n, self.config['out_features_graph'])
+        # init a graph module which will generate a graph-level embedding using graph features
+        if self.config['module_depth'] < 1:
+            raise Exception(f'Require config[\"module_depth\"] >= 1.')
+        self.activation_layer = get_torch_module_from_str(self.config['aggregator_activation'])
+        # add input layer
+        graph_module = [
+                torch.nn.LayerNorm(self.config['in_features_graph'] + action_space.n),
+                torch.nn.Linear(self.config['in_features_graph'] + action_space.n, self.config['out_features_graph']), 
+                ]
+        # add any extra layers
+        for _ in range(self.config['module_depth']-1):
+            graph_module.extend([
+                    torch.nn.Linear(self.config['out_features_graph'], self.config['out_features_graph']),
+                    self.activation_layer(),
+                ])
+        self.graph_module = torch.nn.Sequential(*graph_module)
 
+        # init a logits module which will generate logits (i.e. outputs for each possible action in a gym environment) using the concatenated node- and graph-level embeddings
         if self.config['action_space_type'] == 'continuous':
             num_logits = 2 * action_space.n
         elif self.config['action_space_type'] == 'discrete':
             num_logits = action_space.n
         else:
             raise Exception(f'Unrecognised model_config action_space_type {self.config["action_space_type"]}.')
-        self.logit_layer = FC(
+        self.logit_module = FC(
             Box(-1,1,shape=(self.config['out_features_graph']+self.config['out_features_node'],)),
             action_space,
             num_logits,
@@ -177,7 +197,7 @@ class GNNPolicy(TorchModelV2, nn.Module):
             graph.ndata['z'] = node_features.to(device)
             graph.edata['z'] = edge_features.to(device)
 
-            emb_nodes = self.gnn(graph)
+            emb_nodes = self.gnn_module(graph)
 
 
             emb_nodes = torch.reshape(emb_nodes,
@@ -215,17 +235,17 @@ class GNNPolicy(TorchModelV2, nn.Module):
                 graph.edata['z'] = edge_ft_reduced
 
                 #take the element-wise mean of the embeddings in that graph
-                embs = self.gnn(graph)
+                embs = self.gnn_module(graph)
                 emb_nodes.append(torch.mean(embs,0))
 
             emb_nodes = torch.stack(emb_nodes)
 
         #concatenate graph-averaged node embeddings and graph feature embeddings
-        emb_graph = self.graph_layer(input_dict['obs']['graph_features'])
+        emb_graph = self.graph_module(input_dict['obs']['graph_features'])
         final_emb = torch.cat((emb_nodes,emb_graph),dim=1)
 
         #calculate logits/output from this final representation
-        logits, _ = self.logit_layer({
+        logits, _ = self.logit_module({
             'obs': final_emb
         })
 
@@ -240,4 +260,4 @@ class GNNPolicy(TorchModelV2, nn.Module):
         return logits, state
 
     def value_function(self):
-        return self.logit_layer.value_function()
+        return self.logit_module.value_function()

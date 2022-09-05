@@ -76,9 +76,10 @@ class LookaheadJobCompletionTime(DDLSRewardFunction):
                     reward = env.cluster.jobs_blocked[job_idx].details['job_sequential_completion_time'][device_type] * self.fail_reward_factor
                 else:
                     raise Exception(f'Unrecognised fail_reward {self.fail_reward}')
+            else:
+                raise Exception(f'Unrecognised fail_reward type {type(self.fail_reward)}')
             if self.normaliser is not None and reward != 0:
-                if self.normaliser is not None and reward != 0:
-                    reward = self._normalise_reward(reward, env.cluster.jobs_blocked[job_idx], env)
+                reward = self._normalise_reward(reward, env.cluster.jobs_blocked[job_idx], env)
 
         # do any reward processing
         if self.inverse and reward != 0:

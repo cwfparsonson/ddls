@@ -7,6 +7,9 @@ from collections import defaultdict
 import math
 
 
+
+
+
 def update_dep_run_times(cluster,
                          op_partition, 
                          op_placement, 
@@ -236,8 +239,7 @@ def get_collective_info(partitioned_job, collective, op_placement, verbose=False
         print(f'num_racks: {len(racks)}')
         print(f'num_nodes: {len(nodes)}')
         print(f'message_size: {message_size}')
-        # print(f'src_cg_to_dst_cg_to_node_id_to_racks: {src_cg_to_dst_cg_to_node_id_to_racks}')
-        print(f'rack_to_src_cg_to_dst_cg_to_node_id: {rack_to_src_cg_to_dst_cg_to_node_id}')
+        print(f'node_to_cg: {node_to_cg}')
         print(f'cont_racks: {cont_racks}')
 
     return communication_groups, racks, nodes, servers, message_size, cont_racks
@@ -303,6 +305,11 @@ def group_deps_into_collective_and_one_to_one_communications(original_job, parti
                 parent_id, child_id = partitioned_dep[0], partitioned_dep[1]
                 parent_servers.append(op_placement.action[job_id][parent_id])
                 child_servers.append(op_placement.action[job_id][child_id])
+                # print(f'partitioned_dep: {partitioned_dep}')
+                # print(f'parent_id: {parent_id}')
+                # print(f'child_id: {child_id}')
+                # print(f'parent server: {op_placement.action[job_id][parent_id]}')
+                # print(f'child server: {op_placement.action[job_id][child_id]}')
             if sorted(parent_servers) == sorted(child_servers):
                 # symmetric parent-child placements are a collective
                 if verbose:

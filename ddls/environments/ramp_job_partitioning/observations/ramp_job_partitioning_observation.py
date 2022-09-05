@@ -35,6 +35,7 @@ class RampJobPartitioningObservation(DDLSObservationFunction):
 
         # init obs space
         self._observation_space = None
+        # self.observation_space = gym.spaces.Dict({})
 
         # init any hard-coded feature min and max values
         self.node_features_low, self.node_features_high = 0, 1
@@ -384,6 +385,20 @@ class RampJobPartitioningObservation(DDLSObservationFunction):
         else:
             job_sequential_completion_time = 1
         job_features.append(np.array(job_sequential_completion_time, dtype=object))
+
+        if cluster.jobs_generator.jobs_params['max_max_acceptable_job_completion_times'] - cluster.jobs_generator.jobs_params['min_max_acceptable_job_completion_times'] != 0:
+            max_acceptable_job_completion_time = (job.details['max_acceptable_job_completion_time'][list(cluster.topology.graph.graph['worker_types'])[0]] - cluster.jobs_generator.jobs_params['min_max_acceptable_job_completion_times']) / (cluster.jobs_generator.jobs_params['max_max_acceptable_job_completion_times'] - cluster.jobs_generator.jobs_params['min_max_acceptable_job_completion_times'])
+        else:
+            max_acceptable_job_completion_time = 1
+        job_features.append(np.array(max_acceptable_job_completion_time, dtype=object))
+
+        if cluster.jobs_generator.jobs_params['max_max_acceptable_job_completion_time_fracs'] - cluster.jobs_generator.jobs_params['min_max_acceptable_job_completion_time_fracs'] != 0:
+            max_acceptable_job_completion_time_frac = (job.max_acceptable_job_completion_time_frac - cluster.jobs_generator.jobs_params['min_max_acceptable_job_completion_time_fracs']) / (cluster.jobs_generator.jobs_params['max_max_acceptable_job_completion_time_fracs'] - cluster.jobs_generator.jobs_params['min_max_acceptable_job_completion_time_fracs'])
+        else:
+            max_acceptable_job_completion_time_frac = 1
+        job_features.append(np.array(max_acceptable_job_completion_time_frac, dtype=object)) # effectively tells agent priority of job relative to all other jobs which can come
+
+        job_features.append(np.array(job.max_acceptable_job_completion_time_frac, dtype=object)) # give agent the raw fraction so explicitly tell it roughly how many times job must be partitioned to meet the maximum acceptable job completion time requirement of the job
 
         if cluster.jobs_generator.jobs_params['max_job_total_op_memory_costs'] - cluster.jobs_generator.jobs_params['min_job_total_op_memory_costs'] != 0:
             job_total_op_memory_cost = (job.details['job_total_op_memory_cost'] - cluster.jobs_generator.jobs_params['min_job_total_op_memory_costs']) / (cluster.jobs_generator.jobs_params['max_job_total_op_memory_costs'] - cluster.jobs_generator.jobs_params['min_job_total_op_memory_costs'])

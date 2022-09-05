@@ -19,6 +19,9 @@ class SRPTOpScheduler:
         # get new placements made by job placer
         new_placements = op_placement.action
 
+        # print(op_partition)
+        # print(op_placement)
+
         # initialise job op schedule for each worker
         worker_to_job_to_op_to_priority = defaultdict(lambda: defaultdict(dict))
 

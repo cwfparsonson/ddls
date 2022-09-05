@@ -7,6 +7,7 @@ warnings.filterwarnings(action='ignore',
                         module='ray')  # noqa
 
 from ddls.utils import seed_stochastic_modules_globally, gen_unique_experiment_folder
+from ddls.ml_models.utils import get_least_used_gpu
 
 import hydra
 from hydra.core.hydra_config import HydraConfig
@@ -23,8 +24,13 @@ import gzip
 # python <test_heuristic_from_config.py --config-path=ramp_job_placement_shaping_configs --config-name=heuristic_config.yaml
 @hydra.main(config_path='ramp_job_placement_shaping_configs', config_name='heuristic_config.yaml')
 def run(cfg: DictConfig):
-    if 'cuda_visible_devices' in cfg.experiment:
-        os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(str(gpu) for gpu in cfg.experiment.cuda_visible_devices)
+    # seeding
+    if 'seed' in cfg.experiment:
+        seed_stochastic_modules_globally(cfg.experiment.seed)
+
+    # create dir for saving data
+    save_dir = gen_unique_experiment_folder(path_to_save=cfg.experiment.path_to_save, experiment_name=cfg.experiment.name)
+    cfg['experiment']['save_dir'] = save_dir
 
     # init weights and biases
     if 'wandb' in cfg:
@@ -36,14 +42,6 @@ def run(cfg: DictConfig):
             wandb = None
     else:
         wandb = None
-
-    # seeding
-    if 'seed' in cfg.experiment:
-        seed_stochastic_modules_globally(cfg.experiment.seed)
-
-    # create dir for saving data
-    save_dir = gen_unique_experiment_folder(path_to_save=cfg.experiment.path_to_save, experiment_name=cfg.experiment.name)
-    cfg['experiment']['save_dir'] = save_dir
 
     # save copy of config to the save dir
     OmegaConf.save(config=cfg, f=save_dir+'heuristic_config.yaml')
@@ -62,7 +60,7 @@ def run(cfg: DictConfig):
     start_time = time.time()
     results = eval_loop.run(verbose=True)
     print(f'Finished validation in {time.time() - start_time:.3f} s.')
-    print(f'Validation results:\n{results}')
+    # print(f'Validation results:\n{results}')
 
     base_path = '/'.join(save_dir.split('/')[:-1])
     for log_name, log in results.items():

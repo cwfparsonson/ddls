@@ -28,14 +28,16 @@ if __name__ == '__main__':
                 '-n',
                 help='Number of runs to conduct in parallel.',
                 type=int,
-                default=2,
+                required=True,
+                # default=2,
             )
     parser.add_argument(
                 '--session_name',
                 '-s',
-                help='Name of sweep run to prefix tmux sessions with.',
+                help='Name of tmux session in which parallel sweep runs are being conducted.',
                 type=str,
-                default='sweep',
+                required=True,
+                # default='sweep',
             )
     parser.add_argument(
                 '--conda_env',
@@ -45,16 +47,23 @@ if __name__ == '__main__':
                 default='ddls',
             )
     parser.add_argument(
+                '--run_start_stagger_delay',
+                '-d',
+                help='Delay (in seconds) with which to stagger parallel runs. Should be at least 10 decrease chance of conflicting save IDs. Increase further to ensure all runs not loaded onto same GPU (i.e. give enough time to load run 1 onto a GPU so that run 2 can automatically go on a lesser occupied GPU; usually ~60 seconds is sufficient).',
+                type=float,
+                default=10,
+            )
+    parser.add_argument(
                 '--run_sweep_cmd',
                 '-r',
                 help='Command to run a pre-defined weights and biases sweep agent. Provide this argument if you have previously generated a sweep command and want to run more sweep agents in parallel. If None, this script will automatically generate a sweep command for you and use it to run parallel sweep agents.',
                 type=str,
-                default=None,
+                default='<unknown>',
             )
     args = parser.parse_args()
 
     # run command to generate a weights and biases sweep agent command
-    if args.run_sweep_cmd is None:
+    if args.run_sweep_cmd == '<unknown>':
         gen_sweep_cmd = f'wandb sweep {args.wandb_sweep_config}'.split(' ')
         process = subprocess.Popen(gen_sweep_cmd, bufsize=1, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding='utf-8', errors='replace')
         while True:
@@ -69,7 +78,7 @@ if __name__ == '__main__':
                     sweep_link = str(realtime_output.strip()).split('at: ')[-1]
                 sys.stdout.flush()
     else:
-        run_sweep_cmd = args.run_sweep_cmd
+        run_sweep_cmd = f'wandb agent {args.run_sweep_cmd}'
         sweep_link = '<unknown>'
 
     # run parallel sweep agents in separate tmux windows
@@ -96,4 +105,9 @@ if __name__ == '__main__':
         # run sweep agent
         pane.send_keys(run_sweep_cmd)
         print(f'Launched parallel run {i+1} of {args.num_parallel_windows} in tmux window {window} in {time.time() - start_t:.3f} s.')
+
+        if i != args.num_parallel_windows - 1:
+            print(f'Staggering launch of next parallel run by {args.run_start_stagger_delay} seconds...')
+            time.sleep(args.run_start_stagger_delay)
+
     print(f'~'*100)

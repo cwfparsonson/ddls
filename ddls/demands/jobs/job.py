@@ -11,7 +11,9 @@ class Job:
     def __init__(self,
                  computation_graph: nx.MultiDiGraph,
                  num_training_steps: int,
+                 max_acceptable_job_completion_time_frac: float,
                  job_id: int = None,
+                 original_job = None,
                  details: dict = None):
         '''
         A ddls deep learning job consists of a computation_graph which contains the
@@ -29,15 +31,28 @@ class Job:
                 of the model (i.e. a forward and backward pass).
             num_training_steps: Number of epochs/iterations/updates/training step to perform on the model
                 (i.e. number of times to run the computation graph).
+            max_acceptable_job_completion_time_frac: 0 < max_acceptable_job_completion_time_frac <= 1. Defines the maximum
+                acceptable completion time of the job as a fraction of the job's sequential
+                completion time. If the completion time of the job exceeds the maximum
+                acceptable completion time, the job is considered blocked. This
+                fraction defaults to 1 (i.e. the maximum acceptable job completion
+                time is just the sequential completion time (the completion time
+                when the job is sequentially executed on one worker)).
+            original_job: The original ddls.demands.jobs.job.Job object before any partitioning etc. was applied.
+                Use for when creating a partitioned Job() object from some original Job().
+                If no original_job is supplied, initialises original_job as itself.
         '''
         self.computation_graph = computation_graph
         self.num_training_steps = num_training_steps
+        if max_acceptable_job_completion_time_frac <= 0 or max_acceptable_job_completion_time_frac > 1:
+            raise Exception(f'max_acceptable_job_completion_time_frac must be 0 < max_acceptable_job_completion_time_frac <= 1, but is {max_acceptable_job_completion_time_frac}')
+        self.max_acceptable_job_completion_time_frac = max_acceptable_job_completion_time_frac
         self.training_step_counter = 0
 
         if job_id is None:
-            self.job_id = id(self)
+            self._job_id = copy.deepcopy(id(self))
         else:
-            self.job_id = job_id 
+            self._job_id = job_id 
 
         if details is None:
             self.details = {}
@@ -46,15 +61,33 @@ class Job:
 
         self.reset_job(self.details)
 
+        # store record of original job before any partitioning etc. applied
+        if original_job is None:
+            self.original_job = copy.deepcopy(self)
+        else:
+            self.original_job = copy.deepcopy(original_job)
+
+    @property
+    def job_id(self):
+        return self._job_id
+
+    @job_id.setter
+    def job_id(self, value):
+        self._job_id = value
 
     def _init_job_details(self, details: dict = None):
         '''Initialises some additional useful details about the job.'''
         if details is None:
             details = {}
 
-        details['max_compute_node'], details['max_compute_cost'], details['max_memory_node'], details['max_memory_cost'], details['max_depth_node'], details['max_depth'] = self.get_max_node_details()
+        self._init_op_comp_throughputs()
+
+        details['max_compute_node'], details['max_compute_cost'], details['max_memory_node'], details['max_memory_cost'], details['max_throughput_node'], details['max_node_throughput'], details['max_depth_node'], details['max_depth'] = self.get_max_node_details()
         details['max_dep_size_dep'], details['max_dep_size'] = self.get_max_edge_details()
         details['job_sequential_completion_time'] = self.get_job_sequential_completion_time()
+        details['max_acceptable_job_completion_time'] = defaultdict(lambda: 0)
+        for device_type, jct in details['job_sequential_completion_time'].items():
+            details['max_acceptable_job_completion_time'][device_type] = self.max_acceptable_job_completion_time_frac * jct
         details['job_total_op_memory_cost'] = self.get_job_total_memory_cost()
         details['job_total_dep_size'] = self.get_job_total_dep_size()
 
@@ -72,10 +105,20 @@ class Job:
 
         return details
 
+    def _init_op_comp_throughputs(self):
+        for op in self.computation_graph.nodes():
+            self.computation_graph.nodes[op]['compute_throughput'] = {}
+            memory_cost = self.computation_graph.nodes[op]['memory_cost']
+            for device_type, compute_cost in self.computation_graph.nodes[op]['compute_cost'].items():
+                try:
+                    self.computation_graph.nodes[op]['compute_throughput'][device_type] = memory_cost / compute_cost
+                except ZeroDivisionError:
+                    self.computation_graph.nodes[op]['compute_throughput'][device_type] = 0
+
     def get_job_sequential_completion_time(self):
         '''
         Assuming all job ops are loaded onto one device, computes the total 
-        compute cost of sequentially computing these ops.
+        compute cost of sequentially computing these ops for num_training_steps.
         '''
         job_sequential_completion_time = defaultdict(lambda: 0)
         for op in self.computation_graph.nodes:
@@ -113,14 +156,20 @@ class Job:
         # print(f'\n>>> Getting max node details <<<')
         max_compute_node, max_compute_cost = defaultdict(lambda: 0), defaultdict(lambda: 0)
         max_memory_node, max_memory_cost = 0, 0
+        max_throughput_node, max_node_throughput = defaultdict(lambda: 0), defaultdict(lambda: 0)
         max_depth_node, max_depth = 0, 0
         for node in self.computation_graph.nodes:
             # print(f'node {node} -> mem cost {self.computation_graph.nodes[node]["memory_cost"]}')
-            # check if update max cost info
+            # check if update max compute cost info
             for device_type, compute_cost in self.computation_graph.nodes[node]['compute_cost'].items():
                 if self.computation_graph.nodes[node]['compute_cost'][device_type] > max_compute_cost[device_type]:
                     max_compute_node[device_type] = copy.deepcopy(node)
                     max_compute_cost[device_type] = copy.deepcopy(compute_cost)
+            # check if update max throughput info
+            for device_type, compute_throughput in self.computation_graph.nodes[node]['compute_throughput'].items():
+                if self.computation_graph.nodes[node]['compute_throughput'][device_type] > max_node_throughput[device_type]:
+                    max_throughput_node[device_type] = copy.deepcopy(node)
+                    max_node_throughput[device_type] = copy.deepcopy(compute_throughput)
             # check if update max memory info
             if self.computation_graph.nodes[node]['memory_cost'] > max_memory_cost:
                 max_memory_node = copy.deepcopy(node)
@@ -135,7 +184,7 @@ class Job:
                 max_depth_node = copy.deepcopy(node)
                 max_depth = copy.deepcopy(node_depth)
         # print(f'max_compute_node: {max_compute_node} | max_compute_cost: {max_compute_cost} | max_memory_node: {max_memory_node} | max_memory_cost: {max_memory_cost}')
-        return max_compute_node, max_compute_cost, max_memory_node, max_memory_cost, max_depth_node, max_depth
+        return max_compute_node, max_compute_cost, max_memory_node, max_memory_cost, max_throughput_node, max_node_throughput, max_depth_node, max_depth
 
     def get_max_edge_details(self):
         max_dep_size, max_dep_size_dep = 0, None

@@ -13,6 +13,7 @@ class JobsGenerator:
     def __init__(self, 
                  path_to_files: str, 
                  job_interarrival_time_dist: Union[Distribution, dict],
+                 max_acceptable_job_completion_time_frac_dist: Union[Distribution, dict] = None,
                  # job_interarrival_time_dist: Union[Distribution, str], # either a Distribution object or a path leading to the distbution path
                  max_files: int = None, # maximum number of files in path_to_files dir to use
                  replication_factor: int = 1, # number of times to replicate files in path_to_files (e.g. if path_to_files has 1 job graph profile file and replication_factor=10, will have 10 identical jobs).
@@ -52,16 +53,32 @@ class JobsGenerator:
             else:
                 ddls_computation_graphs = [file_reader(file_path, processor_type_profiled='A100', verbose=False) for file_path in file_paths]
 
+        # init job max acceptable completion time fraction dist
+        if isinstance(max_acceptable_job_completion_time_frac_dist, dict):
+            # need to instantiate Distribution object from dict of kwargs
+            if '_target_' not in max_acceptable_job_completion_time_frac_dist:
+                raise Exception(f'max_acceptable_job_completion_time_frac_dist specified as dict, therefore expecting dict of kwargs, but require _target_ kwarg giving path to Distribution class so can instantiate.')
+            kwargs = {kwarg: val for kwarg, val in max_acceptable_job_completion_time_frac_dist.items() if kwarg != '_target_'} 
+            self.max_acceptable_job_completion_time_frac_dist = get_class_from_path(max_acceptable_job_completion_time_frac_dist['_target_'])(**kwargs)
+        else:
+            # Distribution object already provided
+            self.max_acceptable_job_completion_time_frac_dist = max_acceptable_job_completion_time_frac_dist 
+
         # create ddls jobs
         jobs = []
         for _ in range(replication_factor):
             for graph in ddls_computation_graphs:
-                # # set model name as graph.txt file's parent folder
-                # details = {'model': graph.graph['file_path'].split('/')[-2]}
-                # set model name as <model>.txt file name
-                details = {'model': graph.graph['file_path'].split('/')[-1].replace('.txt', '')}
+                if graph.graph['file_path'].split('/')[-1] == 'graph.txt':
+                    # set model name as graph.txt file's parent folder
+                    model = graph.graph['file_path'].split('/')[-2]
+                else:
+                    # set model name as .txt's file name
+                    model = graph.graph['file_path'].split('/')[-1].replace('.txt', '')
+                details = {'model': model}
+
                 jobs.append(Job(computation_graph=graph,
                                 num_training_steps=num_training_steps,
+                                max_acceptable_job_completion_time_frac=self.max_acceptable_job_completion_time_frac_dist.sample(),
                                 details=details))
 
         # init job sampler
@@ -103,11 +120,17 @@ class JobsGenerator:
 
         for job in jobs:
             jobs_params['job_sequential_completion_times'].append(job.details['job_sequential_completion_time'][device_type])
+            jobs_params['max_acceptable_job_completion_times'].append(job.details['max_acceptable_job_completion_time'][device_type])
+            jobs_params['max_acceptable_job_completion_time_fracs'].append(job.max_acceptable_job_completion_time_frac)
             jobs_params['job_total_op_memory_costs'].append(job.details['job_total_op_memory_cost'])
             jobs_params['job_total_dep_sizes'].append(job.details['job_total_dep_size'])
             jobs_params['job_total_num_ops'].append(len(list(job.computation_graph.nodes())))
             jobs_params['job_total_num_deps'].append(len(list(job.computation_graph.edges())))
             jobs_params['job_num_training_steps'].append(job.num_training_steps)
+            jobs_params['job_max_op_compute_throughputs'].append(job.details['max_node_throughput'][device_type])
+            # print(f'jobs_params: {jobs_params}')
+            # print(f'job details: {job.details}')
+            jobs_params['job_max_dep_size'].append(job.details['max_dep_size'])
 
         updated_jobs_params = {}
         for key, vals in jobs_params.items():
@@ -142,6 +165,7 @@ class JobsGenerator:
                     raise Exception(f'Handling param {key} not implemented.')
             else:
                 updated_jobs_params[f'max_{key}'] = np.max(vals)
+                updated_jobs_params[f'min_{key}'] = np.min(vals) # useful
             # updated_jobs_params[f'mean_{key}'] = np.mean(vals)
             # updated_jobs_params[f'std_{key}'] = np.std(vals)
 

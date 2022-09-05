@@ -129,7 +129,8 @@ class RLlibEpochLoop:
             results = self.validator.run(checkpoint_path)
 
         if save_results:
-            base_path = '/'.join(checkpoint_path.split('/')[:-1])
+            # base_path = '/'.join(checkpoint_path.split('/')[:-1])
+            base_path = checkpoint_path
             wandb_log = {}
 
             for log_name, log in results.items():
