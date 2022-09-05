@@ -1,4 +1,4 @@
-from ddls.utils import gen_channel_id
+from ddls.utils import gen_channel_id, gen_job_dep_str
 
 from collections import defaultdict
 from typing import Union
@@ -32,9 +32,10 @@ class Channel:
 
     def unmount(self, job, dep):
         self.mounted_job_idx_to_deps[job.details['job_idx']].remove(dep)
-        del self.mounted_job_dep_to_priority[self._gen_job_dep_str(job.details['job_idx'], job.job_id, dep)]
+        # del self.mounted_job_dep_to_priority[self._gen_job_dep_str(job.details['job_idx'], job.job_id, dep)]
+        del self.mounted_job_dep_to_priority[gen_job_dep_str(job.details['job_idx'], job.job_id, dep)]
         if len(self.mounted_job_idx_to_deps[job.details['job_idx']]) == 0:
             del self.mounted_job_idx_to_deps[job.details['job_idx']]
 
-    def _gen_job_dep_str(self, job_idx, job_id, dep_id):
-        return f'{json.dumps(job_idx)}_{json.dumps(job_id)}_{json.dumps(dep_id)}'
+    # def _gen_job_dep_str(self, job_idx, job_id, dep_id):
+        # return f'{json.dumps(job_idx)}_{json.dumps(job_id)}_{json.dumps(dep_id)}'

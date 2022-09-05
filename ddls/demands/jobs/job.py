@@ -50,9 +50,9 @@ class Job:
         self.training_step_counter = 0
 
         if job_id is None:
-            self.job_id = id(self)
+            self._job_id = copy.deepcopy(id(self))
         else:
-            self.job_id = job_id 
+            self._job_id = job_id 
 
         if details is None:
             self.details = {}
@@ -66,6 +66,14 @@ class Job:
             self.original_job = copy.deepcopy(self)
         else:
             self.original_job = copy.deepcopy(original_job)
+
+    @property
+    def job_id(self):
+        return self._job_id
+
+    @job_id.setter
+    def job_id(self, value):
+        self._job_id = value
 
     def _init_job_details(self, details: dict = None):
         '''Initialises some additional useful details about the job.'''

@@ -183,10 +183,14 @@ class RampClusterEnvironment:
         self._reset_sim_log()
         self.episode_stats = self._init_episode_stats()
 
-        # reset processors
+        # reset computation workers
         for node_id in self.topology.graph.nodes:
             for worker in self.topology.graph.nodes[node_id]['workers'].values():
                 worker.reset()
+
+        # reset communication channels
+        for channel in self.topology.channel_id_to_channel.values():
+            channel.reset()
 
         # initialise job queue
         self.job_queue = JobQueue(queue_capacity=job_queue_capacity)
@@ -289,6 +293,7 @@ class RampClusterEnvironment:
         job = self.jobs_generator.sample_job()
         job.register_job_arrived(time_arrived=self.stopwatch.time(), 
                                  job_idx=self.num_jobs_arrived)
+        # job.job_id = job.details['job_idx']
         self.time_last_job_arrived = copy.deepcopy(self.stopwatch.time())
         self.time_next_job_to_arrive += self.jobs_generator.sample_interarrival_time(size=None)
         self.job_idx_to_job_id[job.details['job_idx']] = job.job_id
@@ -373,6 +378,19 @@ class RampClusterEnvironment:
                             if priority_job_dep is not None:
                                 # record priority dep and corresponding priority for this channel
                                 priority_job_deps.add(priority_job_dep)
+                                # if priority_job_dep not in channel.mounted_job_dep_to_priority:
+                                    # # TODO TEMP DEBUGGING
+                                    # print(f'ERROR')
+                                    # print(f'priority_job_dep {priority_job_dep} not found in channel {channel_id} mounted_job_dep_to_priority, this job dep must not have been mounted or has been unmounted or not mean to be trying to place this job.')
+                                    # print(f'channel mounted_job_dep_to_priority: {channel.mounted_job_dep_to_priority}')
+                                    # print(f'job_id: {job_id}')
+                                    # print(f'job_idx: {job_idx}')
+                                    # print(f'jobs_running: {self.jobs_running.keys()}')
+                                    # print(f'jobs_completed: {self.jobs_completed.keys()}')
+                                    # print(f'jobs_blocked: {self.jobs_blocked.keys()}')
+                                    # print(f'jobs queued: {self.job_queue.jobs.keys()}')
+                                    # import pdb; pdb.set_trace()
+                                    # raise Exception()
                                 channel_to_priority_job_dep[channel_id] = priority_job_dep
                                 priority_job_dep_to_priority[priority_job_dep] = channel.mounted_job_dep_to_priority[priority_job_dep]
                                 priority_job_dep_to_channels[priority_job_dep].add(channel_id)
@@ -723,13 +741,6 @@ class RampClusterEnvironment:
         # register any blocked jobs (jobs which were in queue at last step but not handled by action)
         for job_id, job in self.job_queue.jobs.items():
             if job_id not in action.job_ids:
-                # job was blocked
-                # if action.cause_of_unsuccessful_handling is not None:
-                    # # decision making component failed to find a valid action, causing job to be blocked
-                    # cause_of_block = action.cause_of_unsuccessful_handling
-                # else:
-                    # # decisions were made which led to memory error(s)
-                    # cause_of_block = 'memory'
                 self._register_blocked_job(job)
                 if verbose:
                     print(f'Job with job_idx {job.details["job_idx"]} was blocked.')
@@ -919,7 +930,10 @@ class RampClusterEnvironment:
             for job in self.jobs_running.values():
                 blocked_jobs.append(job)
             for job in blocked_jobs:
+                # register the original job as having been blocked
                 self._register_blocked_job(job.original_job)
+                # remove partitioned job from workers, channels, queue, etc. where necessary
+                self._remove_job_from_cluster(job)
 
             # update episode-level data as necessary
 
@@ -1023,6 +1037,7 @@ class RampClusterEnvironment:
             self.job_op_placement[job_id] = op_placement[job_id]
 
     def _place_deps(self, action, verbose=False):
+        # verbose = True # DEBUG
         dep_placement = action.action
         if verbose:
             if len(dep_placement) > 0:
@@ -1073,6 +1088,7 @@ class RampClusterEnvironment:
 
     def _schedule_deps(self, action, verbose=False):
         '''Sets scheduling priority for mounted deps on each channel.'''
+        # verbose = True # DEBUG
         dep_schedule = action.action
         # print(f'dep_schedule: {dep_schedule}')
         for channel_id in dep_schedule.keys():
@@ -1083,6 +1099,18 @@ class RampClusterEnvironment:
                 for job_idx in sorted(channel.mounted_job_idx_to_deps.keys()):
                     job = self.jobs_running[job_idx]
                     for dep_id in sorted(channel.mounted_job_idx_to_deps[job_idx]):
+                        # if dep_id not in dep_schedule[channel_id][job.job_id]:
+                            # print(f'ERROR')
+                            # print(f'dep_id {dep_id} not found in dep_schedule[{channel_id}][{job.job_id}] {dep_schedule[channel_id][job.job_id]}')
+                            # print(f'channel_id: {channel_id}')
+                            # print(f'job_id: {job.job_id}')
+                            # print(f'job_idx: {job_idx}')
+                            # print(f'jobs_running: {self.jobs_running.keys()}')
+                            # print(f'jobs_completed: {self.jobs_completed.keys()}')
+                            # print(f'jobs_blocked: {self.jobs_blocked.keys()}')
+                            # print(f'jobs queued: {self.job_queue.jobs.keys()}')
+                            # import pdb; pdb.set_trace()
+                            # raise Exception()
                         channel.mounted_job_dep_to_priority[gen_job_dep_str(job_idx, job.job_id, dep_id)] = dep_schedule[channel_id][job.job_id][dep_id]
             else:
                 # dep not a flow so not placed on channel so no need to schedule
@@ -1097,6 +1125,7 @@ class RampClusterEnvironment:
             self.set_dep_init_run_time(job, dep_id)
 
     def _remove_job_from_cluster(self, job):
+        # print(f'REMOVING JOB ID {job.job_id} JOB IDX {job.details["job_idx"]} FROM CLUSTER!!!') # DEBUG
         if job.job_id in self.job_queue.jobs:
             # job currently in queue, remove
             self.job_queue.remove(job)
