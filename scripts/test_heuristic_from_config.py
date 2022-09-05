@@ -19,6 +19,8 @@ import time
 import pickle
 import gzip
 
+import cProfile
+import pstats
 
 # to override from command line, do e.g.:
 # python <test_heuristic_from_config.py --config-path=ramp_job_placement_shaping_configs --config-name=heuristic_config.yaml
@@ -58,7 +60,18 @@ def run(cfg: DictConfig):
     print(f'Initialised {eval_loop}.')
 
     start_time = time.time()
+    if cfg.experiment.profile_time:
+        # 1. Generate a file called <name>.prof
+        # 2. Transfer to /home/cwfparsonson/Downloads
+        # 3. Run snakeviz /home/cwfparsonson/Downloads/<name>.prof to visualise
+        profiler = cProfile.Profile()
+        profiler.enable()
     results = eval_loop.run(verbose=True)
+    if cfg.experiment.profile_time:
+        profiler.disable()
+        stats = pstats.Stats(profiler).sort_stats('cumtime')
+        stats.dump_stats(f'{save_dir}/time_profile.prof')
+        print(f'Saved time_profile.prof to {save_dir}')
     print(f'Finished validation in {time.time() - start_time:.3f} s.')
     # print(f'Validation results:\n{results}')
 

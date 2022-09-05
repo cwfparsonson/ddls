@@ -151,7 +151,7 @@ eval_loop:
 
     # CHANGE
     actor:
-        # HEURISTIC AGENTS
+        ## HEURISTIC AGENTS
         #_target_: ddls.environments.ramp_job_partitioning.agents.random.Random
 
         #_target_: ddls.environments.ramp_job_partitioning.agents.no_parallelism.NoParallelism
@@ -162,7 +162,9 @@ eval_loop:
         #max_partitions_per_op: 16
         ##max_partitions_per_op: 256
         
-        _target_: ddls.environments.ramp_job_partitioning.agents.acceptable_jct.AcceptableJCT
+        #_target_: ddls.environments.ramp_job_partitioning.agents.acceptable_jct.AcceptableJCT
+        _target_: ddls.environments.ramp_job_partitioning.agents.sip_ml.SiPML
+        max_partitions_per_op: 8
 
 
 wandb:
