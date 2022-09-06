@@ -9,6 +9,57 @@ from collections import defaultdict
 import numpy as np
 import copy
 
+import ray
+import psutil
+NUM_CPUS = psutil.cpu_count(logical=False)
+try:
+    ray.init(num_cpus=NUM_CPUS)
+except RuntimeError:
+    # already initialised ray in another script, no need to init again
+    pass
+
+
+@ray.remote
+def job_instantiation_asynchronous(*args, **kwargs):
+    return job_instantiation_synchronous(*args, **kwargs)
+
+def job_instantiation_synchronous(file_path,
+                                  file_reader,
+                                  processor_type_profiled,
+                                  num_training_steps,
+                                  max_acceptable_job_completion_time_frac_dist,
+                                  job_id=None,
+                                  verbose=False):
+    ddls_computation_graph = file_reader(file_path, processor_type_profiled=processor_type_profiled, verbose=verbose)
+
+    # init job max acceptable completion time fraction dist
+    if isinstance(max_acceptable_job_completion_time_frac_dist, dict):
+        # need to instantiate Distribution object from dict of kwargs
+        if '_target_' not in max_acceptable_job_completion_time_frac_dist:
+            raise Exception(f'max_acceptable_job_completion_time_frac_dist specified as dict, therefore expecting dict of kwargs, but require _target_ kwarg giving path to Distribution class so can instantiate.')
+        kwargs = {kwarg: val for kwarg, val in max_acceptable_job_completion_time_frac_dist.items() if kwarg != '_target_'} 
+        max_acceptable_job_completion_time_frac_dist = get_class_from_path(max_acceptable_job_completion_time_frac_dist['_target_'])(**kwargs)
+    else:
+        # Distribution object already provided
+        pass
+
+    # init ddls graph
+    if ddls_computation_graph.graph['file_path'].split('/')[-1] == 'graph.txt':
+        # set model name as graph.txt file's parent folder
+        model = ddls_computation_graph.graph['file_path'].split('/')[-2]
+    else:
+        # set model name as .txt's file name
+        model = ddls_computation_graph.graph['file_path'].split('/')[-1].replace('.txt', '')
+    details = {'model': model}
+
+    # init ddls Job
+    return Job(computation_graph=ddls_computation_graph,
+               num_training_steps=num_training_steps,
+               max_acceptable_job_completion_time_frac=max_acceptable_job_completion_time_frac_dist.sample(),
+               job_id=job_id,
+               details=details)
+
+
 class JobsGenerator:
     def __init__(self, 
                  path_to_files: str, 
@@ -21,8 +72,13 @@ class JobsGenerator:
                  shuffle_files: bool = False, # whether or not to shuffle loaded file order when re-load files
                  num_training_steps: int = 1,
                  max_partitions_per_op_in_observation: int = 1, # use to set max possible nodes and edges for normalising observation feats. N.B. set to None if max num edges and nodes in obs is just the size of the original graph rather than the partitioned graph (i.e. if doing partitioning with gym agent rather than as part of env)
+                 parallel_job_instantiation=True,
                  ):
         self.shuffle_files = shuffle_files
+
+
+
+        ############### OLD ################
 
         # get file paths
         _file_paths = glob.glob(path_to_files + '/*')
@@ -66,6 +122,11 @@ class JobsGenerator:
 
         # create ddls jobs
         jobs = []
+        self.job_model_to_init_details = defaultdict(lambda: {'original_job': None, 
+                                                              'job_total_operation_memory_cost': None, 
+                                                              'job_total_dependency_size': None, 
+                                                              'init_job_details': None}) # store per-model details rather than per-job to save computation time when initialising
+        i = 0
         for _ in range(replication_factor):
             for graph in ddls_computation_graphs:
                 if graph.graph['file_path'].split('/')[-1] == 'graph.txt':
@@ -75,11 +136,83 @@ class JobsGenerator:
                     # set model name as .txt's file name
                     model = graph.graph['file_path'].split('/')[-1].replace('.txt', '')
                 details = {'model': model}
+                job = Job(computation_graph=graph,
+                          num_training_steps=num_training_steps,
+                          max_acceptable_job_completion_time_frac=self.max_acceptable_job_completion_time_frac_dist.sample(),
+                          details=details,
+                          job_id=i,
+                          **self.job_model_to_init_details[model],
+                          )
+                jobs.append(job)
+                # update job model init details if necessary
+                self.job_model_to_init_details[model]['original_job'] = job
+                self.job_model_to_init_details[model]['job_total_operation_memory_cost'] = job.job_total_operation_memory_cost
+                self.job_model_to_init_details[model]['job_total_dependency_size'] = job.job_total_dependency_size
+                self.job_model_to_init_details[model]['init_job_details'] = job.init_job_details
+                i += 1
 
-                jobs.append(Job(computation_graph=graph,
-                                num_training_steps=num_training_steps,
-                                max_acceptable_job_completion_time_frac=self.max_acceptable_job_completion_time_frac_dist.sample(),
-                                details=details))
+
+
+        # ################ NEW ##################
+
+        # # get file paths
+        # _file_paths = glob.glob(path_to_files + '/*')
+
+        # # only use valid file types for loading graphs
+        # valid_types, file_paths = set(['pbtxt', 'txt']), []
+        # for f in _file_paths:
+            # _type = f.split('.')[-1]
+            # if _type in valid_types:
+                # file_paths.append(f)
+
+        # # get file reader
+        # if file_paths[0].split('.')[-1] == 'pbtxt':
+            # file_reader = ddls_graph_from_pbtxt_file
+        # if file_paths[0].split('.')[-1] == 'txt':
+            # file_reader = ddls_graph_from_pipedream_txt_file
+        # else:
+            # raise Exception(f'Unsure how to read file in {file_paths[0]}')
+
+        # # replicate files as required
+        # replicated_file_paths = []
+        # for _ in range(replication_factor):
+            # for file_path in file_paths:
+                # replicated_file_paths.append(file_path)
+                # if max_files is not None:
+                    # if len(replicated_file_paths) == max_files:
+                        # break
+            # if max_files is not None:
+                # if len(replicated_file_paths) == max_files:
+                    # break
+
+        # # create ddls jobs
+        # if parallel_job_instantiation:
+            # job_instantiation_func = job_instantiation_asynchronous.remote
+        # else:
+            # job_instantiation_func = job_instantiation_synchronous
+        # i, result_ids = 0, []
+        # while i < len(replicated_file_paths):
+            # num_processes = min(len(replicated_file_paths) - i, NUM_CPUS)
+            # for _ in range(num_processes):
+                # result_ids.append(
+                        # job_instantiation_func(
+                                            # file_path=replicated_file_paths[i],
+                                            # file_reader=file_reader,
+                                            # processor_type_profiled='A100',
+                                            # num_training_steps=num_training_steps,
+                                            # max_acceptable_job_completion_time_frac_dist=max_acceptable_job_completion_time_frac_dist,
+                                            # job_id=i,
+                                            # verbose=False,
+                                        # )
+                                # )
+                # i += 1
+        # if parallel_job_instantiation:
+            # jobs = ray.get(result_ids)
+        # else:
+            # jobs = result_ids
+
+
+
 
         # init job sampler
         self.job_sampler = Sampler(pool=jobs, sampling_mode=job_sampling_mode, shuffle=self.shuffle_files)

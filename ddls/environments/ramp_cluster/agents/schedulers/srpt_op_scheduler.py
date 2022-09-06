@@ -1,3 +1,4 @@
+# from ddls.utils import gen_job_dep_str, load_job_dep_str
 from ddls.managers.schedulers.job_scheduler import JobScheduler
 from ddls.demands.jobs.job import Job
 from ddls.environments.ramp_cluster.ramp_cluster_environment import RampClusterEnvironment
@@ -19,6 +20,11 @@ class SRPTOpScheduler:
         # get new placements made by job placer
         new_placements = op_placement.action
 
+        # gather the placed jobs for which an op schedule is needed
+        jobs = [job for job_id, job in op_partition.partitioned_jobs.items() if job_id in new_placements]
+        for job in cluster.jobs_running.values():
+            jobs.append(job)
+
         # print(op_partition)
         # print(op_placement)
 
@@ -33,15 +39,11 @@ class SRPTOpScheduler:
             pass
 
         # combine current cluster placement status with new placement decisions so can schedule ops
-        placement = copy.deepcopy(cluster.job_op_placement)
-        for job_id in new_placements.keys():
-            placement[job_id] = new_placements[job_id]
-
-        # gather the placed jobs for which an op schedule is needed
-        # jobs = [job for job in cluster.job_queue.jobs.values() if job_id in new_placements]
-        jobs = [job for job_id, job in op_partition.partitioned_jobs.items() if job_id in new_placements]
-        for job in cluster.jobs_running.values():
-            jobs.append(job)
+        # placement = copy.deepcopy(cluster.job_op_placement)
+        # for job_id in new_placements.keys():
+            # placement[job_id] = new_placements[job_id]
+        placement = new_placements
+        placement.update(cluster.job_op_placement)
 
         # initialise useful mappings
         job_id_to_job = {job.job_id: job for job in jobs}
@@ -59,7 +61,6 @@ class SRPTOpScheduler:
         # schedule ops on each worker
         for worker_id, ops in op_placement.worker_to_ops.items():
             # get cost of each op
-            # job_op_to_cost = {f'{op["job_id"]}_{op["op_id"]}': job_id_to_job[op['job_id']].computation_graph.nodes[op['op_id']]['remaining_run_time'] for op in ops}
             job_op_to_cost = {json.dumps(op["job_id"]) + '_' + json.dumps(op["op_id"]): job_id_to_job[op['job_id']].computation_graph.nodes[op['op_id']]['remaining_run_time'] for op in ops}
             # sort ops in descending order of cost
             sorted_job_op_to_cost = sorted(job_op_to_cost, key=job_op_to_cost.get, reverse=True)

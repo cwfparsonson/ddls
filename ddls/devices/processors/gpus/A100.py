@@ -32,6 +32,7 @@ class A100(Processor):
         self.memory_occupied = 0
         self.mounted_job_idx_to_ops = defaultdict(set)
         self.mounted_job_op_to_priority = dict() # job op schedule of mounted ops
+        self.mounted_job_idx_to_job_id = {}
 
     def mount(self, job, op_id):
         '''Returns job with initialised remaining_run_time for each op.'''
@@ -42,6 +43,7 @@ class A100(Processor):
         if self.memory_occupied + job.computation_graph.nodes[op_id]['memory_cost'] > self.memory_capacity:
             raise Exception(f'Trying to allocate {job.nodes[op_id]["memory_cost"]} of memory for job {job} op {op_id} but have only {self.memory_capacity - self.memory_occupied} available on processor {self.processor_id}.')
         self.mounted_job_idx_to_ops[job.details['job_idx']].add(op_id)
+        self.mounted_job_idx_to_job_id[job.details['job_idx']] = job.job_id
         self.memory_occupied += job.computation_graph.nodes[op_id]['memory_cost']
         
     def unmount(self, job, op_id):
@@ -51,3 +53,4 @@ class A100(Processor):
         del self.mounted_job_op_to_priority[gen_job_dep_str(job.details['job_idx'], job.job_id, op_id)]
         if len(self.mounted_job_idx_to_ops[job.details['job_idx']]) == 0:
             del self.mounted_job_idx_to_ops[job.details['job_idx']]
+            del self.mounted_job_idx_to_job_id[job.details['job_idx']]

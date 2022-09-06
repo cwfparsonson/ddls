@@ -26,6 +26,50 @@ import gzip
 import pickle
 import time
 
+import ray
+import psutil
+NUM_CPUS = psutil.cpu_count(logical=False)
+try:
+    ray.init(num_cpus=NUM_CPUS)
+except RuntimeError:
+    # already initialised ray in another script, no need to init again
+    pass
+
+
+@ray.remote
+def get_highest_priority_job_op_asynchronous(*args, **kwargs):
+    return get_highest_priority_job_op_synchronous(*args, **kwargs)
+
+# def get_highest_priority_job_op_synchronous(worker, job_ops_ready):
+def get_highest_priority_job_op_synchronous(worker,
+                                            mounted_job_ops_ready,
+                                            ):
+    '''
+    Takes a worker processor object and returns a string identifying which operation
+    which is ready to run on the worker has the highest priority. If no
+    operation is available to run, will return None.
+    '''
+    mounted_job_idxs = [job_idx for job_idx in sorted(worker.mounted_job_idx_to_ops.keys())] # all job idxs mounted on this worker
+    mounted_job_ids = [worker.mounted_job_idx_to_job_id[job_idx] for job_idx in mounted_job_idxs] # all job ids mounted on this worker
+    priority_job_op = None
+    for job_idx, job_id in zip(mounted_job_idxs, mounted_job_ids):
+        for op_id in sorted(mounted_job_ops_ready):
+            # op is ready to run
+            job_op = gen_job_dep_str(job_idx, job_id, op_id)
+            if priority_job_op is None:
+                # not yet considered any other ops, set this op as priority op
+                priority_job_op = job_op
+            else:
+                # check if op has higher priority than current highest priority op found so far
+                if worker.mounted_job_op_to_priority[job_op] > worker.mounted_job_op_to_priority[priority_job_op]:
+                    # op has higher priority, update priority job op
+                    priority_job_op = job_op
+    return {'worker_id': worker.processor_id, 'priority_job_op': priority_job_op}
+
+
+
+
+
 
 class RampClusterEnvironment:
     def __init__(self,
@@ -35,6 +79,7 @@ class RampClusterEnvironment:
                  path_to_save: str = None,
                  save_freq: int = 1,
                  use_sqlite_database: bool = False,
+                 suppress_warnings=False,
                  machine_epsilon=1e-7):
         '''
         In Ramp clusters, so long as the Ramp rules are followed, there is no contention
@@ -63,6 +108,8 @@ class RampClusterEnvironment:
                 resolution better than machine_epsilon). Use machine_epsilon to prevent
                 floating point arithmetic errors during simulation.
         '''
+        self.suppress_warnings = suppress_warnings
+
         self.topology_config = topology_config
         self.node_config = node_config
 
@@ -216,6 +263,10 @@ class RampClusterEnvironment:
 
         self.action = None
 
+        self.job_model_to_max_num_partitons_to_init_details = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: None)))
+        if not self.suppress_warnings:
+            print(f'WARNING: Cluster simulator is using the job_model_to_max_num_partitons_to_init_details param, which retains a map of model -> max num partitions -> details. This is only valid if the init details of a job are the same for the same original model and max num partitons. If this changes (e.g. if split ops a different number of times even though graph has same max partition degree, or if vary the min op run time quantum and therefore effectively split ops different number of times for same max partition degree), then this will no longer work and lead to bugs. Added this in to save time when performing job.reset_job() when partitioning etc., but should re-do if do not want this functionality. This functionality is used in OpPartition, RampClusterEnvironment, and JobsGenerator. Set suppress_warnings=True to supress this warning.')
+
         # add first job to queue
         self.time_next_job_to_arrive = 0
         self.job_queue.add(self._get_next_job())
@@ -246,8 +297,8 @@ class RampClusterEnvironment:
     def _init_step_stats(self):
         step_stats = defaultdict(lambda: 0)
 
-        step_stats['step_counter'] = copy.deepcopy(self.step_counter)
-        step_stats['step_start_time'] = copy.deepcopy(self.stopwatch.time())
+        step_stats['step_counter'] = copy.copy(self.step_counter)
+        step_stats['step_start_time'] = copy.copy(self.stopwatch.time())
 
         step_stats['mean_num_mounted_workers'] = []
         step_stats['mean_num_mounted_channels'] = []
@@ -284,7 +335,7 @@ class RampClusterEnvironment:
         episode_stats['num_jobs_completed'] = 0
         episode_stats['num_jobs_blocked'] = 0
 
-        episode_stats['episode_start_time'] = copy.deepcopy(self.stopwatch.time())
+        episode_stats['episode_start_time'] = copy.copy(self.stopwatch.time())
 
         return episode_stats
 
@@ -294,7 +345,7 @@ class RampClusterEnvironment:
         job.register_job_arrived(time_arrived=self.stopwatch.time(), 
                                  job_idx=self.num_jobs_arrived)
         # job.job_id = job.details['job_idx']
-        self.time_last_job_arrived = copy.deepcopy(self.stopwatch.time())
+        self.time_last_job_arrived = copy.copy(self.stopwatch.time())
         self.time_next_job_to_arrive += self.jobs_generator.sample_interarrival_time(size=None)
         self.job_idx_to_job_id[job.details['job_idx']] = job.job_id
         self.job_id_to_job_idx[job.job_id] = job.details['job_idx']
@@ -303,7 +354,12 @@ class RampClusterEnvironment:
         self.episode_stats['num_jobs_arrived'] += 1
         return job
 
-    def _perform_lookahead_job_completion_time(self, action, verbose=False):
+    def _perform_lookahead_job_completion_time(self, 
+                                               action, 
+                                               parallel_get_highest_priority_job_op=False, # parallelising gives too much overhead so recommended to not parallelise
+                                               verbose=False):
+        # verbose = True # DEBUG
+
         # do a lookahead to see how long each placed job will take to complete, and update job details accordingly
         if verbose:
             if len(action.job_ids) > 0:
@@ -331,36 +387,15 @@ class RampClusterEnvironment:
 
                 # initialise trackers for this tick
                 tick_counter_to_active_workers_tick_size[lookahead_tick_counter] = [0, 0]
-                # tick_counter_to_active_channels_tick_size[lookahead_tick_counter] = [0, 0]
 
                 # COMPUTATION
-                # find: 1) highest priority op on each worker for this job; and 2) the shortest remaining run time of each highest priority op on all workers for this job
-                shortest_remaining_run_time = float('inf')
-                worker_to_priority_job_op = {}
-                for worker_id, node_id in self.topology.graph.graph['worker_to_node'].items():
-                    worker = self.topology.graph.nodes[node_id]['workers'][worker_id]
-                    if job.details['job_idx'] in worker.mounted_job_idx_to_ops.keys():
-                        # get highest priority ready op on this worker
-                        priority_job_op = self._get_highest_priority_job_op(worker=worker)
-                        if priority_job_op is not None:
-                            # record priority op for this worker
-                            worker_to_priority_job_op[worker_id] = priority_job_op
-                            # check if should update shortest remaining run time of all priority job ops
-                            job_idx, job_id, op_id = load_job_dep_str(priority_job_op)
-                            job = self.jobs_running[job_idx]
-                            if job.computation_graph.nodes[op_id]['remaining_run_time'] < shortest_remaining_run_time:
-                                # update shortest_remaining_run_time
-                                shortest_remaining_run_time = job.computation_graph.nodes[op_id]['remaining_run_time']
-                        else:
-                            # no op(s) ready or mounted on this worker
-                            pass
-                    else:
-                        # this job has no op(s) mounted on this worker
-                        pass
+                # 1) find the highest priority op on each worker for this job
+                worker_to_priority_job_op = self._get_worker_to_priority_job_op(job, parallel_get_highest_priority_job_op=parallel_get_highest_priority_job_op)
+                # 2) find the shortest remaining run time of each highest proprity op on all workers for this job
+                shortest_remaining_run_time = self._get_shortest_remaining_run_time_of_priority_job_ops(job, worker_to_priority_job_op)
 
                 # NON-FLOW DEPENDENCIES
                 # find any ready deps which never became flows and therefore have 0 run time
-                # print(f'deps ready: {job.computation_graph.graph["deps_ready"]}')
                 non_flow_deps = self.gather_job_ready_non_flow_deps(job)
 
                 # COMMUNICATION
@@ -378,19 +413,6 @@ class RampClusterEnvironment:
                             if priority_job_dep is not None:
                                 # record priority dep and corresponding priority for this channel
                                 priority_job_deps.add(priority_job_dep)
-                                # if priority_job_dep not in channel.mounted_job_dep_to_priority:
-                                    # # TODO TEMP DEBUGGING
-                                    # print(f'ERROR')
-                                    # print(f'priority_job_dep {priority_job_dep} not found in channel {channel_id} mounted_job_dep_to_priority, this job dep must not have been mounted or has been unmounted or not mean to be trying to place this job.')
-                                    # print(f'channel mounted_job_dep_to_priority: {channel.mounted_job_dep_to_priority}')
-                                    # print(f'job_id: {job_id}')
-                                    # print(f'job_idx: {job_idx}')
-                                    # print(f'jobs_running: {self.jobs_running.keys()}')
-                                    # print(f'jobs_completed: {self.jobs_completed.keys()}')
-                                    # print(f'jobs_blocked: {self.jobs_blocked.keys()}')
-                                    # print(f'jobs queued: {self.job_queue.jobs.keys()}')
-                                    # import pdb; pdb.set_trace()
-                                    # raise Exception()
                                 channel_to_priority_job_dep[channel_id] = priority_job_dep
                                 priority_job_dep_to_priority[priority_job_dep] = channel.mounted_job_dep_to_priority[priority_job_dep]
                                 priority_job_dep_to_channels[priority_job_dep].add(channel_id)
@@ -584,16 +606,47 @@ class RampClusterEnvironment:
                             # # print(f'num_active_channels: {num_active_channels} | tick_size: {tick_size} | mounted channels: {len(job.details["mounted_channels"])} | stopwatch time: {tmp_stopwatch.time()} -> mean_mounted_channel_utilisation_frac: {mean_mounted_channel_utilisation_frac}')
 
                         # reset whole job ready for actual simulation and record lookahead job completion time
+                        max_num_partitions = self.op_partition.job_id_to_max_partition_degree[job_id]
+                        model = job.details['model']
+                        job_total_operation_memory_cost, job_total_dependency_size, init_job_details, partitioned_computation_graph = None, None, None, None
+                        if model in self.job_model_to_max_num_partitons_to_init_details:
+                            if max_num_partitions in self.job_model_to_max_num_partitons_to_init_details[model]:
+                                # print(f'Already simulated {model} with max_num_partitions {max_num_partitions}, can re-use init job params')
+                                job_total_operation_memory_cost = self.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['job_total_operation_memory_cost']
+                                job_total_dependency_size = self.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['job_total_dependency_size']
+                                init_job_details = self.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['init_job_details']
+                                partitioned_computation_graph = self.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['partitioned_computation_graph']
+                            else:
+                                # not yet simulated this model and max_num_partitions
+                                # print(f'Not yet simultated model {model} with max_num_partitions {max_num_partitions}, must calculate init job params')
+                                pass
+                        else:
+                            # not yet simulated this model
+                            # print(f'Not yet simultated model {model}, must calculate init job params')
+                            pass
+                        self.job_model_to_max_num_partitons_to_init_details[job.details['model']]
                         job.reset_job(details={
                                                 'lookahead_job_completion_time': tmp_stopwatch.time() * job.num_training_steps,
-                                                'communication_overhead_time': copy.deepcopy(job.details['communication_overhead_time']) * job.num_training_steps,
-                                                'computation_overhead_time': copy.deepcopy(job.details['computation_overhead_time']) * job.num_training_steps,
+                                                'communication_overhead_time': job.details['communication_overhead_time'] * job.num_training_steps,
+                                                'computation_overhead_time': job.details['computation_overhead_time'] * job.num_training_steps,
                                                 'mounted_workers': job.details['mounted_workers'],
                                                 'mounted_channels': job.details['mounted_channels'],
                                                 'mean_mounted_worker_utilisation_frac': mean_mounted_worker_utilisation_frac,
                                                 # 'mean_mounted_channel_utilisation_frac': mean_mounted_channel_utilisation_frac,
-                                                })
-                        job.details['job_total_flow_size'] = 0 # track info size of deps which became flows
+                                                },
+                                      job_total_operation_memory_cost=job_total_operation_memory_cost,
+                                      job_total_dependency_size=job_total_dependency_size,
+                                      init_job_details=init_job_details,
+                                      )
+
+                        # update job model init details tracker if needed
+                        self.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['job_total_operation_memory_cost'] = job.job_total_operation_memory_cost
+                        self.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['job_total_dependency_size'] = job.job_total_dependency_size
+                        self.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['init_job_details'] = job.init_job_details
+                        self.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['partitioned_computation_graph'] = self.op_partition.job_id_to_partitioned_computation_graph[job_id]
+
+                        # track info size of deps which became flows
+                        job.details['job_total_flow_size'] = 0
                         for dep_id in job.computation_graph.edges:
                             run_time = self.set_dep_init_run_time(job, dep_id)
                             if run_time != 0:
@@ -664,33 +717,51 @@ class RampClusterEnvironment:
         job.set_dep_init_run_time(dep_id, run_time)
         return run_time
 
-    def _get_highest_priority_job_op(self, worker):
-        '''
-        Takes a worker processor object and returns a string identifying which operation
-        which is ready to run on the worker has the highest priority. If no
-        operation is available to run, will return None.
-        '''
-        priority_job_op = None
-        for job_idx in sorted(worker.mounted_job_idx_to_ops.keys()):
-            job = self.jobs_running[job_idx]
-            for op_id in sorted(worker.mounted_job_idx_to_ops[job_idx]):
-                if op_id in job.computation_graph.graph['ops_ready']:
-                    # op is ready to run
-                    # job_op = f'{job_idx}_{job.job_id}_{op_id}'
-                    # job_op = json.dumps(job_idx) + '_' + json.dumps(job.job_id) + '_' + json.dumps(op_id)
-                    job_op = gen_job_dep_str(job_idx, job.job_id, op_id)
-                    if priority_job_op is None:
-                        # not yet considered any other ops, set this op as priority op
-                        priority_job_op = job_op
-                    else:
-                        # check if op has higher priority than current highest priority op found so far
-                        if worker.mounted_job_op_to_priority[job_op] > worker.mounted_job_op_to_priority[priority_job_op]:
-                            # op has higher priority, update priority job op
-                            priority_job_op = job_op
-                else:
-                    # op not yet ready to run
-                    pass
-        return priority_job_op
+    def _get_worker_to_priority_job_op(self, job, parallel_get_highest_priority_job_op=False):
+        '''In practice parallelising does not help since overhead too much for how small function is.'''
+        if parallel_get_highest_priority_job_op:
+            get_highest_priority_job_op_func = get_highest_priority_job_op_asynchronous.remote
+        else:
+            get_highest_priority_job_op_func = get_highest_priority_job_op_synchronous
+        _workers = [self.topology.graph.nodes[node_id]['workers'][worker_id] for worker_id, node_id in self.topology.graph.graph['worker_to_node'].items()] # all workers in cluster
+        workers = [worker for worker in _workers if job.details['job_idx'] in worker.mounted_job_idx_to_ops.keys()] # workers onto which this job is mounted
+        i, result_ids = 0, []
+        while i < len(workers):
+            num_processes = min(len(workers) - i, NUM_CPUS)
+            for _ in range(num_processes):
+                # get worker
+                worker = workers[i]
+                # get which of the ops of the job being considered are ready to run
+                mounted_job_ops_ready = [op_id for op_id in worker.mounted_job_idx_to_ops[job.details['job_idx']] if op_id in job.computation_graph.graph['ops_ready']]
+                # get priority op on this worker
+                result_ids.append(get_highest_priority_job_op_func(
+                                                                worker=worker,
+                                                                mounted_job_ops_ready=mounted_job_ops_ready,
+                                                                )
+                                                            )
+                i += 1
+        if parallel_get_highest_priority_job_op:
+            results = ray.get(result_ids)
+        else:
+            results = result_ids
+        worker_to_priority_job_op = {result['worker_id']: result['priority_job_op'] for result in results}
+        return worker_to_priority_job_op
+
+    def _get_shortest_remaining_run_time_of_priority_job_ops(self, job, worker_to_priority_job_op):
+        job_idx = job.details['job_idx']
+        shortest_remaining_run_time = float('inf')
+        for worker_id, priority_job_op in worker_to_priority_job_op.items():
+            if priority_job_op is not None:
+                # check if should update shortest remaining run time of all priority job ops
+                job_idx, job_id, op_id = load_job_dep_str(priority_job_op)
+                job = self.jobs_running[job_idx]
+                if job.computation_graph.nodes[op_id]['remaining_run_time'] < shortest_remaining_run_time:
+                    # update shortest_remaining_run_time
+                    shortest_remaining_run_time = job.computation_graph.nodes[op_id]['remaining_run_time']
+            else:
+                # no op(s) ready or mounted on this worker
+                pass
+        return shortest_remaining_run_time
 
     def _get_highest_priority_job_dep(self, channel):
         '''
@@ -906,7 +977,8 @@ class RampClusterEnvironment:
         # self.step_stats['mean_num_mounted_channels'] = len(self.mounted_channels)
         # self.step_stats['mean_worker_compute_utilisation'] = self.step_stats['mean_num_queued_workers'] / len(list(self.topology.graph.graph['worker_to_node']))
         self.step_stats['job_queue_length'] = len(self.job_queue)
-        self._update_steps_log(copy.deepcopy(self.step_stats))
+        # self._update_steps_log(copy.deepcopy(self.step_stats))
+        self._update_steps_log(self.step_stats)
 
         # log episode-level data
         for metric in [
@@ -937,7 +1009,7 @@ class RampClusterEnvironment:
 
             # update episode-level data as necessary
 
-            self.episode_stats['episode_end_time'] = copy.deepcopy(self.stopwatch.time())
+            self.episode_stats['episode_end_time'] = copy.copy(self.stopwatch.time())
 
             self.episode_stats['episode_time'] = self.episode_stats['episode_end_time'] - self.episode_stats['episode_start_time']
 
@@ -973,24 +1045,24 @@ class RampClusterEnvironment:
         pass
 
     def _partition_ops(self, action, verbose=False):
-        op_partition = action
+        self.op_partition = action
         if verbose:
-            if len(op_partition) > 0:
+            if len(self.op_partition) > 0:
                 print('New job op(s) to partition. Partitioning...')
             else:
                 print(f'No new job ops to partition.')
-        for job_id in op_partition.action:
+        for job_id in self.op_partition.action:
             # update job in queue with partitioned job
             orig_job = self.job_queue.jobs[job_id]
             if verbose:
                 print(f'Job ID: {job_id} | Job idx: {orig_job.details["job_idx"]} | Time arrived: {orig_job.details["time_arrived"]}')
                 for op_id in orig_job.computation_graph.nodes:
-                    num_partitions = op_partition.action[job_id][op_id]
+                    num_partitions = self.op_partition.action[job_id][op_id]
                     if num_partitions > 1:
                         print(f'Op ID {op_id} partitioned into {num_partitions} sub-ops')
                     else:
                         print(f'Op ID {op_id} not partitioned.')
-            self.job_queue.jobs[job_id] = op_partition.partitioned_jobs[job_id]
+            self.job_queue.jobs[job_id] = self.op_partition.partitioned_jobs[job_id]
 
     def _place_ops(self, action, verbose=False):
         # # DEBUG
@@ -1295,6 +1367,8 @@ class RampClusterEnvironment:
         if self.save_thread is not None:
             self.save_thread.join()
         self.save_thread = threading.Thread(target=self._save_logs, 
-                                            args=({'sim_log': copy.deepcopy(self.sim_log),
-                                                   'steps_log': copy.deepcopy(self.steps_log)},))
+                                            # args=({'sim_log': copy.deepcopy(self.sim_log),
+                                                   # 'steps_log': copy.deepcopy(self.steps_log)},))
+                                            args=({'sim_log': self.sim_log,
+                                                   'steps_log': self.steps_log},))
         self.save_thread.start()

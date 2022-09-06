@@ -11,6 +11,7 @@ experiment:
         - 2
         - 3
     save_dir: null # placeholder, will be updated
+    profile_time: true
 
 eval_loop:
     _target_: ddls.loops.eval_loop.EvalLoop
@@ -114,6 +115,11 @@ eval_loop:
             #transform_with_log: false
             ##normaliser: job_sequential_completion_time
             #normaliser: job_sequential_completion_time_times_fail_reward_factor
+
+        reward_function: job_acceptance
+        reward_function_kwargs:
+            fail_reward: -1
+            success_reward: 1
             
         ##reward_function: mean_cluster_throughput
         #reward_function: mean_demand_total_throughput
@@ -122,10 +128,10 @@ eval_loop:
             #transform_with_log: false
             #normalise: true
 
-        reward_function: multi_objective_jct_blocking
-        reward_function_kwargs:
-            sign: -1
-            blocking_weight: 1
+        #reward_function: multi_objective_jct_blocking
+        #reward_function_kwargs:
+            #sign: -1
+            #blocking_weight: 1
 
         # CHANGE
         #op_partitioner: sip_ml_op_partitioner

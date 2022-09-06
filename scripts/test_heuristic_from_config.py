@@ -22,13 +22,23 @@ import gzip
 import cProfile
 import pstats
 
+# NEED TO IMPORT MODULES WHICH MUST BE SEEDED
+import numpy as np
+import random
+import torch
+
+
 # to override from command line, do e.g.:
 # python <test_heuristic_from_config.py --config-path=ramp_job_placement_shaping_configs --config-name=heuristic_config.yaml
 @hydra.main(config_path='ramp_job_placement_shaping_configs', config_name='heuristic_config.yaml')
 def run(cfg: DictConfig):
     # seeding
     if 'seed' in cfg.experiment:
-        seed_stochastic_modules_globally(cfg.experiment.seed)
+        seed_stochastic_modules_globally(default_seed=cfg.experiment.seed,
+                                         numpy_module=np,
+                                         random_module=random,
+                                         torch_module=torch_module,
+                                         )
 
     # create dir for saving data
     save_dir = gen_unique_experiment_folder(path_to_save=cfg.experiment.path_to_save, experiment_name=cfg.experiment.name)
@@ -70,8 +80,8 @@ def run(cfg: DictConfig):
     if cfg.experiment.profile_time:
         profiler.disable()
         stats = pstats.Stats(profiler).sort_stats('cumtime')
-        stats.dump_stats(f'{save_dir}/time_profile.prof')
-        print(f'Saved time_profile.prof to {save_dir}')
+        stats.dump_stats(f'{save_dir}time_profile.prof')
+        print(f'Saved time profile to {save_dir}time_profile.prof')
     print(f'Finished validation in {time.time() - start_time:.3f} s.')
     # print(f'Validation results:\n{results}')
 
