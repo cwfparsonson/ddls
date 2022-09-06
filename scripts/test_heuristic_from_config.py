@@ -37,7 +37,7 @@ def run(cfg: DictConfig):
         seed_stochastic_modules_globally(default_seed=cfg.experiment.seed,
                                          numpy_module=np,
                                          random_module=random,
-                                         torch_module=torch_module,
+                                         torch_module=torch,
                                          )
 
     # create dir for saving data

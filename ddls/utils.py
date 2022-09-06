@@ -14,11 +14,11 @@ import importlib
 import torch
 import dgl
 
-def seed_stochastic_modules_globally(default_seed=0, 
-                                     numpy_module,
+def seed_stochastic_modules_globally(numpy_module,
                                      random_module,
                                      torch_module,
                                      # dgl_module,
+                                     default_seed=0,
                                      numpy_seed=None, 
                                      random_seed=None,
                                      torch_seed=None,

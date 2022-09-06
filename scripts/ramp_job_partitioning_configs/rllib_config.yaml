@@ -74,6 +74,13 @@ epoch_loop:
         env_config:
             jobs_config:
                 shuffle_files: False
+                max_acceptable_job_completion_time_frac_dist:
+                    _target_: ddls.distributions.probability_mass_function.ProbabilityMassFunction
+                    probability_mass_function:
+                        0.25: 0.25
+                        0.50: 0.25
+                        0.75: 0.25
+                        1.00: 0.25
         num_workers: 1 # num parallel cpu workers
         num_gpus: 1 # num gpus available for RLlib
 
@@ -134,10 +141,10 @@ epoch_loop:
                 max_acceptable_job_completion_time_frac_dist:
                     _target_: ddls.distributions.probability_mass_function.ProbabilityMassFunction
                     probability_mass_function:
-                        0.25: 0.25
-                        0.50: 0.25
-                        0.75: 0.25
-                        1.00: 0.25
+                        0.25: 0.3
+                        0.50: 0.2
+                        0.75: 0.3
+                        1.00: 0.2
                 shuffle_files: true
                 num_training_steps: 50
                 max_partitions_per_op_in_observation: 1

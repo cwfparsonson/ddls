@@ -34,6 +34,10 @@ import pickle
 import gzip
 import os
 
+# NEED TO IMPORT MODULES WHICH MUST BE SEEDED
+import numpy as np
+import random
+import torch
 
 # to override from command line, do e.g.:
 # python <test_rllib_from_config.py --config-path=ramp_job_placement_shaping_configs --config-name=heuristic_config.yaml
@@ -45,13 +49,16 @@ def run(cfg: DictConfig):
     os.environ['CUDA_VISIBLE_DEVICES'] = str(least_used_gpu)
 
     # seeding
-    if 'train_seed' in cfg.experiment:
-        seed_stochastic_modules_globally(cfg.experiment.train_seed)
+    if 'test_seed' in cfg.experiment:
+        seed_stochastic_modules_globally(default_seed=cfg.experiment.test_seed,
+                                         numpy_module=np,
+                                         random_module=random,
+                                         torch_module=torch,
+                                         )
         if 'rllib_config' in cfg.epoch_loop:
             # must seed rllib separately in config
-            cfg.epoch_loop.rllib_config.seed = cfg.experiment.train_seed
-            if 'test_seed' in cfg.experiment:
-                cfg.epoch_loop.validator_rllib_config.seed = cfg.experiment.test_seed
+            cfg.epoch_loop.rllib_config.seed = cfg.experiment.test_seed
+            cfg.epoch_loop.validator_rllib_config.seed = cfg.experiment.test_seed
 
     # create dir for saving data
     save_dir = gen_unique_experiment_folder(path_to_save=cfg.experiment.path_to_save, experiment_name=cfg.experiment.name)

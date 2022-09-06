@@ -31,8 +31,10 @@ import subprocess
 import pandas as pd
 from io import StringIO
 
+# NEED TO IMPORT MODULES WHICH MUST BE SEEDED
+import numpy as np
+import random
 import torch
-
 
 
 # to override from command line, do e.g.:
@@ -46,7 +48,11 @@ def run(cfg: DictConfig):
 
     # seeding
     if 'train_seed' in cfg.experiment:
-        seed_stochastic_modules_globally(cfg.experiment.train_seed)
+        seed_stochastic_modules_globally(default_seed=cfg.experiment.train_seed,
+                                         numpy_module=np,
+                                         random_module=random,
+                                         torch_module=torch,
+                                         )
         if 'rllib_config' in cfg.epoch_loop:
             # must seed rllib separately in config
             cfg.epoch_loop.rllib_config.seed = cfg.experiment.train_seed
