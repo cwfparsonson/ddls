@@ -62,6 +62,21 @@ class SRPTOpScheduler:
         for worker_id, ops in op_placement.worker_to_ops.items():
             # get cost of each op
             job_op_to_cost = {json.dumps(op["job_id"]) + '_' + json.dumps(op["op_id"]): job_id_to_job[op['job_id']].computation_graph.nodes[op['op_id']]['remaining_run_time'] for op in ops}
+            # job_op_to_cost = {}
+            # for op in ops:
+                # try:
+                    # job_op_to_cost[json.dumps(op["job_id"]) + '_' + json.dumps(op["op_id"])] = job_id_to_job[op['job_id']].computation_graph.nodes[op['op_id']]['remaining_run_time']
+                # except KeyError:
+                    # # TODO TEMP DEBUG
+                    # print(f'key error when getting job_op_to_cost for op {op}')
+                    # print(f'worker_id: {worker_id}')
+                    # print(f'ops placed on worker id: {ops}')
+                    # print(f'job_id_to_job[op["job_id"]]: {job_id_to_job[op["job_id"]]}')
+                    # print(f'job_id_to_job: {job_id_to_job}')
+                    # print(f'job computation graph nodes: {job_id_to_job[op["job_id"]].computation_graph.nodes}')
+                    # print(f'op_placement:\n{op_placement}')
+                    # raise Exception()
+
             # sort ops in descending order of cost
             sorted_job_op_to_cost = sorted(job_op_to_cost, key=job_op_to_cost.get, reverse=True)
             # highest cost ops have lowest priority

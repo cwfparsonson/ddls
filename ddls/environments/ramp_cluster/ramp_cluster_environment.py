@@ -342,16 +342,27 @@ class RampClusterEnvironment:
     def _get_next_job(self):
         '''Returns next job.'''
         job = self.jobs_generator.sample_job()
+        job_idx = copy.copy(self.num_jobs_arrived)
+        job.original_job.job_id = job.job_id
+        job.original_job.details['job_idx'] = job_idx
         job.register_job_arrived(time_arrived=self.stopwatch.time(), 
-                                 job_idx=self.num_jobs_arrived)
+                                 job_idx=job_idx,
+                                 )
         # job.job_id = job.details['job_idx']
         self.time_last_job_arrived = copy.copy(self.stopwatch.time())
         self.time_next_job_to_arrive += self.jobs_generator.sample_interarrival_time(size=None)
-        self.job_idx_to_job_id[job.details['job_idx']] = job.job_id
-        self.job_id_to_job_idx[job.job_id] = job.details['job_idx']
+        if job.details['job_idx'] in self.job_idx_to_job_id:
+            raise Exception(f'job idx {job.details["job_idx"]} is already in arrived job_idx_to_job_id {self.job_idx_to_job_id} and is therefore not unique - a bug has occurred somewhere since all jobs should have a unique job idx.')
+        else:
+            self.job_idx_to_job_id[job.details['job_idx']] = job.job_id
+        if job.job_id in self.job_id_to_job_idx:
+            raise Exception(f'job id {job.job_id} is already in arrived job_id_to_job_idx {self.job_id_to_job_idx} and is therefore not unique - a bug has occurred somewhere since all jobs should have a unique job id.')
+        else:
+            self.job_id_to_job_idx[job.job_id] = job.details['job_idx']
         self.num_jobs_arrived += 1
         self.last_job_arrived_job_idx = job.details['job_idx']
         self.episode_stats['num_jobs_arrived'] += 1
+        # print(f'next job arrived with job id {job.job_id} job_idx {job.details["job_idx"]}\njob_id_to_job_idx: {self.job_id_to_job_idx}') # DEBUG
         return job
 
     def _perform_lookahead_job_completion_time(self, 
@@ -740,8 +751,10 @@ class RampClusterEnvironment:
             if verbose:
                 print(f'Job completion time ({tmp_stopwatch.time() * job.num_training_steps}) exceeds maximum acceptable job completion time ({job.details["max_acceptable_job_completion_time"]}), job blocked.')
             # register stats of original job with job blocked stats
+            # print(f'blocking original job with job_id {job.original_job.job_id} job_id {job.original_job.details["job_idx"]}') # TEMP DEBUG
             self._register_blocked_job(job.original_job)
             # remove partitioned job from workers, channels, queue, etc. where necessary
+            # print(f'removing job with job_id {job.job_id} job_id {job.details["job_idx"]}') # TEMP DEBUG
             self._remove_job_from_cluster(job)
         else:
             # calc overall average utilisation of the mounted workers and channels for this job
@@ -1108,7 +1121,7 @@ class RampClusterEnvironment:
                 worker = self.topology.graph.nodes[node_id]['workers'][worker_id]
                 rules_broken = check_if_ramp_op_placement_rules_broken(worker, job)
                 if len(rules_broken) > 0:
-                    raise Exception(f'Placement for job index {job.details["job_idx"]} job ID {job_id} op ID {op_id} worker ID {worker_id} breaks the following Ramp rules: {rules_broken}')
+                    raise Exception(f'Placement for job index {job.details["job_idx"]} job ID {job_id} op ID {op_id} worker ID {worker_id} breaks the following Ramp rules: {rules_broken}.\nWorker mounted job idxs: {worker.mounted_job_idx_to_ops.keys()}\nWorker mounted job idxs to ops: {worker.mounted_job_idx_to_ops}\nOp placement:\n{op_placement}\nJob queue job ids: {self.job_queue.jobs.keys()}\nJob ID to job idx: {self.job_id_to_job_idx}\nJobs running idxs: {self.jobs_running.keys()}\nJobs completed idxs: {self.jobs_completed.keys()}\nJobs blocked job idxs: {self.jobs_blocked.keys()}')
                 else:
                     worker.mount(job=job, op_id=op_id)
                     job.details['mounted_workers'].add(worker_id)

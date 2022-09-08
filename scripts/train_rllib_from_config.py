@@ -45,6 +45,8 @@ def run(cfg: DictConfig):
         os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(str(gpu) for gpu in cfg.experiment.cuda_visible_devices)
     least_used_gpu = get_least_used_gpu()
     os.environ['CUDA_VISIBLE_DEVICES'] = str(least_used_gpu)
+    cfg.experiment.cuda_visible_devices = os.environ['CUDA_VISIBLE_DEVICES']
+    print(f'Set CUDA_VISIBLE_DEVICES to least used GPU {least_used_gpu}')
 
     # seeding
     if 'train_seed' in cfg.experiment:

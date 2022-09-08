@@ -216,6 +216,8 @@ epoch_loop:
                 #max_nodes: 100
                 max_nodes: 150
 
+            suppress_warnings: true
+
         lr: 0.0001
         gamma: 0.9
 
@@ -252,8 +254,9 @@ epoch_loop:
         callbacks: ddls.environments.ramp_cluster.utils.RLlibRampClusterEnvironmentCallback
 
         #num_workers: 4 # num parallel cpu workers
-        #num_workers: 2 # num parallel cpu workers
-        num_workers: 1
+        num_workers: 2 # num parallel cpu workers
+        #num_workers: 1
+        #num_workers: 0
         num_gpus: 1 # num gpus available for RLlib
 
         framework: torch

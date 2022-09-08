@@ -122,10 +122,13 @@ class JobsGenerator:
 
         # create ddls jobs
         jobs = []
-        self.job_model_to_init_details = defaultdict(lambda: {'original_job': None, 
+        self.job_model_to_init_details = defaultdict(lambda: {
+                                                              'original_job': None, 
                                                               'job_total_operation_memory_cost': None, 
                                                               'job_total_dependency_size': None, 
-                                                              'init_job_details': None}) # store per-model details rather than per-job to save computation time when initialising
+                                                              'init_job_details': None,
+                                                              }
+                                                              ) # store per-model details rather than per-job to save computation time when initialising
         i = 0
         for _ in range(replication_factor):
             for graph in ddls_computation_graphs:
@@ -136,19 +139,31 @@ class JobsGenerator:
                     # set model name as .txt's file name
                     model = graph.graph['file_path'].split('/')[-1].replace('.txt', '')
                 details = {'model': model}
+                if self.job_model_to_init_details[model]['original_job'] is not None:
+                    # update job ID of original job to be consistent with job about to be instantiated
+                    original_job = copy.copy(self.job_model_to_init_details[model]['original_job']) # do shallow copy so that job id and job idx attrs of other jobs' original job idx and ids not mutated when setting this job's original job idx and id
+                    original_job.job_id = copy.copy(i)
+                else:
+                    # not yet instantiated a ddls job for this model
+                    original_job = None
                 job = Job(computation_graph=graph,
                           num_training_steps=num_training_steps,
                           max_acceptable_job_completion_time_frac=self.max_acceptable_job_completion_time_frac_dist.sample(),
                           details=details,
-                          job_id=i,
-                          **self.job_model_to_init_details[model],
+                          job_id=copy.copy(i),
+                          # original_job=self.job_model_to_init_details[model]['original_job'],
+                          original_job=original_job,
+                          job_total_operation_memory_cost=self.job_model_to_init_details[model]['job_total_operation_memory_cost'],
+                          job_total_dependency_size=self.job_model_to_init_details[model]['job_total_dependency_size'],
+                          init_job_details=self.job_model_to_init_details[model]['init_job_details'],
                           )
                 jobs.append(job)
-                # update job model init details if necessary
-                self.job_model_to_init_details[model]['original_job'] = job
-                self.job_model_to_init_details[model]['job_total_operation_memory_cost'] = job.job_total_operation_memory_cost
-                self.job_model_to_init_details[model]['job_total_dependency_size'] = job.job_total_dependency_size
-                self.job_model_to_init_details[model]['init_job_details'] = job.init_job_details
+                if self.job_model_to_init_details[model]['original_job'] is None:
+                    # update job init details for this model
+                    self.job_model_to_init_details[model]['original_job'] = copy.deepcopy(job)
+                    self.job_model_to_init_details[model]['job_total_operation_memory_cost'] = job.job_total_operation_memory_cost
+                    self.job_model_to_init_details[model]['job_total_dependency_size'] = job.job_total_dependency_size
+                    self.job_model_to_init_details[model]['init_job_details'] = job.init_job_details
                 i += 1
 
 
@@ -210,9 +225,6 @@ class JobsGenerator:
             # jobs = ray.get(result_ids)
         # else:
             # jobs = result_ids
-
-
-
 
         # init job sampler
         self.job_sampler = Sampler(pool=jobs, sampling_mode=job_sampling_mode, shuffle=self.shuffle_files)

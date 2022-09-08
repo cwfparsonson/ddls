@@ -87,14 +87,14 @@ class Job:
 
 
         if job_id is None:
-            self._job_id = id(self)
+            self._job_id = copy.copy(id(self))
             # if original_job is None:
                 # self._job_id = id(self)
             # else:
                 # # if no job id provided by user, ensure job retains same id as original job
                 # self._job_id = original_job.job_id
         else:
-            self._job_id = job_id 
+            self._job_id = copy.copy(job_id)
 
         if details is None:
             self.details = {}
@@ -113,9 +113,18 @@ class Job:
             # self.original_job = copy.deepcopy(original_job)
             self.original_job = original_job
 
+        # ensure job id and job idx are consistent with provided original job
+        self._check_job_id_job_idx_valid()
+
+
+    def _check_job_id_job_idx_valid(self):
         if self.original_job.job_id != self.job_id:
-            # overwrite original job id
-            self.original_job.job_id = self.job_id
+            # self.original_job.job_id = copy.copy(self.job_id)
+            raise Exception(f'Original job ID ({self.original_job.job_id}) different from job ID of job being updated ({self.job_id}). Set the original job job ID to {self.job_id} with job.original_job.job_id={self.job_id} updating this job with job ID {self.job_id}.')
+        if 'job_idx' in self.original_job.details:
+            if self.original_job.details['job_idx'] != self.details['job_idx']:
+                # self.original_job.details['job_idx'] = copy.copy(self.details['job_idx'])
+                raise Exception(f'Original job idx ({self.original_job.details["job_idx"]}) different from job idx of job being instantiated ({self.details["job_idx"]}). Set the original job job idx to {self.details["job_idx"]} with job.original_job.details["job_idx"]={self.details["job_idx"]} updating this job with job idx {self.details["job_idx"]}.')
 
     @property
     def job_id(self):
@@ -123,6 +132,23 @@ class Job:
 
     @job_id.setter
     def job_id(self, value):
+        if hasattr(self, 'original_job'):
+            # update original job id
+            self.original_job = value
+        else:
+            # not yet set original job
+            pass
+
+        # update nodes with new job id
+        for node in self.computation_graph.nodes:
+            self.computation_graph.nodes[node]['job_id'] = value
+
+        # update edges with new job id
+        for edge in self.computation_graph.edges:
+            u, v, k = edge
+            self.computation_graph[u][v][k]['job_id'] = value
+
+        # update job id
         self._job_id = value
 
     def _init_job_details(self, details: dict = None):
@@ -304,6 +330,12 @@ class Job:
 
         self.details.update(details)
 
+        if hasattr(self, 'original_job'):
+            self._check_job_id_job_idx_valid()
+        else:
+            # have not registered original job yet (reset_job() being called from __init__()), do not check consistency yet
+            pass
+
     def reset_job_training_step(self):
         '''Resets the job ready for a training step to be executed.'''
         # initialse additional node-, edge-, and graph-level info self._init_node_info()
@@ -324,7 +356,10 @@ class Job:
         self.details['time_arrived'] = time_arrived
         self.details['time_started'] = None
         self.details['time_completed'] = None
-        self.details['job_idx'] = job_idx
+        self.details['job_idx'] = copy.copy(job_idx)
+        self.original_job.details['job_idx'] = copy.copy(job_idx)
+
+        self._check_job_id_job_idx_valid()
 
     def register_job_running(self,
                              time_started: Union[int, float]):

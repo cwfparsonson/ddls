@@ -249,7 +249,9 @@ def dummy_ramp(shape, cluster):
                 ramp[(i, j, k)] = {'mem': 0, 'ops': [], 'job_idxs': set()}
                 for worker in cluster.topology.graph.nodes[node]['workers'].values():
                     ramp[(i, j, k)]['mem'] += (worker.memory_capacity - worker.memory_occupied)
-                    if len(list(worker.mounted_job_op_to_priority.keys())) != 0:
+                    # if len(list(worker.mounted_job_op_to_priority.keys())) != 0:
+                    if len(list(worker.mounted_job_idx_to_ops.keys())) != 0:
+                        # worker already occupied, update with job_idx occupying worker
                         ramp[(i, j, k)]['job_idxs'] = set(list(worker.mounted_job_idx_to_ops.keys()))
     return ramp
 

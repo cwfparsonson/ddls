@@ -20,9 +20,9 @@ class RLlibEvalLoop:
             verbose: bool = False):
         results = {'step_stats': defaultdict(list), 'episode_stats': {}}
 
-        if 'seed' in self.rllib_config:
-            if self.rllib_config['seed'] is not None:
-                seed_stochastic_modules_globally(self.rllib_config['seed'])
+        # if 'seed' in self.rllib_config:
+            # if self.rllib_config['seed'] is not None:
+                # seed_stochastic_modules_globally(self.rllib_config['seed'])
 
         self.actor.restore(checkpoint_path)
 

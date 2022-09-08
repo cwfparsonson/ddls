@@ -11,7 +11,7 @@ experiment:
         - 2
         - 3
     save_dir: null # placeholder, will be updated
-    profile_time: true
+    profile_time: false
 
 eval_loop:
     _target_: ddls.loops.eval_loop.EvalLoop
@@ -170,7 +170,7 @@ eval_loop:
         
         #_target_: ddls.environments.ramp_job_partitioning.agents.acceptable_jct.AcceptableJCT
         _target_: ddls.environments.ramp_job_partitioning.agents.sip_ml.SiPML
-        max_partitions_per_op: 8
+        max_partitions_per_op: 16
 
 
 wandb:
