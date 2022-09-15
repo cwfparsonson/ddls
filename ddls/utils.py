@@ -13,6 +13,8 @@ import math
 import importlib
 import torch
 import dgl
+from omegaconf import OmegaConf
+from functools import reduce
 
 def seed_stochastic_modules_globally(numpy_module,
                                      random_module,
@@ -88,6 +90,7 @@ class Sampler:
                  pool: list,
                  sampling_mode: str,
                  shuffle: bool = False, # whether or not to shuffle sampling pool when reset
+                 automatically_change_ids: bool = True, # if True, when call reset(), will assume pool is pool of jobs and that should go through and change job IDs of each job so that do not duplicate job IDs when sample from reset pool
                  ):
         '''
         Args:
@@ -97,6 +100,9 @@ class Sampler:
         self.sample_pool = copy.deepcopy(self.original_pool)
         self.sampling_mode = sampling_mode
         self.shuffle = shuffle
+        self.automatically_change_ids = automatically_change_ids
+        self.reset_counter = 0
+        self.reset()
     
     def sample(self):
         idx = np.random.randint(low=0, high=len(self.sample_pool))
@@ -110,6 +116,8 @@ class Sampler:
             self.sample_pool.pop(idx)
             if len(self.sample_pool) == 0:
                 self.reset()
+        else:
+            raise Exception(f'Unrecognised sampling_mode {self.sampling_mode}')
             
         return datum
 
@@ -123,8 +131,15 @@ class Sampler:
 
     def reset(self):
         self.sample_pool = copy.deepcopy(self.original_pool)
+        if self.automatically_change_ids:
+            # assume pool is pool of jobs, and go through and adjust job IDs so do not duplicate on reset
+            base_id = len(self.original_pool) * self.reset_counter
+            for idx, job in enumerate(self.sample_pool):
+                job.job_id = int(base_id + job.job_id)
+                self.sample_pool[idx] = job
         if self.shuffle:
             random.shuffle(self.sample_pool)
+        self.reset_counter += 1
 
 
 
@@ -332,7 +347,6 @@ def pipedream_graph_from_txt_file(file_path, shift_node_ids_by=0, verbose=False)
 
             #get op details
             op_details = str(line[1].split(op_id)[1][1:-1]).split(', ')
-
 
             #get compute time and memory details
             comp_and_memory = line[2].split(', ')
@@ -617,6 +631,33 @@ def recursively_update_nested_dict(orig_dict, overrides, verbose=False):
 
 
 
+def get_nested_dict_keys_val(dictionary, *keys):
+    return reduce(lambda d, key: d.get(key) if d else None, keys, dictionary)
+
+
+def map_agent_id_to_hparams(base_folder, base_name, ids, hparams, verbose=True):
+    # map IDs to parameters you want to look at
+    id_to_hparams = defaultdict(lambda: defaultdict(lambda: None))
+    for _id in ids:
+        # load config
+        path_to_config = glob.glob(f'{base_folder}/{base_name}/{base_name}_{_id}/*config.yaml')
+        if len(path_to_config) != 1:
+            raise Exception(f'Unable to locate a single *config.yaml file in {base_folder}/{base_name}/{base_name}_{_id}/, found {path_to_config}')
+        else:
+            path_to_config = path_to_config[0]
+            if verbose:
+                print(f'\nLoaded config for ID {_id} from {path_to_config}')
+        config = OmegaConf.load(path_to_config)
+        
+        # get hparam value(s) for this id
+        for hparam in hparams:
+            keys = hparam.split('.')
+            val = get_nested_dict_keys_val(config, *keys)
+            if verbose:
+                print(f'ID {_id} has hparam {hparam} value {val}')
+            id_to_hparams[_id][hparam] = val
+
+    return id_to_hparams
 
 
 

@@ -71,15 +71,22 @@ parameters:
 
     ## TEST HEURISTIC
 
-    #experiment.seed:
-        #values: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    experiment.seed:
+        values: [0, 1, 2]
+        ##values: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     
-    #eval_loop.actor._target_: 
+    eval_loop.actor._target_: 
         #values: ['ddls.environments.ramp_job_partitioning.agents.random.Random', 'ddls.environments.ramp_job_partitioning.agents.no_parallelism.NoParallelism', 'ddls.environments.ramp_job_partitioning.agents.sip_ml.SiPML', 'ddls.environments.ramp_job_partitioning.agents.acceptable_jct.AcceptableJCT']
+        values: ['ddls.environments.ramp_job_partitioning.agents.no_parallelism.NoParallelism', 'ddls.environments.ramp_job_partitioning.agents.sip_ml.SiPML']
 
-    eval_loop.env.min_op_run_time_quantum:
-        #values: [0.000001, 0.00001, 0.0001, 0.001, 0.01, 0.1, 1, 10, 25, 50, 75, 100]
-        values: [0.001, 0.01, 0.1, 1, 10, 25, 50, 75, 100, 1000]
+    #eval_loop.env.min_op_run_time_quantum:
+        ##values: [0.000001, 0.00001, 0.0001, 0.001, 0.01, 0.1, 1, 10, 25, 50, 75, 100]
+        #values: [0.001, 0.01, 0.1, 1, 10, 25, 50, 75, 100, 1000]
+
+    eval_loop.env.jobs_config.job_interarrival_time_dist.val:
+        #values: [500, 1000, 2000, 4000, 8000, 16000]
+        #values: [2000, 2500, 3000, 3500, 4000]
+        values: [2000, 2250, 2500, 2750, 3000, 3250, 3500, 3750, 4000]
 
 
 command:

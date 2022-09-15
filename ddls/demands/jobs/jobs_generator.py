@@ -126,7 +126,7 @@ class JobsGenerator:
                                                               'original_job': None, 
                                                               'job_total_operation_memory_cost': None, 
                                                               'job_total_dependency_size': None, 
-                                                              'init_job_details': None,
+                                                              'init_job_immutable_details': None,
                                                               }
                                                               ) # store per-model details rather than per-job to save computation time when initialising
         i = 0
@@ -155,7 +155,7 @@ class JobsGenerator:
                           original_job=original_job,
                           job_total_operation_memory_cost=self.job_model_to_init_details[model]['job_total_operation_memory_cost'],
                           job_total_dependency_size=self.job_model_to_init_details[model]['job_total_dependency_size'],
-                          init_job_details=self.job_model_to_init_details[model]['init_job_details'],
+                          init_job_immutable_details=self.job_model_to_init_details[model]['init_job_immutable_details'],
                           )
                 jobs.append(job)
                 if self.job_model_to_init_details[model]['original_job'] is None:
@@ -163,7 +163,7 @@ class JobsGenerator:
                     self.job_model_to_init_details[model]['original_job'] = copy.deepcopy(job)
                     self.job_model_to_init_details[model]['job_total_operation_memory_cost'] = job.job_total_operation_memory_cost
                     self.job_model_to_init_details[model]['job_total_dependency_size'] = job.job_total_dependency_size
-                    self.job_model_to_init_details[model]['init_job_details'] = job.init_job_details
+                    self.job_model_to_init_details[model]['init_job_immutable_details'] = job.init_job_immutable_details
                 i += 1
 
 

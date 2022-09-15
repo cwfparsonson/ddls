@@ -23,6 +23,7 @@ class OpPlacement:
             for op_id in self.action[job_id].keys():
                 self.worker_ids.add(self.action[job_id][op_id])
                 self.worker_to_ops[self.action[job_id][op_id]].append({'op_id': op_id, 'job_id': job_id})
+        # print(f'OpPlacement worker_ids ({len(self.worker_ids)}): {self.worker_ids}') # TODO TEMP DEBUG
 
         # set partitioned jobs' dependency run times given their op placements, dependency sizes, and the network's processor and channel link parameters
         # update_dep_run_times(cluster=cluster, op_partition=op_partition, op_placement=self, verbose=True) # DEBUG

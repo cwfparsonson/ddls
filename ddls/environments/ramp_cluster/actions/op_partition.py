@@ -32,6 +32,7 @@ class OpPartition:
                     self.job_id_to_forward_op_id_to_mp_splits[job_id][op_id] = num_partitions
                     if num_partitions > self.job_id_to_max_partition_degree[job_id]:
                         self.job_id_to_max_partition_degree[job_id] = num_partitions
+        # print(f'OpPartition job_id_to_max_partition_degree: {self.job_id_to_max_partition_degree}') # TODO TEMP DEBUG
 
         # create dict mapping job_id -> partitioned_job object and job_id -> original_job object
         self.job_ids, self.partitioned_jobs, self.original_jobs = set(), {}, {}
@@ -46,7 +47,7 @@ class OpPartition:
             partitioned_computation_graph = cluster.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['partitioned_computation_graph']
             job_total_operation_memory_cost = cluster.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['job_total_operation_memory_cost']
             job_total_dependency_size = cluster.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['job_total_dependency_size']
-            init_job_details = cluster.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['init_job_details']
+            init_job_immutable_details = cluster.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['init_job_immutable_details']
 
             if partitioned_computation_graph is None:
                 # not yet partitioned computation graph for this model and max partition degree, need to get partitioned computation graph
@@ -73,7 +74,7 @@ class OpPartition:
                                                 details=details,
                                                 job_total_operation_memory_cost=job_total_operation_memory_cost,
                                                 job_total_dependency_size=job_total_dependency_size,
-                                                init_job_details=init_job_details,
+                                                init_job_immutable_details=init_job_immutable_details,
                                                 )
 
     def __len__(self):

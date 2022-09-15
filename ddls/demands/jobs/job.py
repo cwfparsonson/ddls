@@ -49,7 +49,7 @@ class Job:
                  details: dict = None,
                  job_total_operation_memory_cost: float = None,
                  job_total_dependency_size: float = None,
-                 init_job_details: dict = None,
+                 init_job_immutable_details: dict = None,
                  ):
         '''
         A ddls deep learning job consists of a computation_graph which contains the
@@ -104,7 +104,8 @@ class Job:
         self.reset_job(self.details,
                        job_total_operation_memory_cost=job_total_operation_memory_cost,
                        job_total_dependency_size=job_total_dependency_size,
-                       init_job_details=init_job_details)
+                       init_job_immutable_details=init_job_immutable_details)
+
 
         # store record of original job before any partitioning etc. applied
         if original_job is None:
@@ -134,7 +135,7 @@ class Job:
     def job_id(self, value):
         if hasattr(self, 'original_job'):
             # update original job id
-            self.original_job = value
+            self.original_job.job_id = value
         else:
             # not yet set original job
             pass
@@ -151,10 +152,33 @@ class Job:
         # update job id
         self._job_id = value
 
-    def _init_job_details(self, details: dict = None):
-        '''Initialises some additional useful details about the job.'''
-        if details is None:
-            details = {}
+    def _init_job_mutable_details(self):
+        '''
+        Initialises some additional useful details about the job.
+
+        Any details initialised in this method are assumed to be mutable 
+        (i.e. they may change or be altered during the course of the job's
+        lifetime).
+        '''
+        details = {}
+
+        details['communication_overhead_time'] = 0
+        details['computation_overhead_time'] = 0
+        details['mounted_workers'] = set()
+        details['mounted_channels'] = set()
+
+        return details
+
+
+    def _init_job_immutable_details(self):
+        '''
+        Initialises some additional useful details about the job.
+
+        Any details initialised in this method are assumed to be immutable
+        (i.e. they will not change or be altered during the course of the job's
+        lifetime).
+        '''
+        details = {}
 
         self._init_op_comp_throughputs()
 
@@ -167,15 +191,6 @@ class Job:
         details['job_total_op_memory_cost'] = self.get_job_total_memory_cost()
         details['job_total_dep_size'] = self.get_job_total_dep_size()
 
-        # do not override values which are already provided
-        if 'communication_overhead_time' not in details:
-            details['communication_overhead_time'] = 0
-        if 'computation_overhead_time' not in details:
-            details['computation_overhead_time'] = 0
-        if 'mounted_workers' not in details:
-            details['mounted_workers'] = set()
-        if 'mounted_channels' not in details:
-            details['mounted_channels'] = set()
 
         # details.update(self.details)
 
@@ -299,12 +314,20 @@ class Job:
                   computation_graph=None, 
                   job_total_operation_memory_cost=None,
                   job_total_dependency_size=None,
-                  init_job_details=None,
+                  init_job_immutable_details=None,
                   ):
         '''Resets whole job. 
 
         Args:
-            init_job_details: If not None, will initialise job details.
+            init_job_immutable_details: If not None, will initialise job details.
+                N.B. The only details provided in init_job_immutable_details (e.g. node_to_depth) should
+                be those which will not change or be altered during the course of the
+                Job object's lifetime. This is because init_job_immutable_details are
+                used from one job to instantiate another job (in order to save compute time
+                by avoiding needlessly re-computing initial job details for the same model),
+                therefore if the details of one job are mutated then they will also
+                mutate those of the other job. Any mutable job details (e.g. mounted_workers)
+                will be initialised separately each time the job is instantiated or reset.
             computation_graph: If not None, will update job's computation graph.
         '''
         if computation_graph is not None:
@@ -313,6 +336,7 @@ class Job:
         if job_total_operation_memory_cost is None:
             self.job_total_operation_memory_cost = self._init_job_total_operation_memory_cost()
         else:
+            # self.job_total_operation_memory_cost = job_total_operation_memory_cost
             self.job_total_operation_memory_cost = job_total_operation_memory_cost
 
         if job_total_dependency_size is None:
@@ -322,12 +346,16 @@ class Job:
         
         self.reset_job_training_step()
 
-        if init_job_details is None:
-            self.init_job_details = self._init_job_details(details)
+        if init_job_immutable_details is None:
+            self.init_job_immutable_details = self._init_job_immutable_details()
         else:
-            self.init_job_details = init_job_details
-        self.details.update(self.init_job_details)
+            self.init_job_immutable_details = init_job_immutable_details
+        self.details.update(self.init_job_immutable_details)
 
+        init_job_mutable_details = self._init_job_mutable_details()
+        self.details.update(init_job_mutable_details)
+
+        # overwrite any details with those provided
         self.details.update(details)
 
         if hasattr(self, 'original_job'):

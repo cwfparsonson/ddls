@@ -246,6 +246,7 @@ class RampClusterEnvironment:
         self.num_jobs_arrived = 0
         self.num_mounted_ops = 0
         self.num_mounted_deps = 0
+        self.load_rates = []
         # self.num_active_workers = 0
         self.mounted_workers = set()
         self.mounted_channels = set()
@@ -351,6 +352,7 @@ class RampClusterEnvironment:
         # job.job_id = job.details['job_idx']
         self.time_last_job_arrived = copy.copy(self.stopwatch.time())
         self.time_next_job_to_arrive += self.jobs_generator.sample_interarrival_time(size=None)
+        self.load_rates.append((job.original_job.details['job_total_op_memory_cost'] + job.original_job.details['job_total_dep_size']) / (self.time_next_job_to_arrive - self.time_last_job_arrived))
         if job.details['job_idx'] in self.job_idx_to_job_id:
             raise Exception(f'job idx {job.details["job_idx"]} is already in arrived job_idx_to_job_id {self.job_idx_to_job_id} and is therefore not unique - a bug has occurred somewhere since all jobs should have a unique job idx.')
         else:
@@ -739,6 +741,11 @@ class RampClusterEnvironment:
         return job
 
     def _register_completed_lookahead(self, job, tmp_stopwatch, tick_counter_to_active_workers_tick_size,  verbose=False):
+        # # check for erros
+        # max_num_partitions = self.op_partition.job_id_to_max_partition_degree[job.job_id]
+        # if len(job.details['mounted_workers']) > max_num_partitions:
+            # raise Exception(f'Error registering completed lookahead for job {job}. Should have len(job.details[\"mounted_workers\"]) ({len(job.details["mounted_workers"])}) <= job max_num_partitions ({max_num_partitions}). An error has occurred. This has previously occurred where the mounted_workers set of job details is mutable and has been shared between jobs, meaning mounted_workers etc have not been reset properly when the job was initialised.')
+
         job_id, job_idx = job.job_id, job.details['job_idx']
         if verbose:
             print(f'Lookahead completed -> Job ID {job_id} Job idx {job.details["job_idx"]} lookahead training step time: {tmp_stopwatch.time() * job.num_training_steps}')
@@ -773,13 +780,13 @@ class RampClusterEnvironment:
             # reset whole job ready for actual simulation and record lookahead job completion time
             max_num_partitions = self.op_partition.job_id_to_max_partition_degree[job_id]
             model = job.details['model']
-            job_total_operation_memory_cost, job_total_dependency_size, init_job_details, partitioned_computation_graph = None, None, None, None
+            job_total_operation_memory_cost, job_total_dependency_size, init_job_immutable_details, partitioned_computation_graph = None, None, None, None
             if model in self.job_model_to_max_num_partitons_to_init_details:
                 if max_num_partitions in self.job_model_to_max_num_partitons_to_init_details[model]:
                     # print(f'Already simulated {model} with max_num_partitions {max_num_partitions}, can re-use init job params')
                     job_total_operation_memory_cost = self.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['job_total_operation_memory_cost']
                     job_total_dependency_size = self.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['job_total_dependency_size']
-                    init_job_details = self.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['init_job_details']
+                    init_job_immutable_details = self.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['init_job_immutable_details']
                     partitioned_computation_graph = self.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['partitioned_computation_graph']
                 else:
                     # not yet simulated this model and max_num_partitions
@@ -801,13 +808,13 @@ class RampClusterEnvironment:
                                     },
                           job_total_operation_memory_cost=job_total_operation_memory_cost,
                           job_total_dependency_size=job_total_dependency_size,
-                          init_job_details=init_job_details,
+                          init_job_immutable_details=init_job_immutable_details,
                           )
 
             # update job model init details tracker if needed
             self.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['job_total_operation_memory_cost'] = job.job_total_operation_memory_cost
             self.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['job_total_dependency_size'] = job.job_total_dependency_size
-            self.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['init_job_details'] = job.init_job_details
+            self.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['init_job_immutable_details'] = job.init_job_immutable_details
             self.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['partitioned_computation_graph'] = self.op_partition.job_id_to_partitioned_computation_graph[job_id]
 
             # track info size of deps which became flows
@@ -1047,6 +1054,17 @@ class RampClusterEnvironment:
 
             self.episode_stats['episode_time'] = self.episode_stats['episode_end_time'] - self.episode_stats['episode_start_time']
 
+            self.episode_stats['mean_load_rate'] = np.mean(self.load_rates)
+
+            try:
+                self.episode_stats['blocking_rate'] = self.episode_stats['num_jobs_blocked'] / self.episode_stats['num_jobs_arrived']
+            except ZeroDivisionError:
+                self.episode_stats['blocking_rate'] = 0
+            try:
+                self.episode_stats['acceptance_rate'] = self.episode_stats['num_jobs_completed'] / self.episode_stats['num_jobs_arrived']
+            except ZeroDivisionError:
+                self.episode_stats['acceptance_rate'] = 0
+
             for throughput_metric, info_processed in {
                         'mean_compute_throughput': 'compute_info_processed',
                         'mean_dep_throughput': 'dep_info_processed',
@@ -1074,6 +1092,87 @@ class RampClusterEnvironment:
 
 
         return obs, action_set, reward, done, info
+
+    @staticmethod
+    def episode_metrics():
+        return {
+                'episode_start_time',
+                'episode_end_time',
+                'episode_time',
+                
+                'num_jobs_arrived',
+                'num_jobs_completed',
+                'num_jobs_blocked',
+
+                'compute_info_processed',
+                'dep_info_processed',
+                'flow_info_processed',
+                'cluster_info_processed',
+
+                'demand_compute_info_processed',
+                'demand_dep_info_processed',
+                'demand_total_info_processed',
+
+                'mean_compute_throughput',
+                'mean_dep_throughput',
+                'mean_cluster_throughput',
+
+                'mean_load_rate',
+                'blocking_rate',
+                'acceptance_rate',
+                'mean_dep_throughput',
+                'mean_flow_throughput',
+                'mean_demand_compute_throughput',
+                'mean_demand_dep_throughput',
+                'mean_demand_total_throughput',
+                'return',
+                }
+
+    @staticmethod
+    def episode_completion_metrics():
+        return {
+                'job_completion_time',
+                'job_communication_overhead_time',
+                'job_computation_overhead_time',
+
+                'jobs_completed_num_nodes',
+                'jobs_completed_num_edges',
+
+                'jobs_completed_total_operation_memory_cost',
+                'jobs_completed_total_dependency_size',
+
+                'job_completion_time_speedup',
+                'jobs_completed_max_partitions_per_op',
+                'jobs_completed_job_sequential_completion_time',
+                'jobs_completed_max_acceptable_job_completion_time_frac',
+                'jobs_completed_max_acceptable_job_completion_time',
+                'jobs_completed_num_mounted_workers',
+                'jobs_completed_num_mounted_channels',
+                'jobs_completed_mean_mounted_worker_utilisation_frac',
+                'jobs_completed_original_demand_num_nodes',
+                'jobs_completed_original_demand_num_edges',
+                'jobs_completed_original_demand_total_operation_memory_cost',
+                'jobs_completed_original_demand_total_dependency_size',
+                }
+
+    @staticmethod
+    def episode_blocked_metrics():
+        return {
+                'jobs_blocked_num_nodes',
+                'jobs_blocked_num_edges',
+
+                'jobs_blocked_total_operation_memory_cost',
+                'jobs_blocked_total_dependency_size',
+
+                'jobs_blocked_job_sequential_completion_time',
+                'jobs_blocked_max_acceptable_job_completion_time_frac',
+                'jobs_blocked_max_acceptable_job_completion_time',
+                'jobs_blocked_original_demand_num_nodes',
+                'jobs_blocked_original_demand_num_edges',
+                'jobs_blocked_original_demand_total_operation_memory_cost',
+                'jobs_blocked_original_demand_total_dependency_size',
+
+                }
 
     def _update_flow_run_times(self, job):
         pass
