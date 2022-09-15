@@ -74,6 +74,13 @@ epoch_loop:
         env_config:
             jobs_config:
                 shuffle_files: False
+                max_acceptable_job_completion_time_frac_dist:
+                    _target_: ddls.distributions.probability_mass_function.ProbabilityMassFunction
+                    probability_mass_function:
+                        0.25: 0.25
+                        0.50: 0.25
+                        0.75: 0.25
+                        1.00: 0.25
         num_workers: 1 # num parallel cpu workers
         num_gpus: 1 # num gpus available for RLlib
 
@@ -122,22 +129,24 @@ epoch_loop:
                 #replication_factor: 10
                 #replication_factor: 20
                 #replication_factor: 100
-                replication_factor: 200
+                #replication_factor: 200
+                replication_factor: 201
                 #replication_factor: 1000
-                job_sampling_mode: remove
+                #job_sampling_mode: remove
+                job_sampling_mode: remove_and_repeat
                 job_interarrival_time_dist:
-                    _target_: ddls.distributions.uniform.Uniform
+                    #_target_: ddls.distributions.uniform.Uniform
                     #min_val: 1
                     #max_val: 1000
-                    min_val: 1000
-                    max_val: 1000
+                    _target_: ddls.distributions.fixed.Fixed
+                    val: 1000
                 max_acceptable_job_completion_time_frac_dist:
                     _target_: ddls.distributions.probability_mass_function.ProbabilityMassFunction
                     probability_mass_function:
-                        0.25: 0.25
-                        0.50: 0.25
-                        0.75: 0.25
-                        1.00: 0.25
+                        0.25: 0.3
+                        0.50: 0.2
+                        0.75: 0.3
+                        1.00: 0.2
                 shuffle_files: true
                 num_training_steps: 50
                 max_partitions_per_op_in_observation: 1
@@ -209,6 +218,8 @@ epoch_loop:
                 #max_nodes: 100
                 max_nodes: 150
 
+            suppress_warnings: true
+
         lr: 0.0001
         gamma: 0.9
 
@@ -245,8 +256,9 @@ epoch_loop:
         callbacks: ddls.environments.ramp_cluster.utils.RLlibRampClusterEnvironmentCallback
 
         #num_workers: 4 # num parallel cpu workers
-        #num_workers: 2 # num parallel cpu workers
-        num_workers: 1
+        num_workers: 2 # num parallel cpu workers
+        #num_workers: 1
+        #num_workers: 0
         num_gpus: 1 # num gpus available for RLlib
 
         framework: torch

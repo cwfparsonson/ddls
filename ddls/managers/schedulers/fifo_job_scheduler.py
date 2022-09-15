@@ -26,9 +26,10 @@ class FIFOJobScheduler(JobScheduler):
             pass
 
         # combine current cluster placement status with new placement decisions so can schedule ops
-        placement = copy.deepcopy(cluster.job_op_placement)
-        for job_id in new_placements.keys():
-            placement[job_id] = new_placements[job_id]
+        # placement = copy.deepcopy(cluster.job_op_placement)
+        # for job_id in new_placements.keys():
+            # placement[job_id] = new_placements[job_id]
+        new_placements.update(cluster.job_op_placement)
 
         # gather the placed jobs for which an op schedule is needed
         jobs = [job for job in cluster.job_queue.jobs.values() if job_id in new_placements]

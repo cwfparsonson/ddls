@@ -65,11 +65,13 @@ class RampJobPartitioningEnvironment(gym.Env):
                  reward_function_kwargs: dict = None,
                  max_simulation_run_time: Union[int, float] = None,
                  job_queue_capacity: int = 10,
+                 suppress_warnings=False,
                  name: str = 'ramp_job_partitioning',
                  path_to_save: str = None,
                  save_cluster_data: bool = False,
                  save_freq: int = 1,
                  use_sqlite_database: bool = False):
+        self.suppress_warnings = suppress_warnings
         self.topology_config = topology_config
         self.node_config = node_config
         self.jobs_config = jobs_config
@@ -193,7 +195,9 @@ class RampJobPartitioningEnvironment(gym.Env):
                                       node_config=self.node_config,
                                       path_to_save=self.path_to_save if self.save_cluster_data else None,
                                       save_freq=self.save_freq,
-                                      use_sqlite_database=self.use_sqlite_database)
+                                      use_sqlite_database=self.use_sqlite_database,
+                                      suppress_warnings=self.suppress_warnings,
+                                      )
 
     def _init_cluster_managers(self):
         # if self.op_partitioner_str == 'random_op_partitioner':
@@ -236,7 +240,7 @@ class RampJobPartitioningEnvironment(gym.Env):
               seed: int = None,
               verbose=False):
 
-        self.step_counter = 0
+        self.step_counter = 1
 
         # init env decisions
         # self.op_partition = None
@@ -338,7 +342,7 @@ class RampJobPartitioningEnvironment(gym.Env):
             self.op_partition = OpPartition({}, cluster=self.cluster)
 
         if verbose:
-            print(f'Agent action: {action} -> Action set: {self.obs["action_set"]} | Action mask: {self.obs["action_mask"]}')
+            print(f'Action set: {self.obs["action_set"]} | Action mask: {self.obs["action_mask"]} -> Agent chosen action: {action}')
 
         # get env decisions
         # self.job_placement_shape = self.job_placement_shaper.get(op_partition=self.op_partition, cluster=self.cluster)

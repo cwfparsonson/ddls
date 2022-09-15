@@ -6,6 +6,38 @@ from typing import Union
 from collections import defaultdict
 import json
 
+import ray
+import psutil
+NUM_CPUS = psutil.cpu_count(logical=False)
+try:
+    ray.init(num_cpus=NUM_CPUS)
+except RuntimeError:
+    # already initialised ray in another script, no need to init again
+    pass
+
+
+@ray.remote
+def shortest_path_asynchronous(*args, **kwargs):
+    return shortest_path_synchronous(*args, **kwargs)
+
+def shortest_path_synchronous(graph, source, target, **kwargs):
+    try:
+        node_depth = len(nx.shortest_path(graph, source=source, target=target, **kwargs))
+    except nx.NetworkXNoPath:
+        # sibling nodes have no directional path to oneanother
+        node_depth = 0
+    return {'node': target, 'depth': node_depth}
+
+
+def reset_op_remaining_run_time(computation_graph, op_id, device_type):
+    '''Given that an op has just been mounted on a device, reset the remaining run time for each op.'''
+    if device_type is not None:
+        computation_graph.nodes[op_id]['remaining_run_time'] = computation_graph.nodes[op_id]['compute_cost'][device_type]
+    else:
+        computation_graph.nodes[op_id]['remaining_run_time'] = None
+    computation_graph.nodes[op_id]['mounted_device_type'] = device_type
+    return computation_graph
+
 
 class Job:
     def __init__(self,
@@ -14,7 +46,11 @@ class Job:
                  max_acceptable_job_completion_time_frac: float,
                  job_id: int = None,
                  original_job = None,
-                 details: dict = None):
+                 details: dict = None,
+                 job_total_operation_memory_cost: float = None,
+                 job_total_dependency_size: float = None,
+                 init_job_immutable_details: dict = None,
+                 ):
         '''
         A ddls deep learning job consists of a computation_graph which contains the
         operations and dependencies of one forward and backward pass of a DNN model.
@@ -49,23 +85,47 @@ class Job:
         self.max_acceptable_job_completion_time_frac = max_acceptable_job_completion_time_frac
         self.training_step_counter = 0
 
+
         if job_id is None:
-            self._job_id = copy.deepcopy(id(self))
+            self._job_id = copy.copy(id(self))
+            # if original_job is None:
+                # self._job_id = id(self)
+            # else:
+                # # if no job id provided by user, ensure job retains same id as original job
+                # self._job_id = original_job.job_id
         else:
-            self._job_id = job_id 
+            self._job_id = copy.copy(job_id)
 
         if details is None:
             self.details = {}
         else:
             self.details = details
 
-        self.reset_job(self.details)
+        self.reset_job(self.details,
+                       job_total_operation_memory_cost=job_total_operation_memory_cost,
+                       job_total_dependency_size=job_total_dependency_size,
+                       init_job_immutable_details=init_job_immutable_details)
+
 
         # store record of original job before any partitioning etc. applied
         if original_job is None:
             self.original_job = copy.deepcopy(self)
         else:
-            self.original_job = copy.deepcopy(original_job)
+            # self.original_job = copy.deepcopy(original_job)
+            self.original_job = original_job
+
+        # ensure job id and job idx are consistent with provided original job
+        self._check_job_id_job_idx_valid()
+
+
+    def _check_job_id_job_idx_valid(self):
+        if self.original_job.job_id != self.job_id:
+            # self.original_job.job_id = copy.copy(self.job_id)
+            raise Exception(f'Original job ID ({self.original_job.job_id}) different from job ID of job being updated ({self.job_id}). Set the original job job ID to {self.job_id} with job.original_job.job_id={self.job_id} updating this job with job ID {self.job_id}.')
+        if 'job_idx' in self.original_job.details:
+            if self.original_job.details['job_idx'] != self.details['job_idx']:
+                # self.original_job.details['job_idx'] = copy.copy(self.details['job_idx'])
+                raise Exception(f'Original job idx ({self.original_job.details["job_idx"]}) different from job idx of job being instantiated ({self.details["job_idx"]}). Set the original job job idx to {self.details["job_idx"]} with job.original_job.details["job_idx"]={self.details["job_idx"]} updating this job with job idx {self.details["job_idx"]}.')
 
     @property
     def job_id(self):
@@ -73,16 +133,56 @@ class Job:
 
     @job_id.setter
     def job_id(self, value):
+        if hasattr(self, 'original_job'):
+            # update original job id
+            self.original_job.job_id = value
+        else:
+            # not yet set original job
+            pass
+
+        # update nodes with new job id
+        for node in self.computation_graph.nodes:
+            self.computation_graph.nodes[node]['job_id'] = value
+
+        # update edges with new job id
+        for edge in self.computation_graph.edges:
+            u, v, k = edge
+            self.computation_graph[u][v][k]['job_id'] = value
+
+        # update job id
         self._job_id = value
 
-    def _init_job_details(self, details: dict = None):
-        '''Initialises some additional useful details about the job.'''
-        if details is None:
-            details = {}
+    def _init_job_mutable_details(self):
+        '''
+        Initialises some additional useful details about the job.
+
+        Any details initialised in this method are assumed to be mutable 
+        (i.e. they may change or be altered during the course of the job's
+        lifetime).
+        '''
+        details = {}
+
+        details['communication_overhead_time'] = 0
+        details['computation_overhead_time'] = 0
+        details['mounted_workers'] = set()
+        details['mounted_channels'] = set()
+
+        return details
+
+
+    def _init_job_immutable_details(self):
+        '''
+        Initialises some additional useful details about the job.
+
+        Any details initialised in this method are assumed to be immutable
+        (i.e. they will not change or be altered during the course of the job's
+        lifetime).
+        '''
+        details = {}
 
         self._init_op_comp_throughputs()
 
-        details['max_compute_node'], details['max_compute_cost'], details['max_memory_node'], details['max_memory_cost'], details['max_throughput_node'], details['max_node_throughput'], details['max_depth_node'], details['max_depth'] = self.get_max_node_details()
+        details['max_compute_node'], details['max_compute_cost'], details['max_memory_node'], details['max_memory_cost'], details['max_throughput_node'], details['max_node_throughput'], details['max_depth_node'], details['max_depth'], details['node_to_depth'] = self.get_max_node_details()
         details['max_dep_size_dep'], details['max_dep_size'] = self.get_max_edge_details()
         details['job_sequential_completion_time'] = self.get_job_sequential_completion_time()
         details['max_acceptable_job_completion_time'] = defaultdict(lambda: 0)
@@ -91,15 +191,6 @@ class Job:
         details['job_total_op_memory_cost'] = self.get_job_total_memory_cost()
         details['job_total_dep_size'] = self.get_job_total_dep_size()
 
-        # do not override values which are already provided
-        if 'communication_overhead_time' not in details:
-            details['communication_overhead_time'] = 0
-        if 'computation_overhead_time' not in details:
-            details['computation_overhead_time'] = 0
-        if 'mounted_workers' not in details:
-            details['mounted_workers'] = set()
-        if 'mounted_channels' not in details:
-            details['mounted_channels'] = set()
 
         # details.update(self.details)
 
@@ -141,7 +232,7 @@ class Job:
             job_total_dep_size += self.computation_graph[u][v][k]['size']
         return job_total_dep_size 
 
-    def get_max_node_details(self):
+    def get_max_node_details(self, parallel_node_depths=False):
         '''
         Goes through each op in computation graph and finds info about nodes with
         maximum stats for various metrics.
@@ -152,66 +243,132 @@ class Job:
         For memory cost info, is device-agnostic so no need for dict mapping.
 
         For depth info, gets maximum depth of any node from source.
+
+        Args:
+            parallel_node_depths: WARNING: Seems overhead of serializing computation graph
+                for ray parallel processes is larger than overhead of computing
+                shortest path, so do not think is worth parallelising.
         '''
         # print(f'\n>>> Getting max node details <<<')
         max_compute_node, max_compute_cost = defaultdict(lambda: 0), defaultdict(lambda: 0)
         max_memory_node, max_memory_cost = 0, 0
         max_throughput_node, max_node_throughput = defaultdict(lambda: 0), defaultdict(lambda: 0)
         max_depth_node, max_depth = 0, 0
+
+        # get node depths
+        if parallel_node_depths:
+            shortest_path_func = shortest_path_asynchronous.remote
+        else:
+            shortest_path_func = shortest_path_synchronous
+        i, nodes, result_ids = 0, list(self.computation_graph.nodes()), []
+        # graph = self.computation_graph.__class__() # create copy of graph containing nodes and edges without attrs to reduce ray serialization overhead from copying graph repeatedly
+        # graph.add_nodes_from(self.computation_graph)
+        # graph.add_edges_from(self.computation_graph.edges)
+        while i < len(nodes):
+            num_processes = min(len(nodes) - i, NUM_CPUS)
+            for _ in range(num_processes):
+                result_ids.append(shortest_path_func(self.computation_graph, 
+                                                     source=self.computation_graph.graph['source_nodes'][0],
+                                                     target=nodes[i]))
+                i += 1
+        if parallel_node_depths:
+            results = ray.get(result_ids)
+        else:
+            results = result_ids
+        node_to_depth = {result['node']: result['depth'] for result in results}
+
         for node in self.computation_graph.nodes:
             # print(f'node {node} -> mem cost {self.computation_graph.nodes[node]["memory_cost"]}')
             # check if update max compute cost info
             for device_type, compute_cost in self.computation_graph.nodes[node]['compute_cost'].items():
                 if self.computation_graph.nodes[node]['compute_cost'][device_type] > max_compute_cost[device_type]:
-                    max_compute_node[device_type] = copy.deepcopy(node)
-                    max_compute_cost[device_type] = copy.deepcopy(compute_cost)
+                    max_compute_node[device_type] = node
+                    max_compute_cost[device_type] = compute_cost
             # check if update max throughput info
             for device_type, compute_throughput in self.computation_graph.nodes[node]['compute_throughput'].items():
                 if self.computation_graph.nodes[node]['compute_throughput'][device_type] > max_node_throughput[device_type]:
-                    max_throughput_node[device_type] = copy.deepcopy(node)
-                    max_node_throughput[device_type] = copy.deepcopy(compute_throughput)
+                    max_throughput_node[device_type] = node
+                    max_node_throughput[device_type] = compute_throughput
             # check if update max memory info
             if self.computation_graph.nodes[node]['memory_cost'] > max_memory_cost:
-                max_memory_node = copy.deepcopy(node)
-                max_memory_cost = copy.deepcopy(self.computation_graph.nodes[max_memory_node]['memory_cost'])
-            # check if update max depth info
-            try:
-                node_depth = len(nx.shortest_path(self.computation_graph, source=self.computation_graph.graph['source_nodes'][0], target=node))
-            except nx.NetworkXNoPath:
-                # sibling nodes have no directional path to oneanother
-                node_depth = 0
-            if node_depth > max_depth:
-                max_depth_node = copy.deepcopy(node)
-                max_depth = copy.deepcopy(node_depth)
+                max_memory_node = node
+                max_memory_cost = self.computation_graph.nodes[max_memory_node]['memory_cost']
+            # # check if update max depth info
+            if node_to_depth[node] > max_depth:
+                max_depth_node = node
+                max_depth = node_to_depth[node] 
         # print(f'max_compute_node: {max_compute_node} | max_compute_cost: {max_compute_cost} | max_memory_node: {max_memory_node} | max_memory_cost: {max_memory_cost}')
-        return max_compute_node, max_compute_cost, max_memory_node, max_memory_cost, max_throughput_node, max_node_throughput, max_depth_node, max_depth
+        return max_compute_node, max_compute_cost, max_memory_node, max_memory_cost, max_throughput_node, max_node_throughput, max_depth_node, max_depth, node_to_depth
 
     def get_max_edge_details(self):
         max_dep_size, max_dep_size_dep = 0, None
         for edge in self.computation_graph.edges:
             u, v, k = edge
             if self.computation_graph[u][v][k]['size'] > max_dep_size:
-                max_dep_size_dep = copy.deepcopy(edge)
-                max_dep_size = copy.deepcopy(self.computation_graph[u][v][k]['size'])
+                max_dep_size_dep = edge
+                max_dep_size = self.computation_graph[u][v][k]['size']
         return max_dep_size_dep, max_dep_size
 
-    def reset_job(self, details, computation_graph=None):
-        '''Resets whole job. If computation_graph is not None, will update job's computation graph.'''
+    def reset_job(self, 
+                  details, 
+                  computation_graph=None, 
+                  job_total_operation_memory_cost=None,
+                  job_total_dependency_size=None,
+                  init_job_immutable_details=None,
+                  ):
+        '''Resets whole job. 
+
+        Args:
+            init_job_immutable_details: If not None, will initialise job details.
+                N.B. The only details provided in init_job_immutable_details (e.g. node_to_depth) should
+                be those which will not change or be altered during the course of the
+                Job object's lifetime. This is because init_job_immutable_details are
+                used from one job to instantiate another job (in order to save compute time
+                by avoiding needlessly re-computing initial job details for the same model),
+                therefore if the details of one job are mutated then they will also
+                mutate those of the other job. Any mutable job details (e.g. mounted_workers)
+                will be initialised separately each time the job is instantiated or reset.
+            computation_graph: If not None, will update job's computation graph.
+        '''
         if computation_graph is not None:
             self.computation_graph = computation_graph
 
-        self.job_total_operation_memory_cost = self._init_job_total_operation_memory_cost()
-        self.job_total_dependency_size = self._init_job_total_dependecy_size()
+        if job_total_operation_memory_cost is None:
+            self.job_total_operation_memory_cost = self._init_job_total_operation_memory_cost()
+        else:
+            # self.job_total_operation_memory_cost = job_total_operation_memory_cost
+            self.job_total_operation_memory_cost = job_total_operation_memory_cost
+
+        if job_total_dependency_size is None:
+            self.job_total_dependency_size = self._init_job_total_dependecy_size()
+        else:
+            self.job_total_dependency_size = job_total_dependency_size
         
         self.reset_job_training_step()
-        # self.details = self._init_job_details(details)
-        self.details.update(self._init_job_details(details))
-        
+
+        if init_job_immutable_details is None:
+            self.init_job_immutable_details = self._init_job_immutable_details()
+        else:
+            self.init_job_immutable_details = init_job_immutable_details
+        self.details.update(self.init_job_immutable_details)
+
+        init_job_mutable_details = self._init_job_mutable_details()
+        self.details.update(init_job_mutable_details)
+
+        # overwrite any details with those provided
+        self.details.update(details)
+
+        if hasattr(self, 'original_job'):
+            self._check_job_id_job_idx_valid()
+        else:
+            # have not registered original job yet (reset_job() being called from __init__()), do not check consistency yet
+            pass
+
     def reset_job_training_step(self):
         '''Resets the job ready for a training step to be executed.'''
         # initialse additional node-, edge-, and graph-level info self._init_node_info()
-        self._init_node_info()
-        self._init_edge_info()
+        self._init_nodes_info()
+        self._init_edges_info()
         self._init_graph_info()
 
     def register_job_arrived(self, 
@@ -224,10 +381,13 @@ class Job:
             job_idx: Index assigned to job ID which is unique to the job across
                 the whole of the simulation.
         '''
-        self.details['time_arrived'] = copy.deepcopy(time_arrived)
+        self.details['time_arrived'] = time_arrived
         self.details['time_started'] = None
         self.details['time_completed'] = None
-        self.details['job_idx'] = copy.deepcopy(job_idx)
+        self.details['job_idx'] = copy.copy(job_idx)
+        self.original_job.details['job_idx'] = copy.copy(job_idx)
+
+        self._check_job_id_job_idx_valid()
 
     def register_job_running(self,
                              time_started: Union[int, float]):
@@ -236,7 +396,7 @@ class Job:
         Args:
             time_started: Time job started running on cluster.
         '''
-        self.details['time_started'] = copy.deepcopy(time_started)
+        self.details['time_started'] = time_started
 
     def register_job_completed(self,
                                time_completed: Union[int, float]):
@@ -247,9 +407,9 @@ class Job:
         Args:
             time_completed: Time job was completed.
         '''
-        self.details['time_completed'] = copy.deepcopy(time_completed)
+        self.details['time_completed'] = time_completed
         
-    def _init_node_info(self):
+    def _init_nodes_info(self):
         for node in self.computation_graph.nodes:
             self.computation_graph.nodes[node]['job_id'] = self.job_id
             self.computation_graph.nodes[node]['parent_deps_completed'] = set()
@@ -260,8 +420,9 @@ class Job:
             else:
                 # have already mounted this node and resetting ready for another training step, do not change mounted device type, just reset remaining run time
                 self.reset_op_remaining_run_time(node, device_type=self.computation_graph.nodes[node]['mounted_device_type'])
+
         
-    def _init_edge_info(self):
+    def _init_edges_info(self):
         for edge in self.computation_graph.edges:
             u, v, k = edge
 
@@ -356,15 +517,11 @@ class Job:
 
     def reset_op_remaining_run_time(self, op_id, device_type):
         '''Given that an op has just been mounted on a device, reset the remaining run time for each op.'''
-        if device_type is not None:
-            self.computation_graph.nodes[op_id]['remaining_run_time'] = copy.deepcopy(self.computation_graph.nodes[op_id]['compute_cost'][device_type])
-        else:
-            self.computation_graph.nodes[op_id]['remaining_run_time'] = None
-        self.computation_graph.nodes[op_id]['mounted_device_type'] = device_type
+        self.computation_graph = reset_op_remaining_run_time(self.computation_graph, op_id, device_type)
 
     def reset_dep_remaining_run_time(self, dep_id):
         u, v, k = dep_id
-        self.computation_graph[u][v][k]['remaining_run_time'] = copy.deepcopy(self.computation_graph[u][v][k]['init_run_time'])
+        self.computation_graph[u][v][k]['remaining_run_time'] = copy.copy(self.computation_graph[u][v][k]['init_run_time'])
 
     def is_job_complete(self):
         return self.training_step_counter == self.num_training_steps

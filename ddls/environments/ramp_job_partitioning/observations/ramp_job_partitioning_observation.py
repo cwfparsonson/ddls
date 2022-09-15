@@ -600,11 +600,12 @@ class RampJobPartitioningObservation(DDLSObservationFunction):
         # op_features.append(np.array(children_memory_cost_sum, dtype=object))
 
         # op depth
-        try:
-            node_depth = len(nx.shortest_path(job.computation_graph, source=job.computation_graph.graph['source_nodes'][0], target=op)) / job.details['max_depth']
-        except nx.NetworkXNoPath:
-            # sibling nodes have no directional path to oneanother
-            node_depth = 0
+        # try:
+            # node_depth = len(nx.shortest_path(job.computation_graph, source=job.computation_graph.graph['source_nodes'][0], target=op)) / job.details['max_depth']
+        # except nx.NetworkXNoPath:
+            # # sibling nodes have no directional path to oneanother
+            # node_depth = 0
+        node_depth = job.details['node_to_depth'][op] / job.details['max_depth']
         op_features.append(np.array(node_depth, dtype=object))
         # if np.max(op_features) > 1:
             # raise Exception(f'found > 1 feat')

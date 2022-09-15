@@ -16,6 +16,8 @@ class SRPTDepScheduler:
             dep_placement: DepPlacement, # flow dep placements
             cluster: RampClusterEnvironment):
         new_placements = dep_placement.action
+        # gather the placed jobs for which flow schedule is needed
+        jobs = [job for job_id, job in op_partition.partitioned_jobs.items() if job_id in new_placements]
 
         # initialise flow dep schedule for each channel mapping channel_id -> job_id -> dep_id -> priority
         channel_to_job_to_dep_to_priority = defaultdict(lambda: defaultdict(dict))
@@ -28,13 +30,11 @@ class SRPTDepScheduler:
             pass
 
         # combine current cluster placement status with new placement decisions so can schedule deps 
-        placement = copy.deepcopy(cluster.job_dep_placement)
-        for job_id in new_placements.keys():
-            placement[job_id] = new_placements[job_id]
-
-        # gather the placed jobs for which flow schedule is needed
-        # jobs = [job for job in cluster.job_queue.jobs.values() if job_id in new_placements]
-        jobs = [job for job_id, job in op_partition.partitioned_jobs.items() if job_id in new_placements]
+        # placement = copy.deepcopy(cluster.job_dep_placement)
+        # for job_id in new_placements.keys():
+            # placement[job_id] = new_placements[job_id]
+        placement = new_placements
+        placement.update(cluster.job_dep_placement)
 
         # initialise useful mappings
         job_id_to_job = {job.job_id: job for job in jobs}

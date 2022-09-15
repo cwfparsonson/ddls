@@ -41,7 +41,8 @@ class EvalLoop:
             obs, reward, done, info = self.env.step(action)
 
             if verbose:
-                print(f'Step {step_counter} | Action: {action} | Reward: {reward:.8f} | Jobs arrived: {self.env.cluster.num_jobs_arrived} | Jobs running: {len(self.env.cluster.jobs_running)} | Jobs completed: {len(self.env.cluster.jobs_completed)} | Jobs blocked: {len(self.env.cluster.jobs_blocked)} | Start->end of step mounted workers: {start_step_mounted_workers}->{len(self.env.cluster.mounted_workers)} | Stopwatch: {Decimal(self.env.cluster.stopwatch.time().astype(float)):.3E}')
+                # print(f'Step {step_counter} | Action: {action} | Reward: {reward:.8f} | Jobs arrived: {self.env.cluster.num_jobs_arrived} | Jobs running: {len(self.env.cluster.jobs_running)} | Jobs completed: {len(self.env.cluster.jobs_completed)} | Jobs blocked: {len(self.env.cluster.jobs_blocked)} | Start->end of step mounted workers: {start_step_mounted_workers}->{len(self.env.cluster.mounted_workers)} | Stopwatch: {Decimal(self.env.cluster.stopwatch.time().astype(float)):.3E}')
+                print(f'Step {step_counter} | Action: {action} | Reward: {reward:.8f} | Jobs arrived: {self.env.cluster.num_jobs_arrived} | Jobs running: {len(self.env.cluster.jobs_running)} | Jobs completed: {len(self.env.cluster.jobs_completed)} | Jobs blocked: {len(self.env.cluster.jobs_blocked)} | Start->end of step mounted workers: {start_step_mounted_workers}->{len(self.env.cluster.mounted_workers)} | Stopwatch: {Decimal(float(self.env.cluster.stopwatch.time())):.3E}')
 
             results['step_stats']['action'].append(action)
             results['step_stats']['reward'].append(reward)
@@ -115,6 +116,7 @@ class EvalLoop:
             for log_name, log in results.items():
                 for key, val in log.items():
                     # record average of stat for validation run
+                    # print(f'key: {key} | val: {val}')
                     wandb_log[f'valid/{log_name}/{key}'] = np.mean(val)
             self.wandb.log(wandb_log)
 
