@@ -1,0 +1,43 @@
+path_to_rllib_trainer_cls: ray.rllib.agents.ppo.PPOTrainer
+
+model:
+    # overwrite default model config as desired
+    fcnet_hiddens:
+        # must == action_space.n
+        - 17
+    custom_model_config:
+        apply_action_mask: True
+
+    # recommended in PPO-specific configs settings https://docs.ray.io/en/latest/rllib/rllib-algorithms.html#dreamer
+    vf_share_layers:
+        False
+
+algo_config:
+    # SPECIFIC HPARAMS
+    lr_schedule: null
+    use_critic: True
+    use_gae: True
+    #lambda_: 1.0
+    kl_coeff: 0.2
+    num_sgd_iter: 30
+    shuffle_sequences: True
+    vf_loss_coeff: 1.0
+    entropy_coeff: 0.0
+    entropy_coeff_schedule: null
+    clip_param: 0.3
+    vf_clip_param: 10.0
+    grad_clip: null
+    kl_target: 0.01
+
+    # need sgd_minibatch_size <= train_batch_size
+    #sgd_minibatch_size: 32
+    #sgd_minibatch_size: 4
+    #sgd_minibatch_size: 1
+    
+    num_workers: 2
+
+    ## OVERRIDE ALGORITHM CONFIG DEFAULT VALUES WITH SPECIFIC HPARAMS
+    sgd_minibatch_size: 128
+    #rollout_fragment_length: 200
+    #train_batch_size: 4000
+    #lr: 0.00005

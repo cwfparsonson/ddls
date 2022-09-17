@@ -1125,7 +1125,22 @@ class RampClusterEnvironment:
                 'mean_demand_compute_throughput',
                 'mean_demand_dep_throughput',
                 'mean_demand_total_throughput',
+
+                # extra episode stats sometimes added externall by e.g. RLlib, but useful for loggin
                 'return',
+                'episode_reward',
+                'run_time',
+                'epoch_counter',
+                'episode_counter',
+                'actor_step_counter',
+                }
+
+    @staticmethod
+    def step_metrics():
+        return {
+                'mean_num_mounted_workers',
+                'mean_num_mounted_channels',
+
                 }
 
     @staticmethod

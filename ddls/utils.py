@@ -559,6 +559,12 @@ def get_class_from_path(path):
     module = __import__(path_to_class, fromlist=[ClassName])
     return getattr(module, ClassName)
 
+def get_function_from_path(path):
+    module_path = '.'.join(path.split('.')[:-1])
+    module = get_module_from_path(module_path)
+    func = path.split('.')[-1]
+    return getattr(module, func)
+
 def gen_unique_experiment_folder(path_to_save, experiment_name):
     # init highest level folder
     path = path_to_save + '/' + experiment_name + '/'

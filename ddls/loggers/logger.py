@@ -62,7 +62,10 @@ class Logger:
                         for key, val in log.items():
                             if not isinstance(val, list):
                                 val = [val]
-                            _log[key] = val
+                            try:
+                                _log[key] = val
+                            except pickle.PicklingError:
+                                pass
                     else:
                         for key, val in log.items():
                             if key not in {'config', 'experiment_id', 'trial_id', 'pid', 'hostname', 'node_ip'}:

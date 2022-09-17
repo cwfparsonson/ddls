@@ -1,0 +1,102 @@
+path_to_rllib_trainer_cls: ray.rllib.agents.dqn.ApexTrainer
+
+model:
+    # overwrite default model config as desired
+    fcnet_hiddens:
+        # must == hiddens (below)
+        - 256
+    custom_model_config:
+        apply_action_mask: False # TODO TEMP HACK: Should implement DQN action masking when get response https://discuss.ray.io/t/apextrainer-fails-to-instantiate-due-to-mat1-mat2-shapes-cannot-be-multiplied/7583
+
+algo_config:
+    # DQN-SPECIFIC HPARAMS
+    dueling: True
+    #dueling: False # DEBUG
+
+    num_atoms: 1
+    v_min: -10.0
+    v_max: 10.0
+    noisy: False
+    sigma0: 0.5
+    hiddens:
+        - 256
+        #- 17
+    double_q: True
+
+
+    # APEX DQN SPECIFIC HPARAMS
+    # .training()
+    #self.optimizer = merge_dicts(
+        #DQNConfig().optimizer, {
+            #"max_weight_sync_delay": 400,
+            #"num_replay_buffer_shards": 4,
+            #"debug": False
+        #})
+    n_step: 3
+    #target_network_update_freq: 500000
+    target_network_update_freq: 1000
+    training_intensity: 1
+
+    # max number of inflight requests to each sampling worker
+    # see the AsyncRequestsManager class for more details
+    # Tuning these values is important when running experimens with large sample
+    # batches. If the sample batches are large in size, then there is the risk that
+    # the object store may fill up, causing the store to spill objects to disk.
+    # This can cause any asynchronous requests to become very slow, making your
+    # experiment run slowly. You can inspect the object store during your
+    # experiment via a call to ray memory on your headnode, and by using the ray
+    # dashboard. If you're seeing that the object store is filling up, turn down
+    # the number of remote requests in flight, or enable compression in your
+    # experiment of timesteps.
+    max_requests_in_flight_per_sampler_worker: 2
+    #max_requests_in_flight_per_replay_worker: float("inf")
+    max_requests_in_flight_per_replay_worker: 1000000000000
+    timeout_s_sampler_manager: 0.0
+    timeout_s_replay_manager: 0.0
+    # APEX-DQN is using a distributed (non local) replay buffer.
+    replay_buffer_config:
+        no_local_replay_buffer: True
+        # Specify prioritized replay by supplying a buffer type that supports
+        # prioritization
+        type: MultiAgentPrioritizedReplayBuffer
+        #capacity: 2000000
+        capacity: 100000
+        # Alpha parameter for prioritized replay buffer.
+        prioritized_replay_alpha: 0.6
+        # Beta parameter for sampling from prioritized replay buffer.
+        prioritized_replay_beta: 0.4
+        # Epsilon to add to the TD errors when updating priorities.
+        prioritized_replay_eps: 1e-6
+        #learning_starts: 50000
+        learning_starts: 1000
+        # Whether all shards of the replay buffer must be co-located
+        # with the learner process (running the execution plan).
+        # This is preferred b/c the learner process should have quick
+        # access to the data from the buffer shards, avoiding network
+        # traffic each time samples from the buffer(s) are drawn.
+        # Set this to False for relaxing this constraint and allowing
+        # replay shards to be created on node(s) other than the one
+        # on which the learner is located.
+        replay_buffer_shards_colocated_with_driver: True
+        worker_side_prioritization: True
+        # Deprecated key.
+        prioritized_replay: DEPRECATED_VALUE
+
+    # .rollouts()
+    exploration_config:
+        type: PerWorkerEpsilonGreedy
+
+    # .reporting()
+    min_time_s_per_iteration: 30
+    min_sample_timesteps_per_iteration: 25000
+
+
+    # fmt: on
+
+    ## OVERRIDE ALGORITHM CONFIG DEFAULT VALUES WITH SPECIFIC HPARAMS
+    #rollout_fragment_length: 50
+    #train_batch_size: 512
+    num_workers: 32
+    #num_gpus: 1
+    #lr: 0.0005
+    

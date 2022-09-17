@@ -1,0 +1,27 @@
+# evaluate during training
+evaluation_interval: 1 # after this many training iterations, run an evaluation
+evaluation_duration_unit: episodes
+evaluation_duration: 3 # run this number of evaluation episodes
+evaluation_num_workers: 3 # use this many parallel workers to perform evaluation episodes
+evaluation_parallel_to_training: True # run evaluation envs on parallel thread whilst training
+#always_attach_evaluation_results: True # useful if want to have access to evaluation results all the time
+always_attach_evaluation_results: False # useful if want to have access to evaluation results all the time
+keep_per_episode_custom_metrics: False # store raw custom metrics without calculating max, min, mean
+# define validator/evaluation loop (will use same setup as train config above but with following overrides)
+evaluation_config:
+    # overwrite any train env config values you want to be different at test time
+    seed: null # will automatically be overwritten with experiment.test_seed
+    explore: False
+    env_config:
+        jobs_config:
+            shuffle_files: True
+            max_acceptable_job_completion_time_frac_dist:
+                _target_: ddls.distributions.probability_mass_function.ProbabilityMassFunction
+                probability_mass_function:
+                    0.25: 0.25
+                    0.50: 0.25
+                    0.75: 0.25
+                    1.00: 0.25
+    #num_workers: 1 # num parallel cpu workers
+    #num_gpus: 1 # num gpus available for RLlib
+custom_eval_function: ddls.environments.ramp_cluster.utils.custom_eval_function

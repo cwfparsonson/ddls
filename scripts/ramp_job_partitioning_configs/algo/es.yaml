@@ -1,0 +1,36 @@
+path_to_rllib_trainer_cls: ray.rllib.agents.es.ESTrainer
+
+model:
+    # overwrite default model config as desired
+    fcnet_hiddens:
+        # must == action_space.n
+        - 17
+    custom_model_config:
+        apply_action_mask: True
+
+# ARS will use Algorithm's evaluation WorkerSet (if evaluation_interval > 0).
+# Therefore, we must be careful not to use more than 1 env per eval worker
+# (would break ARSPolicy's compute_single_action method) and to not do
+# obs-filtering.
+#self.evaluation_config["num_envs_per_worker"] = 1
+#self.evaluation_config["observation_filter"] = "NoFilter"
+eval_config:
+    evaluation_config:
+        observation_filter: NoFilter
+        num_envs_per_worker: 1
+
+algo_config:
+    # ES specific settings:
+    action_noise_std: 0.01
+    l2_coeff: 0.005
+    noise_stdev: 0.02
+    episodes_per_batch: 1000
+    eval_prob: 0.03
+    stepsize: 0.01
+    noise_size: 250000000
+    report_length: 10
+
+    # Override some of AlgorithmConfig's default values with ES-specific values.
+    #train_batch_size: 10000
+    num_workers: 10
+    observation_filter: MeanStdFilter

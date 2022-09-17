@@ -66,7 +66,7 @@ class GNNPolicy(TorchModelV2, nn.Module):
                 policy will output action_space.n logits; one logit for each possible
                 discrete action. Can then mask appropriately.
         '''
-
+        # num_outputs = action_space.n # HACK
         nn.Module.__init__(self)
         super(GNNPolicy, self).__init__(
             obs_space,
@@ -75,6 +75,7 @@ class GNNPolicy(TorchModelV2, nn.Module):
             model_config,
             name
         )
+
         
         self.config = model_config['custom_model_config']
         
@@ -98,20 +99,26 @@ class GNNPolicy(TorchModelV2, nn.Module):
                 ])
         self.graph_module = torch.nn.Sequential(*graph_module)
 
-        # init a logits module which will generate logits (i.e. outputs for each possible action in a gym environment) using the concatenated node- and graph-level embeddings
-        if self.config['action_space_type'] == 'continuous':
-            num_logits = 2 * action_space.n
-        elif self.config['action_space_type'] == 'discrete':
-            num_logits = action_space.n
-        else:
-            raise Exception(f'Unrecognised model_config action_space_type {self.config["action_space_type"]}.')
+        # # init a logits module which will generate logits (i.e. outputs for each possible action in a gym environment) using the concatenated node- and graph-level embeddings
+        # if self.config['action_space_type'] == 'continuous':
+            # num_logits = 2 * action_space.n
+        # elif self.config['action_space_type'] == 'discrete':
+            # num_logits = action_space.n
+        # else:
+            # raise Exception(f'Unrecognised model_config action_space_type {self.config["action_space_type"]}.')
         self.logit_module = FC(
             Box(-1,1,shape=(self.config['out_features_graph']+self.config['out_features_node'],)),
             action_space,
-            num_logits,
+            # num_logits,
+            num_outputs, # NEW HACK
             model_config,
             name + "_logits"
         )
+        # print(f'action_space: {action_space.n} | num_logits: {num_logits} | logit_module: {self.logit_module}') # DEBUG
+        # print(f'obs_space: {obs_space}')
+        # print(f'action_space: {action_space}')
+        # print(f'num_outputs: {num_outputs}')
+
 
         self.initialising = True
         self.initialised = False
@@ -249,7 +256,9 @@ class GNNPolicy(TorchModelV2, nn.Module):
             'obs': final_emb
         })
 
-        if self.config['action_space_type'] == 'discrete':
+        # TEMP DEBUG TODO: Commented below while debugging DQN
+        # if self.config['action_space_type'] == 'discrete':
+        if self.config['apply_action_mask']:
             # apply action masking; use inf action mask where invalid actioins have the smallest possible float value (so that will be 0 when RLLib applies softmax over logits and therefore will never be sampled) and 0 otherwise (so logit values will be unchanged)
             inf_mask = torch.maximum(
                                      torch.log(input_dict['obs']['action_mask']).to(device), 
@@ -261,3 +270,10 @@ class GNNPolicy(TorchModelV2, nn.Module):
 
     def value_function(self):
         return self.logit_module.value_function()
+
+    def get_q_values(self, *args, **kwargs):
+        raise Exception(f'CALLING get_q_values IN GNN POLICY')
+
+    def get_q_value_distributions(self, *args, **kwargs):
+        raise Exception(f'CALLING get_q_value_distributions IN GNN POLICY')
+

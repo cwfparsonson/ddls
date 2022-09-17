@@ -71,7 +71,7 @@ if __name__ == '__main__':
             if realtime_output == '' and process.poll() is not None:
                 break
             if realtime_output:
-                # print(f'realtime_output: {realtime_output}')
+                print(f'realtime_output: {realtime_output}') # DEBUG
                 if 'Run sweep agent with' in realtime_output.strip():
                     run_sweep_cmd = str(realtime_output.strip()).split('with: ')[-1]
                 elif 'View sweep at' in realtime_output.strip():
