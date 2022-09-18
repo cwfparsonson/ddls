@@ -22,7 +22,8 @@ algo_config:
                          #if self.replay_proportion > 0 else 0.0)
     replay_buffer_num_slots: 0
     learner_queue_size: 16
-    learner_queue_timeout: 300
+    #learner_queue_timeout: 300
+    learner_queue_timeout: 600
     max_requests_in_flight_per_sampler_worker: 2
     max_requests_in_flight_per_aggregator_worker: 2
     timeout_s_sampler_manager: 0.0
@@ -43,11 +44,12 @@ algo_config:
     after_train_step: null
 
     #train_batch_size: 50
+    num_workers: 32
 
     ## OVERRIDE ALGORITHM CONFIG DEFAULT VALUES WITH SPECIFIC HPARAMS
     #rollout_fragment_length: 50
     #train_batch_size: 500
-    num_workers: 2
+    #num_workers: 2
     #num_gpus: 1
     #lr: 0.0005
     #min_time_s_per_iteration: 10

@@ -6,8 +6,8 @@ defaults:
     - eval_config: default
     - model: gnn
     #- algo: apex_dqn
-    - algo: impala
-    #- algo: ppo
+    #- algo: impala
+    - algo: ppo
     #- algo: pg
     #- algo: es
     

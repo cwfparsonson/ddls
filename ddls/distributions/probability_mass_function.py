@@ -16,7 +16,7 @@ class ProbabilityMassFunction(Distribution):
         '''
         self.probability_mass_function = probability_mass_function
 
-        self.random_var_values = np.array(list(self.probability_mass_function.keys()))
+        self.random_var_vals = np.array(list(self.probability_mass_function.keys()))
         self.random_var_probs = np.array(list(self.probability_mass_function.values()))
 
         if np.sum(self.random_var_probs) != 1:
@@ -26,7 +26,7 @@ class ProbabilityMassFunction(Distribution):
                size: Union[None, int, tuple[int, ...]] = None,
                replace: bool = True):
         return np.random.choice(
-                        self.random_var_values,
+                        self.random_var_vals,
                         p=self.random_var_probs,
                         size=size,
                         replace=replace
