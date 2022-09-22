@@ -73,14 +73,23 @@ eval_loop:
                 _target_: ddls.distributions.fixed.Fixed
                 val: 1000
             max_acceptable_job_completion_time_frac_dist:
-                _target_: ddls.distributions.fixed.Fixed
-                val: 1
+                #_target_: ddls.distributions.fixed.Fixed
+                #val: 1
                 #_target_: ddls.distributions.probability_mass_function.ProbabilityMassFunction
                 #probability_mass_function:
                     #0.25: 0.25
                     #0.50: 0.25
                     #0.75: 0.25
                     #1.00: 0.25
+                _target_: ddls.distributions.uniform.Uniform
+                min_val: 0.1
+                max_val: 1
+                decimals: 2
+                #_target_: ddls.distributions.custom_skew_norm.CustomSkewNorm
+                #skewness: 5
+                #min_val: 0.1
+                #max_val: 1
+                #decimals: 2
 
             #job_sampling_mode: remove
             job_sampling_mode: remove_and_repeat
@@ -91,7 +100,8 @@ eval_loop:
 
         #max_simulation_run_time: null
         #max_simulation_run_time: 10000
-        max_simulation_run_time: 1000000
+        #max_simulation_run_time: 1e6
+        max_simulation_run_time: 2e5
 
         # CHANGE
         #max_partitions_per_op: null
@@ -158,6 +168,8 @@ eval_loop:
         # CHANGE
         pad_obs_kwargs:
             max_nodes: 150
+
+        apply_action_mask: True
 
     # CHANGE
     actor:

@@ -85,7 +85,6 @@ class Job:
         self.max_acceptable_job_completion_time_frac = max_acceptable_job_completion_time_frac
         self.training_step_counter = 0
 
-
         if job_id is None:
             self._job_id = copy.copy(id(self))
             # if original_job is None:
@@ -113,12 +112,13 @@ class Job:
         else:
             # self.original_job = copy.deepcopy(original_job)
             self.original_job = original_job
+        # self.update_job_original_job_mutable_shared_params()
 
         # ensure job id and job idx are consistent with provided original job
-        self._check_job_id_job_idx_valid()
+        self._check_job_original_job_valid()
 
 
-    def _check_job_id_job_idx_valid(self):
+    def _check_job_original_job_valid(self):
         if self.original_job.job_id != self.job_id:
             # self.original_job.job_id = copy.copy(self.job_id)
             raise Exception(f'Original job ID ({self.original_job.job_id}) different from job ID of job being updated ({self.job_id}). Set the original job job ID to {self.job_id} with job.original_job.job_id={self.job_id} updating this job with job ID {self.job_id}.')
@@ -126,6 +126,11 @@ class Job:
             if self.original_job.details['job_idx'] != self.details['job_idx']:
                 # self.original_job.details['job_idx'] = copy.copy(self.details['job_idx'])
                 raise Exception(f'Original job idx ({self.original_job.details["job_idx"]}) different from job idx of job being instantiated ({self.details["job_idx"]}). Set the original job job idx to {self.details["job_idx"]} with job.original_job.details["job_idx"]={self.details["job_idx"]} updating this job with job idx {self.details["job_idx"]}.')
+        # for device_type in self.details['job_sequential_completion_time'].keys():
+            # if self.details['max_acceptable_job_completion_time'][device_type] != self.original_job.details['max_acceptable_job_completion_time'][device_type]:
+                # raise Exception(f'Job has max_acceptable_job_completion_time ({self.details["max_acceptable_job_completion_time"][device_type]}) != original_job max_acceptable_job_completion_time ({self.original_job.details["max_acceptable_job_completion_time"][device_type]})')
+        # if self.max_acceptable_job_completion_time_frac != self.original_job.max_acceptable_job_completion_time_frac:
+            # raise Exception(f'Job has max_acceptable_job_completion_time_frac ({self.max_acceptable_job_completion_time_frac}) != original_job max_acceptable_job_completion_time_frac ({self.original_job.max_acceptable_job_completion_time_frac})')
 
     @property
     def job_id(self):
@@ -169,6 +174,20 @@ class Job:
 
         return details
 
+    # def update_job_original_job_mutable_shared_params(self):
+        # '''
+        # Ovewrites any job params and details details which are shared between the job and its original job,
+        # but which can change between instances of the same job type (e.g. the
+        # job_sequential_completion_time is the same for all job types, but since
+        # max_acceptable_job_completion_time_frac can change between job instances
+        # of the same job type, max_acceptable_job_completion_time can be different, so
+        # need to make sure original job has same params as job)
+        # '''
+        # self.details['max_acceptable_job_completion_time'] = defaultdict(lambda: 0)
+        # # self.original_job.details['max_acceptable_job_completion_time'] = defaultdict(lambda: 0)
+        # for device_type, jct in self.details['job_sequential_completion_time'].items():
+            # self.details['max_acceptable_job_completion_time'][device_type] = self.max_acceptable_job_completion_time_frac * jct
+            # # self.original_job.details['max_acceptable_job_completion_time'][device_type] = self.max_acceptable_job_completion_time_frac * jct
 
     def _init_job_immutable_details(self):
         '''
@@ -185,12 +204,8 @@ class Job:
         details['max_compute_node'], details['max_compute_cost'], details['max_memory_node'], details['max_memory_cost'], details['max_throughput_node'], details['max_node_throughput'], details['max_depth_node'], details['max_depth'], details['node_to_depth'] = self.get_max_node_details()
         details['max_dep_size_dep'], details['max_dep_size'] = self.get_max_edge_details()
         details['job_sequential_completion_time'] = self.get_job_sequential_completion_time()
-        details['max_acceptable_job_completion_time'] = defaultdict(lambda: 0)
-        for device_type, jct in details['job_sequential_completion_time'].items():
-            details['max_acceptable_job_completion_time'][device_type] = self.max_acceptable_job_completion_time_frac * jct
         details['job_total_op_memory_cost'] = self.get_job_total_memory_cost()
         details['job_total_dep_size'] = self.get_job_total_dep_size()
-
 
         # details.update(self.details)
 
@@ -355,11 +370,16 @@ class Job:
         init_job_mutable_details = self._init_job_mutable_details()
         self.details.update(init_job_mutable_details)
 
+        self.details['max_acceptable_job_completion_time'] = defaultdict(lambda: 0)
+        for device_type, jct in self.details['job_sequential_completion_time'].items():
+            self.details['max_acceptable_job_completion_time'][device_type] = self.max_acceptable_job_completion_time_frac * jct
+
         # overwrite any details with those provided
         self.details.update(details)
 
         if hasattr(self, 'original_job'):
-            self._check_job_id_job_idx_valid()
+            # self.update_job_original_job_mutable_shared_params()
+            self._check_job_original_job_valid()
         else:
             # have not registered original job yet (reset_job() being called from __init__()), do not check consistency yet
             pass
@@ -387,7 +407,7 @@ class Job:
         self.details['job_idx'] = copy.copy(job_idx)
         self.original_job.details['job_idx'] = copy.copy(job_idx)
 
-        self._check_job_id_job_idx_valid()
+        self._check_job_original_job_valid()
 
     def register_job_running(self,
                              time_started: Union[int, float]):
@@ -562,6 +582,9 @@ class Job:
         descr += f' | # training steps: {self.num_training_steps}'
         descr += f' | Total op mem cost: {self.job_total_operation_memory_cost}'
         descr += f' | Total dep size: {self.job_total_dependency_size}'
+        descr += f' | Job sequential completion time: {self.details["job_sequential_completion_time"]}'
+        descr += f' | Max acceptable job completion time frac: {self.max_acceptable_job_completion_time_frac}'
+        descr += f' | Max acceptable job completion time: {self.details["max_acceptable_job_completion_time"]}'
         return descr
     
     def render(self, scaling_factor=3, title='computation_graph', show_fig=True, verbose=False):

@@ -38,5 +38,5 @@ class Uniform(Distribution):
     def __str__(self):
         descr = f'Distribution type: {type(self)}'
         descr += f' | min_val: {self.min_val} | max_val: {self.max_val}'
-        descr += f' | interval: {self.interval} | decimals: {self.decimals}'
+        descr += f' | decimals: {self.decimals}'
         return descr

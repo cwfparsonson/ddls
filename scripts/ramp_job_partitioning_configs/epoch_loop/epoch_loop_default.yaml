@@ -10,8 +10,11 @@ path_to_env_cls: ddls.environments.ramp_job_partitioning.ramp_job_partitioning_e
 # define string path to the rllib trainer you want to use
 path_to_rllib_trainer_cls: null # will automatically be overitten by defaults.algo.path_to_rllib_trainer_cls
 
-#path_to_validator_cls: ddls.loops.rllib_eval_loop.RLlibEvalLoop
-test_time_checkpoint_path: /scratch/datasets/ddls/sims/ramp_job_partitioning/ramp_job_partitioning_1/checkpoints/checkpoint_000002/checkpoint-2 # USE FOR TESTING SPECIFIC CHECKPOINT (is ignored during training)
+# init vars which are only used by test_rllib_from_config.py (i.e. not used at all during training)
+path_to_validator_cls: ddls.loops.rllib_eval_loop.RLlibEvalLoop 
+#test_time_checkpoint_path: /scratch/datasets/ddls/sims/ramp_job_partitioning/ramp_job_partitioning_1/checkpoints/checkpoint_000002/checkpoint-2 # USE FOR TESTING SPECIFIC CHECKPOINT (is ignored during training)
+#test_time_checkpoint_path: /scratch/datasets/ddls/sims/ramp_job_partitioning/ramp_job_partitioning_1493/checkpoints/checkpoint_000093/checkpoint-93
+test_time_checkpoint_path: /scratch/datasets/ddls/sims/ramp_job_partitioning/ramp_job_partitioning_1579/checkpoints/checkpoint_000038/checkpoint-38
 
 metric: evaluation/episode_reward_mean
 metric_goal: maximise
@@ -50,6 +53,7 @@ rllib_config:
 
     
     ##### ALGORITHM DEFAULT CONFIG #####
+    # For batch_mode and rollout_fragment_length overview, see https://docs.ray.io/en/master/rllib/rllib-sample-collection.html
     # these hparams exist for all RLlib algorithms, but can be overwritten in defaults.algo.algo_config
     lr: 0.0001
     #gamma: 0.9
@@ -57,7 +61,7 @@ rllib_config:
     batch_mode: complete_episodes
 
     train_batch_size: 200
-    rollout_fragment_length: 50
+    rollout_fragment_length: 50 # ignored if batch_mode = complete_episodes
 
     #train_batch_size: 200
     #rollout_fragment_length: 200

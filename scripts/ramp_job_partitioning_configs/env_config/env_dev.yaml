@@ -67,7 +67,8 @@ jobs_config:
 #max_simulation_run_time: null
 #max_simulation_run_time: 1000
 #max_simulation_run_time: 10000
-max_simulation_run_time: 1000000
+#max_simulation_run_time: 1e6
+max_simulation_run_time: 2e5
     
 #max_partitions_per_op: null
 #max_partitions_per_op: 2

@@ -44,6 +44,10 @@ class CustomSkewNorm(Distribution):
             verbose: If True, will plot and display graphs for each stage of the data 
                 maniuplation when constructing the custom skew norm distribution.
         '''
+        self.min_val, self.max_val = min_val, max_val
+        self.decimals = decimals
+        self.skewness = skewness
+        self.cutoff_mode = cutoff_mode
         
         # initialise random var values sampled from a continuous skewed distribution
         if decimals > 0:
@@ -109,3 +113,11 @@ class CustomSkewNorm(Distribution):
                             size=size,
                             replace=replace,
                             )
+
+    def __str__(self):
+        descr = f'Distribution type: {type(self)}'
+        descr += f' | min_val: {self.min_val} | max_val: {self.max_val}'
+        descr += f' | decimals: {self.decimals}'
+        descr += f' | skewness: {self.skewness}'
+        descr += f' | cutoff_mode: {self.cutoff_mode}'
+        return descr

@@ -91,6 +91,11 @@ def custom_eval_function(algorithm, eval_workers):
 
     ray.get([w.sample.remote() for w in eval_workers.remote_workers()])
 
+    # # DEBUG TODO TEMP
+    # workers = eval_workers.remote_workers()
+    # for worker in workers:
+        # worker.foreach_env.remote(lambda env: print(f'worker {worker} env cluster jobs_generator max_acceptable_job_completion_time_frac_dist: {env.cluster.jobs_generator.max_acceptable_job_completion_time_frac_dist}'))
+
     # Collect the accumulated episodes on the workers, and then summarize the
     # episode stats into a metrics dict.
     episodes, _ = collect_episodes(

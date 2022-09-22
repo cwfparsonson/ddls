@@ -48,8 +48,8 @@ def run(cfg: DictConfig):
     if 'wandb' in cfg:
         if cfg.wandb is not None:
             import wandb
-            wandb.init(**cfg.wandb.init)
-            wandb.confg = cfg
+            hparams = OmegaConf.to_container(cfg)
+            wandb.init(config=hparams, **cfg.wandb.init)
         else:
             wandb = None
     else:

@@ -5,15 +5,19 @@ import numpy as np
 
 import copy
 
+from decimal import Decimal
+
 class RLlibEvalLoop:
     def __init__(self,
                  path_to_rllib_trainer_cls: str,
                  path_to_env_cls: str,
                  rllib_config: dict,
+                 wandb=None,
                  **kwargs):
         self.rllib_config = rllib_config
         self.actor = get_class_from_path(path_to_rllib_trainer_cls)(config=self.rllib_config)
         self.env = get_class_from_path(path_to_env_cls)(**self.rllib_config['env_config'])
+        self.wandb = wandb
 
     def run(self,
             checkpoint_path: str,
@@ -32,11 +36,13 @@ class RLlibEvalLoop:
         prev_idx = 0
         step_counter = 1
         while not done:
+            start_step_mounted_workers = len(self.env.cluster.mounted_workers)
+            job_to_place = list(self.env.cluster.job_queue.jobs.values())[0] # assume event-driven where only ever have one job to queue. Use job_to_place for useful info for heuristics
             action = self.actor.compute_single_action(obs) 
             obs, reward, done, info = self.env.step(action)
 
             if verbose:
-                print(f'Step {step_counter} | Action: {action} | Reward: {reward:.3f} | Jobs arrived: {self.env.cluster.num_jobs_arrived} | Jobs running: {len(self.env.cluster.jobs_running)} | Jobs completed: {len(self.env.cluster.jobs_completed)} | Jobs blocked: {len(self.env.cluster.jobs_blocked)}')
+                print(f'Step {step_counter} | Action: {action} | Reward: {reward:.8f} | Jobs arrived: {self.env.cluster.num_jobs_arrived} | Jobs running: {len(self.env.cluster.jobs_running)} | Jobs completed: {len(self.env.cluster.jobs_completed)} | Jobs blocked: {len(self.env.cluster.jobs_blocked)} | Start->end of step mounted workers: {start_step_mounted_workers}->{len(self.env.cluster.mounted_workers)} | Stopwatch: {Decimal(float(self.env.cluster.stopwatch.time())):.3E}')
 
             results['step_stats']['action'].append(action)
             results['step_stats']['reward'].append(reward)
@@ -106,6 +112,15 @@ class RLlibEvalLoop:
                 results['episode_stats'][key] = val
         # print(f'\nstep stats: {results["step_stats"]}')
         # print(f'\nepisode stats: {results["episode_stats"]}\n')
+
+        if self.wandb is not None:
+            wandb_log = {}
+            for log_name, log in results.items():
+                for key, val in log.items():
+                    # record average of stat for validation run
+                    # print(f'key: {key} | val: {val}')
+                    wandb_log[f'valid/{log_name}/{key}'] = np.mean(val)
+            self.wandb.log(wandb_log)
 
         return results
 

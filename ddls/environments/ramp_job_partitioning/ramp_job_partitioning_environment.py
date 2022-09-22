@@ -416,7 +416,7 @@ class RampJobPartitioningEnvironment(gym.Env):
         self.step_counter += 1
 
         # # DEBUG
-        # if self.step_counter == 2:
+        # if self.step_counter == 3:
             # raise Exception()
 
         return self.obs, self.reward, self.done, self.info

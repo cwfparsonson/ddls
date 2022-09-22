@@ -13,31 +13,44 @@ model:
         False
 
 algo_config:
+    batch_mode: truncate_episodes
+
     # SPECIFIC HPARAMS
     lr_schedule: null
     use_critic: True
     use_gae: True
     #lambda_: 1.0
-    kl_coeff: 0.2
-    num_sgd_iter: 30
+    kl_coeff: 0.2 # beta
+    num_sgd_iter: 30 # number of times to use sampled experiences to update NN
     shuffle_sequences: True
-    vf_loss_coeff: 1.0
-    entropy_coeff: 0.0
+    vf_loss_coeff: 1.0 # c1
+    entropy_coeff: 0.0 # c2
     entropy_coeff_schedule: null
-    clip_param: 0.3
+    clip_param: 0.3 # clipping parameter epsilon
     vf_clip_param: 10.0
     grad_clip: null
-    kl_target: 0.01
+    kl_target: 0.01 # dtarg
 
     # need sgd_minibatch_size <= train_batch_size
     #sgd_minibatch_size: 32
     #sgd_minibatch_size: 4
     #sgd_minibatch_size: 1
     
-    num_workers: 2
+    #num_workers: 2
+    num_workers: 8
 
     ## OVERRIDE ALGORITHM CONFIG DEFAULT VALUES WITH SPECIFIC HPARAMS
     sgd_minibatch_size: 128
-    #rollout_fragment_length: 200
-    #train_batch_size: 4000
+    rollout_fragment_length: 200
+    train_batch_size: 4000
     #lr: 0.00005
+    
+
+    # PPO HPARAM INFO
+    #PPO takes a train batch (of size train_batch_size) and chunks it down into
+    #n sgd_minibatch_size sized pieces. E.g. if train_batch_size=1000 and
+    #sgd_minibatch_size=100, then we create 10 “sub-sampling” pieces out of the
+    #train batch.  num_sgd_iter: The above sub-sampling pieces are then fed
+    #num_sgd_iter times to the NN for updating. So in the above example and if
+    #num_sgd_iter=30, we do 30 x 10 updates altogether on one single train
+    #batch.

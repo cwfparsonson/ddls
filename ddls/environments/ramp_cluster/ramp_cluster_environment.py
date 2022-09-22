@@ -346,6 +346,7 @@ class RampClusterEnvironment:
         job_idx = copy.copy(self.num_jobs_arrived)
         job.original_job.job_id = job.job_id
         job.original_job.details['job_idx'] = job_idx
+        # job.original_job.update_job_original_job_mutable_shared_params(job)
         job.register_job_arrived(time_arrived=self.stopwatch.time(), 
                                  job_idx=job_idx,
                                  )
@@ -753,12 +754,13 @@ class RampClusterEnvironment:
         # TODO HACK TEMP: Assume all workers have same device_type
         device_type = list(self.topology.graph.graph['worker_types'])[0]
 
+        # print(f'DEBUG job {job} lookahead completed with lookahead time {tmp_stopwatch.time() * job.num_training_steps}')
         if tmp_stopwatch.time() * job.num_training_steps > job.details['max_acceptable_job_completion_time'][device_type]:
             # maximum acceptable job completion time requirement not met, job blocked
             if verbose:
                 print(f'Job completion time ({tmp_stopwatch.time() * job.num_training_steps}) exceeds maximum acceptable job completion time ({job.details["max_acceptable_job_completion_time"]}), job blocked.')
             # register stats of original job with job blocked stats
-            # print(f'blocking original job with job_id {job.original_job.job_id} job_id {job.original_job.details["job_idx"]}') # TEMP DEBUG
+            # print(f'DEBUG registering job {job} blocked due to lookahead_job_completion_time ({tmp_stopwatch.time() * job.num_training_steps}) exceeding max_acceptable_job_completion_time ({job.details["max_acceptable_job_completion_time"][device_type]})')
             self._register_blocked_job(job.original_job)
             # remove partitioned job from workers, channels, queue, etc. where necessary
             # print(f'removing job with job_id {job.job_id} job_id {job.details["job_idx"]}') # TEMP DEBUG
@@ -853,6 +855,7 @@ class RampClusterEnvironment:
         # register any blocked jobs (jobs which were in queue at last step but not handled by action)
         for job_id, job in self.job_queue.jobs.items():
             if job_id not in action.job_ids:
+                # print(f'DEBUG registering job {job} blocked due to not being handled by all components in Action')
                 self._register_blocked_job(job)
                 if verbose:
                     print(f'Job with job_idx {job.details["job_idx"]} was blocked.')
@@ -969,6 +972,7 @@ class RampClusterEnvironment:
                     if self.job_queue.can_fit(next_job):
                         self.job_queue.add(next_job)
                     else:
+                        # print(f'DEBUG registering job {next_job} blocked due to cannot fit inside queue')
                         self._register_blocked_job(next_job)
                     step_done = True
                 else:
@@ -1044,6 +1048,7 @@ class RampClusterEnvironment:
                 blocked_jobs.append(job)
             for job in blocked_jobs:
                 # register the original job as having been blocked
+                # print(f'DEBUG registering job {job} blocked due to sim being done')
                 self._register_blocked_job(job.original_job)
                 # remove partitioned job from workers, channels, queue, etc. where necessary
                 self._remove_job_from_cluster(job)

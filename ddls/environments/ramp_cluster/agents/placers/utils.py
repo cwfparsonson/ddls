@@ -506,7 +506,7 @@ def get_block_shapes(pairs,meta_block_shape):
         for pair in pairs:
             var = math.sqrt(pair[0])
             if VERBOSE:
-                print(f'Checking pair {pair} with var {var}')
+                print(f'\tChecking pair {pair} with var {var}')
             if (var % 1 == 0) and (var <= meta_block_shape[0] and var <= meta_block_shape[1] and pair[1] <= meta_block_shape[2]):
                 blocks.append((int(var), int(var), pair[1]))
                 if VERBOSE:

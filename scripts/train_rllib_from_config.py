@@ -78,9 +78,6 @@ def run(cfg: DictConfig):
         if 'rllib_config' in cfg.epoch_loop:
             # must seed rllib separately in config
             cfg.epoch_loop.rllib_config.seed = cfg.experiment.train_seed
-            if 'test_seed' in cfg.experiment:
-                # cfg.epoch_loop.validator_rllib_config.seed = cfg.experiment.test_seed
-                cfg.epoch_loop.rllib_config.evaluation_config.seed = cfg.experiment.test_seed
 
     # create dir for saving data
     save_dir = gen_unique_experiment_folder(path_to_save=cfg.experiment.path_to_save, experiment_name=cfg.experiment.name)

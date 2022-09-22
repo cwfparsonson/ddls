@@ -139,6 +139,7 @@ class JobsGenerator:
                     # set model name as .txt's file name
                     model = graph.graph['file_path'].split('/')[-1].replace('.txt', '')
                 details = {'model': model}
+                max_acceptable_job_completion_time_frac = self.max_acceptable_job_completion_time_frac_dist.sample()
                 if self.job_model_to_init_details[model]['original_job'] is not None:
                     # update job ID of original job to be consistent with job about to be instantiated
                     original_job = copy.copy(self.job_model_to_init_details[model]['original_job']) # do shallow copy so that job id and job idx attrs of other jobs' original job idx and ids not mutated when setting this job's original job idx and id
@@ -148,7 +149,7 @@ class JobsGenerator:
                     original_job = None
                 job = Job(computation_graph=graph,
                           num_training_steps=num_training_steps,
-                          max_acceptable_job_completion_time_frac=self.max_acceptable_job_completion_time_frac_dist.sample(),
+                          max_acceptable_job_completion_time_frac=max_acceptable_job_completion_time_frac,
                           details=details,
                           job_id=copy.copy(i),
                           # original_job=self.job_model_to_init_details[model]['original_job'],
