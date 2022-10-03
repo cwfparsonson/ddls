@@ -44,10 +44,10 @@ class OpPartition:
 
             # get init job details from cluster to avoid having to repeat computations if already computed for same model and max num partitions in the past
             model, max_num_partitions = job.details['model'], self.job_id_to_max_partition_degree[job_id]
-            partitioned_computation_graph = cluster.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['partitioned_computation_graph']
-            job_total_operation_memory_cost = cluster.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['job_total_operation_memory_cost']
-            job_total_dependency_size = cluster.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['job_total_dependency_size']
-            init_job_immutable_details = cluster.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['init_job_immutable_details']
+            partitioned_computation_graph = cluster.job_model_to_max_num_partitions_to_init_details[model][max_num_partitions]['partitioned_computation_graph']
+            job_total_operation_memory_cost = cluster.job_model_to_max_num_partitions_to_init_details[model][max_num_partitions]['job_total_operation_memory_cost']
+            job_total_dependency_size = cluster.job_model_to_max_num_partitions_to_init_details[model][max_num_partitions]['job_total_dependency_size']
+            init_job_immutable_details = cluster.job_model_to_max_num_partitions_to_init_details[model][max_num_partitions]['init_job_immutable_details']
 
             if partitioned_computation_graph is None:
                 # not yet partitioned computation graph for this model and max partition degree, need to get partitioned computation graph

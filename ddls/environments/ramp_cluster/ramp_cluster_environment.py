@@ -264,9 +264,15 @@ class RampClusterEnvironment:
 
         self.action = None
 
-        self.job_model_to_max_num_partitons_to_init_details = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: None)))
+        self.job_model_to_max_num_partitions_to_init_details = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: None)))
         if not self.suppress_warnings:
-            print(f'WARNING: Cluster simulator is using the job_model_to_max_num_partitons_to_init_details param, which retains a map of model -> max num partitions -> details. This is only valid if the init details of a job are the same for the same original model and max num partitons. If this changes (e.g. if split ops a different number of times even though graph has same max partition degree, or if vary the min op run time quantum and therefore effectively split ops different number of times for same max partition degree), then this will no longer work and lead to bugs. Added this in to save time when performing job.reset_job() when partitioning etc., but should re-do if do not want this functionality. This functionality is used in OpPartition, RampClusterEnvironment, and JobsGenerator. Set suppress_warnings=True to supress this warning.')
+            print(f'WARNING: Cluster simulator is using the job_model_to_max_num_partitions_to_init_details param, which retains a map of model -> max num partitions -> details. This is only valid if the init details of a job are the same for the same original model and max num partitions. If this changes (e.g. if split ops a different number of times even though graph has same max partition degree, or if vary the min op run time quantum and therefore effectively split ops different number of times for same max partition degree, or if vary num_training_steps for a given job model), then this will no longer work and lead to bugs. Added this in to save time when performing job.reset_job() when partitioning etc., but should re-do if do not want this functionality. This functionality is used in OpPartition, RampClusterEnvironment, and JobsGenerator. Set suppress_warnings=True to supress this warning.')
+        self.job_model_to_max_num_partitions_to_lookahead_job_completion_time = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: None)))
+        self.job_model_to_max_num_partitions_to_communication_overhead_time = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: None)))
+        self.job_model_to_max_num_partitions_to_computation_overhead_time = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: None)))
+        self.job_model_to_max_num_partitions_to_tick_counter_to_active_workers_tick_size = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: None)))
+        if not self.suppress_warnings:
+            print(f'WARNING: Cluster simulator is using the job_model_to_max_num_partiton_to_lookahead_job_completion_time, job_model_to_max_num_partitions_to_communication_overhead_time, job_model_to_max_num_partitions_to_computation_overhead_time, and job_model_to_max_num_partitions_to_tick_counter_to_active_workers_tick_size params, which retains a map of model -> max num partitions -> lookahead_job_completion_time. This is only valid if the lookahead_job_completion_time of a job are the same for the same original model and max num partitions. If this changes (e.g. if split ops a different number of times even though graph has same max partition degree, or if vary the min op run time quantum and therefore effectively split ops different number of times for same max partition degree, or if vary num_training_steps for a given job model, or if change operation and/or scheduling order between placements), then this will no longer work and lead to bugs. Added this in to save time when performing completion time lookaheads when partitioning, but should re-do if do not want this functionality. This functionality is used in RampClusterEnvironment. Set suppress_warnings=True to supress this warning.')
 
         # add first job to queue
         self.time_next_job_to_arrive = 0
@@ -368,6 +374,96 @@ class RampClusterEnvironment:
         # print(f'next job arrived with job id {job.job_id} job_idx {job.details["job_idx"]}\njob_id_to_job_idx: {self.job_id_to_job_idx}') # DEBUG
         return job
 
+    def _run_lookahead(self,
+                       job_id,
+                       parallel_get_highest_priority_job_op=False,
+                       verbose=False):
+        job_idx = self.job_id_to_job_idx[job_id]
+        job = self.jobs_running[job_idx]
+
+        tmp_stopwatch = Stopwatch()
+        tmp_stopwatch.reset()
+        # do internal lookahead simulation until job is completed
+        lookahead_tick_counter = 1
+        tick_counter_to_active_workers_tick_size = defaultdict(list) # e.g. tick_counter_to_active_workers_tick_size = {1: [3, 25], 2: [2, 25]} means at tick 1, 3 workers were active for 25 time units; at tick 2, 2 workers were active for 25 time units
+        # tick_counter_to_active_channels_tick_size = defaultdict(list)
+        while True:
+            # run step tick until an op and/or a dep is completed
+            if verbose:
+                print('-'*80)
+                print(f'Performing lookahead tick {lookahead_tick_counter}. Temporary stopwatch time at start of tick: {tmp_stopwatch.time()}')
+
+            # initialise trackers for this tick
+            tick_counter_to_active_workers_tick_size[lookahead_tick_counter] = [0, 0]
+
+            # 1. COMPUTATION
+            # i) find the highest priority op on each worker for this job
+            worker_to_priority_job_op = self._get_worker_to_priority_job_op(job, parallel_get_highest_priority_job_op=parallel_get_highest_priority_job_op)
+            # ii) find the shortest remaining run time of each highest proprity op on all workers for this job
+            shortest_remaining_run_time = self._get_shortest_remaining_run_time_of_priority_job_ops(job, worker_to_priority_job_op)
+
+            # NON-FLOW DEPENDENCIES
+            # find any ready deps which never became flows and therefore have 0 run time
+            non_flow_deps = self.gather_job_ready_non_flow_deps(job)
+
+            # 2. COMMUNICATION
+            if len(non_flow_deps) == 0:
+                # no non-flow deps to tick -> need to consider communication this tick
+                # i) find highest priority flow on each channel for this job
+                priority_job_deps, channel_to_priority_job_dep, priority_job_dep_to_priority, priority_job_dep_to_channels = self._get_channel_to_priority_job_dep(job)
+                # ii) find any highest priority flows contending for same channel(s) -> only use highest priority flows
+                channel_to_priority_job_dep, priority_job_dep_to_priority, priority_job_dep_to_channels = self._resolve_contending_channels(priority_job_deps, channel_to_priority_job_dep, priority_job_dep_to_priority, priority_job_dep_to_channels)
+                # iii) find the shortest remaining communication time of each remaining highest priority dep on all channels for this job
+                shortest_remaining_communication_time = self._get_shortest_remaining_communication_time_of_priority_job_deps(job, channel_to_priority_job_dep)
+            else:
+                # have non-flow dependencies to tick which have 0 communication overhead -> no need to consider communication this tick
+                shortest_remaining_communication_time = 0
+
+            # 3. PERFORM TICK: Tick highest priority mounted ready ops and deps on each worker and channel and record any ops or deps which are completed
+            # tick ops and/or deps by lowest common denominator time left to completion
+            tick = min(shortest_remaining_run_time, shortest_remaining_communication_time)
+
+            # record deps ready before op is ticked so that do not tick future ready deps one step early (since job.computation_graph.graph['deps_ready'] is automatically updated by Jobs class when an op is ticked and completed)
+            deps_ready = copy.deepcopy(job.computation_graph.graph['deps_ready'])
+
+            # tick ops mounted on workers
+            ticked_ops, job_idx_to_completed_op_ids, tick_counter_to_active_workers_tick_size = self._tick_mounted_ops(job, worker_to_priority_job_op, tick_counter_to_active_workers_tick_size, tick, lookahead_tick_counter, verbose=verbose)
+
+            if len(non_flow_deps) > 0:
+                # no need to consider communication, tick non-flow deps
+                ticked_flows, job_idx_to_completed_dep_ids = False, self._tick_non_flow_deps(job, non_flow_deps, tick, verbose=verbose)
+            else:
+                # no non-flow deps ready, tick flow deps
+                ticked_flows, job_idx_to_completed_dep_ids = self._tick_flow_deps(job, deps_ready, tick, verbose=verbose)
+
+            # record any communication vs. computation bottleneck/overhead time for this job
+            job = self._record_communication_computation_overhead(job, tick, ticked_ops, ticked_flows, verbose=verbose)
+
+            # tick stopwatch
+            tmp_stopwatch.tick(tick)
+
+            if job.is_training_step_complete():
+                # finished lookahead
+                # self._register_completed_lookahead(job, tmp_stopwatch, tick_counter_to_active_workers_tick_size, verbose=verbose)
+                lookahead_job_completion_time = tmp_stopwatch.time() * job.num_training_steps
+                communication_overhead_time = job.details['communication_overhead_time'] * job.num_training_steps
+                computation_overhead_time = job.details['computation_overhead_time'] * job.num_training_steps
+                break
+
+            else:
+                # not yet finished training step lookahead, continue
+                pass
+
+            if verbose:
+                print(f'Finished lookahead tick. Temporary stopwatch time at end of tick: {tmp_stopwatch.time()}')
+
+            if math.isinf(tick):
+                raise Exception(f'ERROR: Last tick was infinite, a bug has occurred somewhere.')
+
+            lookahead_tick_counter += 1
+
+        return job, lookahead_job_completion_time, communication_overhead_time, computation_overhead_time, tick_counter_to_active_workers_tick_size
+
     def _perform_lookahead_job_completion_time(self, 
                                                action, 
                                                parallel_get_highest_priority_job_op=False, # parallelising gives too much overhead so recommended to not parallelise
@@ -387,86 +483,37 @@ class RampClusterEnvironment:
             if verbose:
                 print(f'Job ID: {job_id} | Job idx: {job.details["job_idx"]} | Time arrived: {job.details["time_arrived"]}')
 
-            tmp_stopwatch = Stopwatch()
-            tmp_stopwatch.reset()
-            # do internal lookahead simulation until job is completed
-            lookahead_tick_counter = 1
-            tick_counter_to_active_workers_tick_size = defaultdict(list) # e.g. tick_counter_to_active_workers_tick_size = {1: [3, 25], 2: [2, 25]} means at tick 1, 3 workers were active for 25 time units; at tick 2, 2 workers were active for 25 time units
-            # tick_counter_to_active_channels_tick_size = defaultdict(list)
-            while True:
-                # run step tick until an op and/or a dep is completed
+            max_num_partitions = self.op_partition.job_id_to_max_partition_degree[job_id]
+            model = job.details['model']
+            lookahead_job_completion_time = None
+            if model in self.job_model_to_max_num_partitions_to_lookahead_job_completion_time:
+                if max_num_partitions in self.job_model_to_max_num_partitions_to_lookahead_job_completion_time[model]:
+                    if verbose:
+                        print(f'Already simulated this model ({model}) with this max num partitions per op ({max_num_partitions}), assume has the same completion, communication overhead, and computation overhead time')
+                    lookahead_job_completion_time = self.job_model_to_max_num_partitions_to_lookahead_job_completion_time[model][max_num_partitions]
+                    communication_overhead_time = self.job_model_to_max_num_partitions_to_communication_overhead_time[model][max_num_partitions]
+                    computation_overhead_time = self.job_model_to_max_num_partitions_to_computation_overhead_time[model][max_num_partitions]
+                    tick_counter_to_active_workers_tick_size = self.job_model_to_max_num_partitions_to_tick_counter_to_active_workers_tick_size[model][max_num_partitions]
+            if lookahead_job_completion_time is None:
                 if verbose:
-                    print('-'*80)
-                    print(f'Performing lookahead tick {lookahead_tick_counter}. Temporary stopwatch time at start of tick: {tmp_stopwatch.time()}')
+                    print(f'Not yet simulated this model ({model}) with this max num partitions per op ({max_num_partitions}), must run lookahead')
+                job, lookahead_job_completion_time, communication_overhead_time, computation_overhead_time, tick_counter_to_active_workers_tick_size = self._run_lookahead(job_id=job_id, parallel_get_highest_priority_job_op=parallel_get_highest_priority_job_op, verbose=verbose)
+                self.job_model_to_max_num_partitions_to_lookahead_job_completion_time[model][max_num_partitions] = lookahead_job_completion_time
+                self.job_model_to_max_num_partitions_to_communication_overhead_time[model][max_num_partitions] = communication_overhead_time
+                self.job_model_to_max_num_partitions_to_computation_overhead_time[model][max_num_partitions] = computation_overhead_time
+                self.job_model_to_max_num_partitions_to_tick_counter_to_active_workers_tick_size[model][max_num_partitions] = tick_counter_to_active_workers_tick_size
 
-                # initialise trackers for this tick
-                tick_counter_to_active_workers_tick_size[lookahead_tick_counter] = [0, 0]
+            self._register_completed_lookahead(job, 
+                                               lookahead_job_completion_time=lookahead_job_completion_time, 
+                                               computation_overhead_time=computation_overhead_time,
+                                               communication_overhead_time=communication_overhead_time,
+                                               tick_counter_to_active_workers_tick_size=tick_counter_to_active_workers_tick_size, 
+                                               verbose=verbose,
+                                               # verbose=True, # DEBUG
+                                               )
 
-                # 1. COMPUTATION
-                # i) find the highest priority op on each worker for this job
-                worker_to_priority_job_op = self._get_worker_to_priority_job_op(job, parallel_get_highest_priority_job_op=parallel_get_highest_priority_job_op)
-                # ii) find the shortest remaining run time of each highest proprity op on all workers for this job
-                shortest_remaining_run_time = self._get_shortest_remaining_run_time_of_priority_job_ops(job, worker_to_priority_job_op)
-
-                # NON-FLOW DEPENDENCIES
-                # find any ready deps which never became flows and therefore have 0 run time
-                non_flow_deps = self.gather_job_ready_non_flow_deps(job)
-
-                # 2. COMMUNICATION
-                if len(non_flow_deps) == 0:
-                    # no non-flow deps to tick -> need to consider communication this tick
-                    # i) find highest priority flow on each channel for this job
-                    priority_job_deps, channel_to_priority_job_dep, priority_job_dep_to_priority, priority_job_dep_to_channels = self._get_channel_to_priority_job_dep(job)
-                    # ii) find any highest priority flows contending for same channel(s) -> only use highest priority flows
-                    channel_to_priority_job_dep, priority_job_dep_to_priority, priority_job_dep_to_channels = self._resolve_contending_channels(priority_job_deps, channel_to_priority_job_dep, priority_job_dep_to_priority, priority_job_dep_to_channels)
-                    # iii) find the shortest remaining communication time of each remaining highest priority dep on all channels for this job
-                    shortest_remaining_communication_time = self._get_shortest_remaining_communication_time_of_priority_job_deps(job, channel_to_priority_job_dep)
-                else:
-                    # have non-flow dependencies to tick which have 0 communication overhead -> no need to consider communication this tick
-                    shortest_remaining_communication_time = 0
-
-                # 3. PERFORM TICK: Tick highest priority mounted ready ops and deps on each worker and channel and record any ops or deps which are completed
-                # tick ops and/or deps by lowest common denominator time left to completion
-                tick = min(shortest_remaining_run_time, shortest_remaining_communication_time)
-
-                # record deps ready before op is ticked so that do not tick future ready deps one step early (since job.computation_graph.graph['deps_ready'] is automatically updated by Jobs class when an op is ticked and completed)
-                deps_ready = copy.deepcopy(job.computation_graph.graph['deps_ready'])
-
-                # tick ops mounted on workers
-                ticked_ops, job_idx_to_completed_op_ids, tick_counter_to_active_workers_tick_size = self._tick_mounted_ops(job, worker_to_priority_job_op, tick_counter_to_active_workers_tick_size, tick, lookahead_tick_counter, verbose=verbose)
-
-                if len(non_flow_deps) > 0:
-                    # no need to consider communication, tick non-flow deps
-                    ticked_flows, job_idx_to_completed_dep_ids = False, self._tick_non_flow_deps(job, non_flow_deps, tick, verbose=verbose)
-                else:
-                    # no non-flow deps ready, tick flow deps
-                    ticked_flows, job_idx_to_completed_dep_ids = self._tick_flow_deps(job, deps_ready, tick, verbose=verbose)
-
-                # record any communication vs. computation bottleneck/overhead time for this job
-                job = self._record_communication_computation_overhead(job, tick, ticked_ops, ticked_flows, verbose=verbose)
-
-                # tick stopwatch
-                tmp_stopwatch.tick(tick)
-
-                if job.is_training_step_complete():
-                    # finished lookahead
-                    self._register_completed_lookahead(job, tmp_stopwatch, tick_counter_to_active_workers_tick_size, verbose=verbose)
-                    break
-
-                else:
-                    # not yet finished training step lookahead, continue
-                    pass
-
-                if verbose:
-                    print(f'Finished lookahead tick. Temporary stopwatch time at end of tick: {tmp_stopwatch.time()}')
-
-                if math.isinf(tick):
-                    raise Exception(f'ERROR: Last tick was infinite, a bug has occurred somewhere.')
-
-                lookahead_tick_counter += 1
-
-            if verbose:
-                print(f'Finished all new job lookaheads.')
+        if verbose:
+            print(f'Finished all new job lookaheads.')
 
     def gather_job_ready_non_flow_deps(self, job):
         job_idx = self.job_id_to_job_idx[job.job_id]
@@ -741,7 +788,13 @@ class RampClusterEnvironment:
                 print(f'Only computation conducted this tick.')
         return job
 
-    def _register_completed_lookahead(self, job, tmp_stopwatch, tick_counter_to_active_workers_tick_size,  verbose=False):
+    def _register_completed_lookahead(self, 
+                                      job, 
+                                      lookahead_job_completion_time, 
+                                      computation_overhead_time,
+                                      communication_overhead_time,
+                                      tick_counter_to_active_workers_tick_size,  
+                                      verbose=False):
         # # check for erros
         # max_num_partitions = self.op_partition.job_id_to_max_partition_degree[job.job_id]
         # if len(job.details['mounted_workers']) > max_num_partitions:
@@ -749,18 +802,18 @@ class RampClusterEnvironment:
 
         job_id, job_idx = job.job_id, job.details['job_idx']
         if verbose:
-            print(f'Lookahead completed -> Job ID {job_id} Job idx {job.details["job_idx"]} lookahead training step time: {tmp_stopwatch.time() * job.num_training_steps}')
+            print(f'Registering lookahead -> Job ID {job_id} Job idx {job.details["job_idx"]} lookahead job completion time: {lookahead_job_completion_time}')
 
         # TODO HACK TEMP: Assume all workers have same device_type
         device_type = list(self.topology.graph.graph['worker_types'])[0]
 
         # print(f'DEBUG job {job} lookahead completed with lookahead time {tmp_stopwatch.time() * job.num_training_steps}')
-        communication_overhead_time = job.details['communication_overhead_time'] * job.num_training_steps
-        computation_overhead_time = job.details['computation_overhead_time'] * job.num_training_steps
-        if tmp_stopwatch.time() * job.num_training_steps > job.details['max_acceptable_job_completion_time'][device_type]:
+        # communication_overhead_time = job.details['communication_overhead_time'] * job.num_training_steps
+        # computation_overhead_time = job.details['computation_overhead_time'] * job.num_training_steps
+        if lookahead_job_completion_time > job.details['max_acceptable_job_completion_time'][device_type]:
             # maximum acceptable job completion time requirement not met, job blocked
             if verbose:
-                print(f'Job completion time ({tmp_stopwatch.time() * job.num_training_steps}) exceeds maximum acceptable job completion time ({job.details["max_acceptable_job_completion_time"]}), job blocked.')
+                print(f'Job completion time ({lookahead_job_completion_time}) exceeds maximum acceptable job completion time ({job.details["max_acceptable_job_completion_time"]}), job blocked.')
             # register stats of original job with job blocked stats
             # print(f'DEBUG registering job {job} blocked due to lookahead_job_completion_time ({tmp_stopwatch.time() * job.num_training_steps}) (communication_overhead_time={communication_overhead_time} | computation_overhead_time={computation_overhead_time}) exceeding max_acceptable_job_completion_time ({job.details["max_acceptable_job_completion_time"][device_type]})')
             self._register_blocked_job(job.original_job)
@@ -773,7 +826,7 @@ class RampClusterEnvironment:
             # print(f'tick_counter_to_active_workers_tick_size: {tick_counter_to_active_workers_tick_size}')
             mean_mounted_worker_utilisation_frac = 0
             for num_active_workers, tick_size in tick_counter_to_active_workers_tick_size.values():
-                mean_mounted_worker_utilisation_frac += ( (num_active_workers / len(job.details['mounted_workers'])) * (tick_size / tmp_stopwatch.time()) )
+                mean_mounted_worker_utilisation_frac += ( (num_active_workers / len(job.details['mounted_workers'])) * (lookahead_job_completion_time) )
                 # print(f'num_active_workers: {num_active_workers} | tick_size: {tick_size} | mounted workers: {len(job.details["mounted_workers"])} | stopwatch time: {tmp_stopwatch.time()} -> mean_mounted_worker_utilisation_frac: {mean_mounted_worker_utilisation_frac}')
             # # print(f'\nEvaluating channel utilisation...')
             # mean_mounted_channel_utilisation_frac = 0
@@ -785,13 +838,13 @@ class RampClusterEnvironment:
             max_num_partitions = self.op_partition.job_id_to_max_partition_degree[job_id]
             model = job.details['model']
             job_total_operation_memory_cost, job_total_dependency_size, init_job_immutable_details, partitioned_computation_graph = None, None, None, None
-            if model in self.job_model_to_max_num_partitons_to_init_details:
-                if max_num_partitions in self.job_model_to_max_num_partitons_to_init_details[model]:
+            if model in self.job_model_to_max_num_partitions_to_init_details:
+                if max_num_partitions in self.job_model_to_max_num_partitions_to_init_details[model]:
                     # print(f'Already simulated {model} with max_num_partitions {max_num_partitions}, can re-use init job params')
-                    job_total_operation_memory_cost = self.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['job_total_operation_memory_cost']
-                    job_total_dependency_size = self.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['job_total_dependency_size']
-                    init_job_immutable_details = self.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['init_job_immutable_details']
-                    partitioned_computation_graph = self.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['partitioned_computation_graph']
+                    job_total_operation_memory_cost = self.job_model_to_max_num_partitions_to_init_details[model][max_num_partitions]['job_total_operation_memory_cost']
+                    job_total_dependency_size = self.job_model_to_max_num_partitions_to_init_details[model][max_num_partitions]['job_total_dependency_size']
+                    init_job_immutable_details = self.job_model_to_max_num_partitions_to_init_details[model][max_num_partitions]['init_job_immutable_details']
+                    partitioned_computation_graph = self.job_model_to_max_num_partitions_to_init_details[model][max_num_partitions]['partitioned_computation_graph']
                 else:
                     # not yet simulated this model and max_num_partitions
                     # print(f'Not yet simultated model {model} with max_num_partitions {max_num_partitions}, must calculate init job params')
@@ -800,9 +853,9 @@ class RampClusterEnvironment:
                 # not yet simulated this model
                 # print(f'Not yet simultated model {model}, must calculate init job params')
                 pass
-            self.job_model_to_max_num_partitons_to_init_details[job.details['model']]
+            self.job_model_to_max_num_partitions_to_init_details[job.details['model']]
             job.reset_job(details={
-                                    'lookahead_job_completion_time': tmp_stopwatch.time() * job.num_training_steps,
+                                    'lookahead_job_completion_time': lookahead_job_completion_time,
                                     'communication_overhead_time': communication_overhead_time,
                                     'computation_overhead_time': computation_overhead_time,
                                     'mounted_workers': job.details['mounted_workers'],
@@ -816,10 +869,10 @@ class RampClusterEnvironment:
                           )
 
             # update job model init details tracker if needed
-            self.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['job_total_operation_memory_cost'] = job.job_total_operation_memory_cost
-            self.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['job_total_dependency_size'] = job.job_total_dependency_size
-            self.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['init_job_immutable_details'] = job.init_job_immutable_details
-            self.job_model_to_max_num_partitons_to_init_details[model][max_num_partitions]['partitioned_computation_graph'] = self.op_partition.job_id_to_partitioned_computation_graph[job_id]
+            self.job_model_to_max_num_partitions_to_init_details[model][max_num_partitions]['job_total_operation_memory_cost'] = job.job_total_operation_memory_cost
+            self.job_model_to_max_num_partitions_to_init_details[model][max_num_partitions]['job_total_dependency_size'] = job.job_total_dependency_size
+            self.job_model_to_max_num_partitions_to_init_details[model][max_num_partitions]['init_job_immutable_details'] = job.init_job_immutable_details
+            self.job_model_to_max_num_partitions_to_init_details[model][max_num_partitions]['partitioned_computation_graph'] = self.op_partition.job_id_to_partitioned_computation_graph[job_id]
 
             # track info size of deps which became flows
             job.details['job_total_flow_size'] = 0
