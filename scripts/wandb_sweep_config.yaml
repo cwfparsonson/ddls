@@ -1,28 +1,24 @@
 # https://docs.wandb.ai/guides/sweeps/configuration
 
-program: train_rllib_from_config.py # RLLIB
+## TEST HEURISTIC
 #program: test_heuristic_from_config.py # HEURISTIC
-
+##method: bayes
 #method: grid
-method: bayes
-
-metric:
+#metric:
   #goal: maximize
   #name: valid/episode_stats/return
 
-  #goal: minimize
-  #name: valid/episode_stats/job_completion_time
-  #goal: maximize
-  #name: valid/episode_stats/mean_cluster_throughput
-  #goal: maximize
-  #name: valid/episode_stats/mean_demand_total_throughput
-
+## TRAIN RLLIB
+program: train_rllib_from_config.py # RLLIB
+method: bayes
+#method: grid
+metric:
   goal: maximize
   name: evaluation/episode_reward_mean
 
 parameters:
 
-    ### TRAIN RLLIB
+    ######################################## TRAIN RLLIB #################################
     #defaults:
         #algo:
             #values: ['ppo', 'impala']
@@ -78,22 +74,18 @@ parameters:
 
 
     ## APEX DQN HPARAM SWEEP (based on https://arxiv.org/pdf/1907.11180.pdf)
+    ## PHASE 1
     #epoch_loop.rllib_config.gamma:
         #values: [0.99, 0.993, 0.997, 0.999, 0.9999]
     #epoch_loop.rllib_config.lr:
-        #min: -12 # approx 1e-7
-        #max: -3 # approx 1e-3
-        #distribution: log_uniform
+        #min: 1e-5
+        #max: 1e-3
+        #distribution: log_uniform_values
     #algo.algo_config.target_network_update_freq:
-        ##min: 1e3
-        ##max: 1e5
-        ##q: 1e3
-        ##min: 3
-        ##max: 5
-        ##distribution: log_uniform
         #values: [1e3, 1e4, 1e5]
-    #algo.algo_config.replay_buffer_config.capacity:
-        #values: [100e3, 500e3, 1000e3]
+        ##values: [1e3, 1e4, 1e5, 5e5, 1e6, 5e6]
+    ##algo.algo_config.replay_buffer_config.capacity:
+        ##values: [100e3, 500e3, 1000e3]
     #algo.algo_config.replay_buffer_config.prioritized_replay_alpha:
         #values: [0.1, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
     #algo.algo_config.replay_buffer_config.prioritized_replay_beta:
@@ -101,9 +93,21 @@ parameters:
     #algo.algo_config.n_step:
         #values: [1, 3, 5, 10]
     #algo.algo_config.v_max:
-        #values: [10, 100, 200, 1000]
+        #values: [1, 10, 100, 200, 1000]
     #algo.algo_config.v_min:
-        #values: [-10, -100, -200, -1000]
+        #values: [-1, -10, -100, -200, -1000]
+
+    ### PHASE 2
+    #epoch_loop.rllib_config.lr:
+        #min: 1e-7
+        #max: 1e-5
+        #distribution: log_uniform_values
+    #algo.algo_config.exploration_config.final_epsilon:
+        #values: [0.025, 0.05, 0.1]
+    #algo.algo_config.exploration_config.epsilon_timesteps:
+        #values: [25000, 50000, 100000, 250000, 500000, 1000000]
+
+
 
 
 
@@ -171,10 +175,10 @@ parameters:
 
 
 
-    ### TEST HEURISTIC
+    ################################### TEST HEURISTIC ##############################
 
-    ##experiment.seed:
-        ##values: [0, 1, 2]
+    #experiment.seed:
+        #values: [0, 1, 2]
         ####values: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     
     #eval_loop.actor._target_: 
@@ -182,14 +186,14 @@ parameters:
         #values: ['ddls.environments.ramp_job_partitioning.agents.random.Random', 'ddls.environments.ramp_job_partitioning.agents.sip_ml.SiPML', 'ddls.environments.ramp_job_partitioning.agents.acceptable_jct.AcceptableJCT']
         ##values: ['ddls.environments.ramp_job_partitioning.agents.no_parallelism.NoParallelism', 'ddls.environments.ramp_job_partitioning.agents.sip_ml.SiPML']
 
-    ###eval_loop.env.min_op_run_time_quantum:
-        ####values: [0.000001, 0.00001, 0.0001, 0.001, 0.01, 0.1, 1, 10, 25, 50, 75, 100]
-        ###values: [0.001, 0.01, 0.1, 1, 10, 25, 50, 75, 100, 1000]
+    #eval_loop.env.min_op_run_time_quantum:
+        ##values: [0.000001, 0.00001, 0.0001, 0.001, 0.01, 0.1, 1, 10, 25, 50, 75, 100]
+        #values: [0.001, 0.01, 0.1, 1, 10, 25, 50, 75, 100]
 
-    ##eval_loop.env.jobs_config.job_interarrival_time_dist.val:
-        ###values: [500, 1000, 2000, 4000, 8000, 16000]
+    #eval_loop.env.jobs_config.job_interarrival_time_dist.val:
+        #values: [500, 1000, 2000, 3000, 4000, 5000, 6000, 8000, 7000, 8000, 9000, 10000, 12000, 14000, 16000]
         ###values: [2000, 2500, 3000, 3500, 4000]
-        ##values: [2000, 2250, 2500, 2750, 3000, 3250, 3500, 3750, 4000]
+        #values: [2000, 2250, 2500, 2750, 3000, 3250, 3500, 3750, 4000]
 
     #eval_loop.env.jobs_config.max_acceptable_job_completion_time_frac_dist.skewness:
         #values: [5, 0, -5]

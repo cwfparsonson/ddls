@@ -1,10 +1,11 @@
 from ddls.utils import Sampler
 from ddls.distributions.distribution import Distribution
+from ddls.distributions.list_of_distributions import ListOfDistributions
 from ddls.utils import ddls_graph_from_pbtxt_file, ddls_graph_from_pipedream_txt_file, get_class_from_path
 from ddls.demands.jobs.job import Job
 
 import glob
-from typing import Union
+from typing import Union, List
 from collections import defaultdict
 import numpy as np
 import copy
@@ -64,7 +65,7 @@ class JobsGenerator:
     def __init__(self, 
                  path_to_files: str, 
                  job_interarrival_time_dist: Union[Distribution, dict],
-                 max_acceptable_job_completion_time_frac_dist: Union[Distribution, dict] = None,
+                 max_acceptable_job_completion_time_frac_dist: Union[Distribution, dict, ListOfDistributions] = None,
                  # job_interarrival_time_dist: Union[Distribution, str], # either a Distribution object or a path leading to the distbution path
                  max_files: int = None, # maximum number of files in path_to_files dir to use
                  replication_factor: int = 1, # number of times to replicate files in path_to_files (e.g. if path_to_files has 1 job graph profile file and replication_factor=10, will have 10 identical jobs).
@@ -74,6 +75,17 @@ class JobsGenerator:
                  max_partitions_per_op_in_observation: int = 1, # use to set max possible nodes and edges for normalising observation feats. N.B. set to None if max num edges and nodes in obs is just the size of the original graph rather than the partitioned graph (i.e. if doing partitioning with gym agent rather than as part of env)
                  parallel_job_instantiation=True,
                  ):
+        '''
+        Args:
+            max_acceptable_job_completion_time_frac_dist: If this is given as a ListOfDistributions 
+                object, then a max_acceptable_job_completion_time_frac_dist 
+                (Distribution or dict object) will be randomly sampled from the list.
+                This is useful during RL agent training where you may want your
+                agent to learn to generalise to different max_acceptable_job_completion_time_frac_dist
+                and so want it to be trained on different dists; setting max_acceptable_job_completion_time_frac_dist
+                will ensure that a range of distributions are sampled when generating
+                the environment for the agent.
+        '''
         self.shuffle_files = shuffle_files
 
 
@@ -119,6 +131,9 @@ class JobsGenerator:
         else:
             # Distribution object already provided
             self.max_acceptable_job_completion_time_frac_dist = max_acceptable_job_completion_time_frac_dist 
+        if isinstance(self.max_acceptable_job_completion_time_frac_dist, ListOfDistributions):
+            # randomly choose a distribution from the list
+            self.max_acceptable_job_completion_time_frac_dist = self.max_acceptable_job_completion_time_frac_dist.sample()
 
         # create ddls jobs
         jobs = []

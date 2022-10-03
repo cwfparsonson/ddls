@@ -22,11 +22,20 @@ evaluation_config:
                     #0.50: 0.25
                     #0.75: 0.25
                     #1.00: 0.25
+                #_target_: ddls.distributions.uniform.Uniform
+                #min_val: 0.1
+                #max_val: 1
+                #decimals: 2
                 _target_: ddls.distributions.custom_skew_norm.CustomSkewNorm
                 skewness: 5
                 min_val: 0.1
                 max_val: 1
                 decimals: 2
+                #_target_: ddls.distributions.custom_skew_norm.CustomSkewNorm
+                #skewness: 0
+                #min_val: 0.1
+                #max_val: 1
+                #decimals: 2
     #num_workers: 1 # num parallel cpu workers
     #num_gpus: 1 # num gpus available for RLlib
 custom_eval_function: ddls.environments.ramp_cluster.utils.custom_eval_function

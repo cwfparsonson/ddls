@@ -5,9 +5,9 @@ defaults:
     - env_config: env_dev
     - eval_config: eval_default
     - model: gnn
-    - algo: apex_dqn
+    #- algo: apex_dqn
     #- algo: impala
-    #- algo: ppo
+    - algo: ppo
     #- algo: pg
     #- algo: es
     

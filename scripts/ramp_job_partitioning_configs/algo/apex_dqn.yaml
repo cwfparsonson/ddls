@@ -9,13 +9,20 @@ model:
         apply_action_mask: False # TODO TEMP HACK: Should implement DQN action masking when get response https://discuss.ray.io/t/apextrainer-fails-to-instantiate-due-to-mat1-mat2-shapes-cannot-be-multiplied/7583
 
 algo_config:
+    gamma: 0.999 # tuned
+    #lr: 9.996959841543532e-05 # tuned
+    lr: 4.121e-7 # tuned
+    batch_mode: truncate_episodes # CHANGE (did not tune but is default so using)
+
     # DQN-SPECIFIC HPARAMS
     dueling: True
     #dueling: False # DEBUG
 
     num_atoms: 1
-    v_min: -10.0
-    v_max: 10.0
+    #v_min: -10.0
+    v_min: -1000 # tuned
+    #v_max: 10.0
+    v_max: 1000 # tuned
     noisy: False
     sigma0: 0.5
     hiddens:
@@ -32,9 +39,11 @@ algo_config:
             #"num_replay_buffer_shards": 4,
             #"debug": False
         #})
-    n_step: 3
+    #n_step: 3
+    n_step: 3 # tuned
     #target_network_update_freq: 500000
-    target_network_update_freq: 10000
+    #target_network_update_freq: 10000
+    target_network_update_freq: 100000 # tuned
     training_intensity: 1
 
     # max number of inflight requests to each sampling worker
@@ -60,13 +69,15 @@ algo_config:
         # prioritization
         type: MultiAgentPrioritizedReplayBuffer
         #capacity: 2000000 # original
-        #capacity: 100000
+        capacity: 100000
         #capacity: 5e5
-        capacity: 500000
+        #capacity: 500000
         # Alpha parameter for prioritized replay buffer.
-        prioritized_replay_alpha: 0.6
+        #prioritized_replay_alpha: 0.6
+        prioritized_replay_alpha: 0.9 # tuned
         # Beta parameter for sampling from prioritized replay buffer.
-        prioritized_replay_beta: 0.4
+        #prioritized_replay_beta: 0.4
+        prioritized_replay_beta: 0.1
         # Epsilon to add to the TD errors when updating priorities.
         prioritized_replay_eps: 1e-6
         #learning_starts: 50000 # original
@@ -88,6 +99,30 @@ algo_config:
     # .rollouts()
     exploration_config:
         type: PerWorkerEpsilonGreedy
+        initial_epsilon: 1
+        final_epsilon: 0.05 # tuned
+        warmup_timesteps: 0 # timesteps over which not to change epsilon in the beginning
+        epsilon_timesteps: 1000000 # tuned
+        #epsilon_schedule: null
+
+        #type: RE3 
+        #beta: 0.2 # choose between exploration and exploitation
+        #k_nn: 50 # number of neighbours to set for K-NN entropy estimations
+        #random_timesteps: 10000 # number of timesteps to act completely randomly
+        #sub_exploration: null # The config dict for the underlying Exploration to use (e.g. epsilon-greedy for DQN). If None, uses the FromSpecDict provided in the Policy’s default config.
+
+        #type: Curiosity
+        #feature_dim: 288
+        #beta: 0.2 # weight for the forward loss
+        #eta: 1.0 # weight for intrinisic reward before being added to extrinsic ones
+        #lr: 0.001 # weight for the curiosity-specific optimiser, optimising feature-, inferse-, and forward nets
+        #sub_exploration: # The config dict for the underlying Exploration to use (e.g. epsilon-greedy for DQN). If None, uses the FromSpecDict provided in the Policy’s default config.
+            #type: PerWorkerEpsilonGreedy
+            #initial_epsilon: 1
+            #final_epsilon: 0.05
+            #warmup_timesteps: 0 # timesteps over which not to change epsilon in the beginning
+            #epsilon_timesteps: 100000
+            ##epsilon_schedule: null
 
     # .reporting()
     min_time_s_per_iteration: 30
@@ -100,6 +135,7 @@ algo_config:
     #rollout_fragment_length: 50
     train_batch_size: 512
     num_workers: 32
+    #num_workers: 0
     #num_gpus: 1
     #lr: 0.0005
     

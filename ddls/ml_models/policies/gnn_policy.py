@@ -256,10 +256,9 @@ class GNNPolicy(TorchModelV2, nn.Module):
             'obs': final_emb
         })
 
-        # TEMP DEBUG TODO: Commented below while debugging DQN
         # if self.config['action_space_type'] == 'discrete':
         if self.config['apply_action_mask']:
-            # apply action masking; use inf action mask where invalid actioins have the smallest possible float value (so that will be 0 when RLLib applies softmax over logits and therefore will never be sampled) and 0 otherwise (so logit values will be unchanged)
+            # apply action masking; use inf action mask where invalid actions have the smallest possible float value (so that will be 0 when RLLib applies softmax over logits and therefore will never be sampled) and 0 otherwise (so logit values will be unchanged)
             inf_mask = torch.maximum(
                                      torch.log(input_dict['obs']['action_mask']).to(device), 
                                      torch.tensor(torch.finfo(torch.float32).min).to(device)

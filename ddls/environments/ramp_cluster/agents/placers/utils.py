@@ -573,5 +573,10 @@ def allocate(ramp,ramp_shape,job_graph,sequence,splits,meta_block_info,parents,o
 
     if VERBOSE:
         print(f'Final allocation op_server_info: {op_server_info}')
+        allocated_workers = set()
+        for op in op_server_info:
+            for worker in op_server_info[op]:
+                allocated_workers.add(worker)
+        print(f'workers job allocated to ({len(allocated_workers)}): {allocated_workers}')
             
     return ramp, op_server_info

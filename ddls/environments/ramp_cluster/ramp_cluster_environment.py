@@ -715,7 +715,7 @@ class RampClusterEnvironment:
                 remaining_run_time = job.computation_graph[u][v][k]['remaining_run_time']
                 print(f'Ticking flow dep {dep_id} with remaining run time {remaining_run_time} of job index {job.details["job_idx"]} by amount {tick}')
             job.tick_dep(dep_id, tick=tick)
-            ticke_flows = True
+            ticked_flows = True
             # tick_counter_to_active_channels_tick_size[lookahead_tick_counter][0] += 1
             if dep_id in job.computation_graph.graph['deps_completed']:
                 # dep was completed
@@ -755,12 +755,14 @@ class RampClusterEnvironment:
         device_type = list(self.topology.graph.graph['worker_types'])[0]
 
         # print(f'DEBUG job {job} lookahead completed with lookahead time {tmp_stopwatch.time() * job.num_training_steps}')
+        communication_overhead_time = job.details['communication_overhead_time'] * job.num_training_steps
+        computation_overhead_time = job.details['computation_overhead_time'] * job.num_training_steps
         if tmp_stopwatch.time() * job.num_training_steps > job.details['max_acceptable_job_completion_time'][device_type]:
             # maximum acceptable job completion time requirement not met, job blocked
             if verbose:
                 print(f'Job completion time ({tmp_stopwatch.time() * job.num_training_steps}) exceeds maximum acceptable job completion time ({job.details["max_acceptable_job_completion_time"]}), job blocked.')
             # register stats of original job with job blocked stats
-            # print(f'DEBUG registering job {job} blocked due to lookahead_job_completion_time ({tmp_stopwatch.time() * job.num_training_steps}) exceeding max_acceptable_job_completion_time ({job.details["max_acceptable_job_completion_time"][device_type]})')
+            # print(f'DEBUG registering job {job} blocked due to lookahead_job_completion_time ({tmp_stopwatch.time() * job.num_training_steps}) (communication_overhead_time={communication_overhead_time} | computation_overhead_time={computation_overhead_time}) exceeding max_acceptable_job_completion_time ({job.details["max_acceptable_job_completion_time"][device_type]})')
             self._register_blocked_job(job.original_job)
             # remove partitioned job from workers, channels, queue, etc. where necessary
             # print(f'removing job with job_id {job.job_id} job_id {job.details["job_idx"]}') # TEMP DEBUG
@@ -801,8 +803,8 @@ class RampClusterEnvironment:
             self.job_model_to_max_num_partitons_to_init_details[job.details['model']]
             job.reset_job(details={
                                     'lookahead_job_completion_time': tmp_stopwatch.time() * job.num_training_steps,
-                                    'communication_overhead_time': job.details['communication_overhead_time'] * job.num_training_steps,
-                                    'computation_overhead_time': job.details['computation_overhead_time'] * job.num_training_steps,
+                                    'communication_overhead_time': communication_overhead_time,
+                                    'computation_overhead_time': computation_overhead_time,
                                     'mounted_workers': job.details['mounted_workers'],
                                     'mounted_channels': job.details['mounted_channels'],
                                     'mean_mounted_worker_utilisation_frac': mean_mounted_worker_utilisation_frac,
@@ -1220,7 +1222,7 @@ class RampClusterEnvironment:
     def _place_ops(self, action, verbose=False):
         # # DEBUG
         # verbose = True
-        # print(f'Placing ops for action {action}') 
+        # print(f'Placing ops for action {action}') # DEBUG
 
         op_placement = action.action
         if verbose:

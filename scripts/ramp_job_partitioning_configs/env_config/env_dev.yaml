@@ -51,15 +51,40 @@ jobs_config:
             #0.50: 0.2
             #0.75: 0.3
             #1.00: 0.2
-        #_target_: ddls.distributions.custom_skew_norm.CustomSkewNorm
-        #skewness: 5
+        #_target_: ddls.distributions.uniform.Uniform
         #min_val: 0.1
         #max_val: 1
         #decimals: 2
-        _target_: ddls.distributions.uniform.Uniform
+        _target_: ddls.distributions.custom_skew_norm.CustomSkewNorm
+        skewness: 5
         min_val: 0.1
         max_val: 1
         decimals: 2
+        #_target_: ddls.distributions.list_of_distributions.ListOfDistributions
+        #name_to_cls_to_kwargs:
+            #dist_1:
+                #ddls.distributions.uniform.Uniform:
+                    #min_val: 0.1
+                    #max_val: 1
+                    #decimals: 2
+            #dist_2:
+                #ddls.distributions.custom_skew_norm.CustomSkewNorm:
+                    #skewness: 5
+                    #min_val: 0.1
+                    #max_val: 1
+                    #decimals: 2
+            #dist_3:
+                #ddls.distributions.custom_skew_norm.CustomSkewNorm:
+                    #skewness: 0
+                    #min_val: 0.1
+                    #max_val: 1
+                    #decimals: 2
+            #dist_4:
+                #ddls.distributions.custom_skew_norm.CustomSkewNorm:
+                    #skewness: -5
+                    #min_val: 0.1
+                    #max_val: 1
+                    #decimals: 2
     shuffle_files: true
     num_training_steps: 50
     max_partitions_per_op_in_observation: 1
@@ -67,8 +92,8 @@ jobs_config:
 #max_simulation_run_time: null
 #max_simulation_run_time: 1000
 #max_simulation_run_time: 10000
-#max_simulation_run_time: 1e6
 max_simulation_run_time: 2e5
+#max_simulation_run_time: 1e6
     
 #max_partitions_per_op: null
 #max_partitions_per_op: 2
@@ -77,8 +102,8 @@ max_partitions_per_op: 16
 
 #min_op_run_time_quantum: 0.000006
 #min_op_run_time_quantum: 0.1
-#min_op_run_time_quantum: 0.01
-min_op_run_time_quantum: 10
+min_op_run_time_quantum: 0.01
+#min_op_run_time_quantum: 10
 #min_op_run_time_quantum: 1000
 
 #reward_function: mean_job_completion_time

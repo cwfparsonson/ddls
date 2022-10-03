@@ -81,15 +81,15 @@ eval_loop:
                     #0.50: 0.25
                     #0.75: 0.25
                     #1.00: 0.25
-                _target_: ddls.distributions.uniform.Uniform
-                min_val: 0.1
-                max_val: 1
-                decimals: 2
-                #_target_: ddls.distributions.custom_skew_norm.CustomSkewNorm
-                #skewness: 5
+                #_target_: ddls.distributions.uniform.Uniform
                 #min_val: 0.1
                 #max_val: 1
                 #decimals: 2
+                _target_: ddls.distributions.custom_skew_norm.CustomSkewNorm
+                skewness: -5
+                min_val: 0.1
+                max_val: 1
+                decimals: 2
 
             #job_sampling_mode: remove
             job_sampling_mode: remove_and_repeat
@@ -99,9 +99,10 @@ eval_loop:
             max_partitions_per_op_in_observation: 1
 
         #max_simulation_run_time: null
-        #max_simulation_run_time: 10000
-        #max_simulation_run_time: 1e6
-        max_simulation_run_time: 2e5
+        #max_simulation_run_time: 1e3
+        #max_simulation_run_time: 1e4
+        max_simulation_run_time: 1e6
+        #max_simulation_run_time: 2e5
 
         # CHANGE
         #max_partitions_per_op: null
@@ -112,8 +113,9 @@ eval_loop:
 
         # CHANGE
         #min_op_run_time_quantum: 0.000006 # original SiP-ML
-        #min_op_run_time_quantum: 0.01
-        min_op_run_time_quantum: 10
+        #min_op_run_time_quantum: 1
+        min_op_run_time_quantum: 0.01
+        #min_op_run_time_quantum: 10
         #min_op_run_time_quantum: 25
 
         #reward_function: mean_job_completion_time
@@ -173,8 +175,8 @@ eval_loop:
 
     # CHANGE
     actor:
-        ## HEURISTIC AGENTS
-        #_target_: ddls.environments.ramp_job_partitioning.agents.random.Random
+        ### HEURISTIC AGENTS
+        _target_: ddls.environments.ramp_job_partitioning.agents.random.Random
 
         #_target_: ddls.environments.ramp_job_partitioning.agents.no_parallelism.NoParallelism
 
@@ -185,8 +187,8 @@ eval_loop:
         ##max_partitions_per_op: 256
         
         #_target_: ddls.environments.ramp_job_partitioning.agents.acceptable_jct.AcceptableJCT
-        _target_: ddls.environments.ramp_job_partitioning.agents.sip_ml.SiPML
-        max_partitions_per_op: 16
+        ###_target_: ddls.environments.ramp_job_partitioning.agents.sip_ml.SiPML
+        #max_partitions_per_op: 16
 
 
 wandb:
