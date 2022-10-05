@@ -97,6 +97,8 @@ class FirstFitDepPlacer(Placer):
         return DepPlacement(job_to_dep_to_channels)
 
     def _get_valid_path_channel_num(self, cluster, dep, job, channel_ids_used_for_other_jobs, new_job_op_placements, verbose=False):
+        # verbose = True # DEBUG
+
         # find which nodes in cluster parent and child ops were placed on
         job_id = job.job_id
         parent_op, child_op, _ = dep
@@ -106,7 +108,9 @@ class FirstFitDepPlacer(Placer):
         child_node = cluster.topology.graph.graph['worker_to_node'][child_worker]
 
         # get valid paths between child and parent ops' nodes
-        paths = nx.all_shortest_paths(cluster.topology.graph, source=parent_node, target=child_node)
+        # paths = nx.all_shortest_paths(cluster.topology.graph, source=parent_node, target=child_node)
+        source, target = parent_node, child_node
+        paths = cluster.topology.graph.nodes[source]['target_to_shortest_paths'][target]
         
         # get possible channel numbers
         channel_nums = list(range(cluster.topology.num_channels))
@@ -115,6 +119,8 @@ class FirstFitDepPlacer(Placer):
         random.shuffle(channel_nums)
 
         # find first path-channel combination which is valid
+        if verbose:
+            print(f'Searching for path channel num across paths {paths} channel nums {channel_nums}...')
         valid_path, valid_channel = None, None
         for path in paths:
             for channel_num in channel_nums:

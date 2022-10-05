@@ -5,9 +5,9 @@ defaults:
     - env_config: env_dev
     - eval_config: eval_default
     - model: gnn
-    #- algo: apex_dqn
+    - algo: apex_dqn
     #- algo: impala
-    - algo: ppo
+    #- algo: ppo
     #- algo: pg
     #- algo: es
     
@@ -37,10 +37,10 @@ launcher:
     #num_epochs: 5
     #num_epochs: 10
     #num_epochs: 50 # 500
-    num_epochs: 100 # 500
+    #num_epochs: 100 # 500
     #num_epochs: 200 # 500
     #num_epochs: 500 # 500
-    #num_epochs: 1000
+    num_epochs: 1000
     num_episodes: null
     num_actor_steps: null
     num_eval_episodes: null

@@ -1,20 +1,20 @@
 # https://docs.wandb.ai/guides/sweeps/configuration
 
-## TEST HEURISTIC
-#program: test_heuristic_from_config.py # HEURISTIC
-##method: bayes
-#method: grid
-#metric:
-  #goal: maximize
-  #name: valid/episode_stats/return
-
-## TRAIN RLLIB
-program: train_rllib_from_config.py # RLLIB
-method: bayes
-#method: grid
+# TEST HEURISTIC
+program: test_heuristic_from_config.py # HEURISTIC
+#method: bayes
+method: grid
 metric:
   goal: maximize
-  name: evaluation/episode_reward_mean
+  name: valid/episode_stats/return
+
+### TRAIN RLLIB
+#program: train_rllib_from_config.py # RLLIB
+#method: bayes
+##method: grid
+#metric:
+  #goal: maximize
+  #name: evaluation/episode_reward_mean
 
 parameters:
 
@@ -113,47 +113,47 @@ parameters:
 
 
 
-    # PPO HPARAM SWEEP (based on https://arxiv.org/pdf/1907.11180.pdf)
-    epoch_loop.rllib_config.gamma:
-        values: [0.99, 0.993, 0.997, 0.999, 0.9999]
-    epoch_loop.rllib_config.lr:
-        min: 1e-7
-        max: 1e-3
-        distribution: log_uniform_values
-    algo.algo_config.entropy_coeff:
-        min: 0.001
-        max: 0.1
-        q: 0.001
-        distribution: q_log_uniform_values
-    algo.algo_config.vf_loss_coeff:
-        values: [0.5, 1]
-    algo.algo_config.vf_clip_param:
-        min: 1
-        max: 1000
-        q: 0.1
-        distribution: q_log_uniform_values
-    algo.algo_config.clip_param:
-        min: 0.01
-        max: 1
-        q: 0.01
-        distribution: q_log_uniform_values
-    algo.algo_config.grad_clip:
-        min: 0.1
-        max: 100
-        q: 0.1
-        distribution: q_log_uniform_values
-    algo.algo_config.kl_coeff:
-        min: 0.01
-        max: 10
-        q: 0.01
-        distribution: q_log_uniform_values
-    algo.algo_config.kl_target:
-        min: 0.001
-        max: 0.01
-        q: 0.001
-        distribution: q_log_uniform_values
-    algo.algo_config.num_sgd_iter:
-        values: [1, 5, 10, 20, 30, 50]
+    ## PPO HPARAM SWEEP (based on https://arxiv.org/pdf/1907.11180.pdf)
+    #epoch_loop.rllib_config.gamma:
+        #values: [0.99, 0.993, 0.997, 0.999, 0.9999]
+    #epoch_loop.rllib_config.lr:
+        #min: 1e-7
+        #max: 1e-3
+        #distribution: log_uniform_values
+    #algo.algo_config.entropy_coeff:
+        #min: 0.001
+        #max: 0.1
+        #q: 0.001
+        #distribution: q_log_uniform_values
+    #algo.algo_config.vf_loss_coeff:
+        #values: [0.5, 1]
+    #algo.algo_config.vf_clip_param:
+        #min: 1
+        #max: 1000
+        #q: 0.1
+        #distribution: q_log_uniform_values
+    #algo.algo_config.clip_param:
+        #min: 0.01
+        #max: 1
+        #q: 0.01
+        #distribution: q_log_uniform_values
+    #algo.algo_config.grad_clip:
+        #min: 0.1
+        #max: 100
+        #q: 0.1
+        #distribution: q_log_uniform_values
+    #algo.algo_config.kl_coeff:
+        #min: 0.01
+        #max: 10
+        #q: 0.01
+        #distribution: q_log_uniform_values
+    #algo.algo_config.kl_target:
+        #min: 0.001
+        #max: 0.01
+        #q: 0.001
+        #distribution: q_log_uniform_values
+    #algo.algo_config.num_sgd_iter:
+        #values: [1, 5, 10, 20, 30, 50]
 
 
 
@@ -177,8 +177,8 @@ parameters:
 
     ################################### TEST HEURISTIC ##############################
 
-    #experiment.seed:
-        #values: [0, 1, 2]
+    experiment.seed:
+        values: [0, 1, 2]
         ####values: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     
     #eval_loop.actor._target_: 
@@ -191,9 +191,9 @@ parameters:
         #values: [0.001, 0.01, 0.1, 1, 10, 25, 50, 75, 100]
 
     #eval_loop.env.jobs_config.job_interarrival_time_dist.val:
-        #values: [500, 1000, 2000, 3000, 4000, 5000, 6000, 8000, 7000, 8000, 9000, 10000, 12000, 14000, 16000]
+        ##values: [500, 1000, 2000, 3000, 4000, 5000, 6000, 8000, 7000, 8000, 9000, 10000, 12000, 14000, 16000]
+        #values: [50, 100, 200, 400, 600, 800, 1000, 1250, 1500, 2000, 3000, 6000, 12000]
         ###values: [2000, 2500, 3000, 3500, 4000]
-        #values: [2000, 2250, 2500, 2750, 3000, 3250, 3500, 3750, 4000]
 
     #eval_loop.env.jobs_config.max_acceptable_job_completion_time_frac_dist.skewness:
         #values: [5, 0, -5]

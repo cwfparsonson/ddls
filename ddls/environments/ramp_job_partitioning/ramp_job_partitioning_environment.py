@@ -304,7 +304,6 @@ class RampJobPartitioningEnvironment(gym.Env):
         # action = 4 # DEBUG
         # action = 0 # DEBUG
 
-
         if verbose:
             print(f'\n~~~~~~~~~~~~~~~~~~~ Step {self.step_counter} ~~~~~~~~~~~~~~~~~~~~~')
 
@@ -411,7 +410,6 @@ class RampJobPartitioningEnvironment(gym.Env):
 
         if verbose:
             print(f'Reward: {self.reward} | Done: {self.done}')
-
         
         self.step_counter += 1
 

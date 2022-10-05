@@ -8,7 +8,7 @@ class Uniform(Distribution):
     def __init__(self,
                  min_val: int,
                  max_val: int,
-                 decimals: int = 10):
+                 decimals: int = 2):
         self.min_val = min_val
         self.max_val = max_val
         if decimals > 0:

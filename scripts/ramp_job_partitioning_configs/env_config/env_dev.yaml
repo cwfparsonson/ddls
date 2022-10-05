@@ -17,10 +17,12 @@ topology_config:
         num_communication_groups: 4
         num_racks_per_communication_group: 4
         num_servers_per_rack: 2
+
         num_channels: 1
-        channel_bandwidth: 1250000000
-        switch_reconfiguration_latency: 0.00000125
-        worker_io_latency: 0.000000100
+        #total_node_bandwidth: 1.6e12 # transceiver_bandwidth (a.k.a. channel_bandwidth) = total_node_bandwidth / num_communication_groups
+        total_node_bandwidth: 12.5e9 # transceiver_bandwidth (a.k.a. channel_bandwidth) = total_node_bandwidth / num_communication_groups
+        intra_gpu_propagation_latency: 50e-9 # intra_gpu_propagation_latency (previously incorrectly called this switch_reconfiguration_latency)
+        worker_io_latency: 100e-9
 
 jobs_config:
     #path_to_files: /scratch/datasets/ddls/jobs/pipedream_graphs/image_classification/profiles/alexnet/
@@ -51,15 +53,15 @@ jobs_config:
             #0.50: 0.2
             #0.75: 0.3
             #1.00: 0.2
-        #_target_: ddls.distributions.uniform.Uniform
-        #min_val: 0.1
-        #max_val: 1
-        #decimals: 2
-        _target_: ddls.distributions.custom_skew_norm.CustomSkewNorm
-        skewness: 5
+        _target_: ddls.distributions.uniform.Uniform
         min_val: 0.1
         max_val: 1
         decimals: 2
+        #_target_: ddls.distributions.custom_skew_norm.CustomSkewNorm
+        #skewness: 0
+        #min_val: 0.1
+        #max_val: 1
+        #decimals: 2
         #_target_: ddls.distributions.list_of_distributions.ListOfDistributions
         #name_to_cls_to_kwargs:
             #dist_1:
@@ -92,8 +94,8 @@ jobs_config:
 #max_simulation_run_time: null
 #max_simulation_run_time: 1000
 #max_simulation_run_time: 10000
-max_simulation_run_time: 2e5
-#max_simulation_run_time: 1e6
+#max_simulation_run_time: 2e5
+max_simulation_run_time: 1e6
     
 #max_partitions_per_op: null
 #max_partitions_per_op: 2

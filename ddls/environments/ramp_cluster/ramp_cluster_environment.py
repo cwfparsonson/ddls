@@ -197,6 +197,8 @@ class RampClusterEnvironment:
                         if worker.device_type not in topology.graph.graph['worker_types']:
                             topology.graph.graph['worker_types'].add(worker.device_type)
 
+
+
     def reset(self,
               jobs_config: dict,
               max_simulation_run_time: Union[int, float] = float('inf'),

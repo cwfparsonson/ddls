@@ -11,8 +11,8 @@ experiment:
         - 2
         - 3
     save_dir: null # placeholder, will be updated
-    #profile_time: false
-    profile_time: true
+    profile_time: false
+    #profile_time: true
 
 eval_loop:
     _target_: ddls.loops.eval_loop.EvalLoop
@@ -23,7 +23,10 @@ eval_loop:
         node_config:
             type_1:
                 #num_nodes: 8
+                #num_nodes: 16
                 num_nodes: 32
+                #num_nodes: 64
+                #num_nodes: 128
                 #num_nodes: 512
                 workers_config:
                     #- num_workers: 4
@@ -37,10 +40,30 @@ eval_loop:
                 #y_dims: 4
             type: ramp 
             kwargs:
+                ## 8 nodes
+                #num_communication_groups: 2
+                #num_racks_per_communication_group: 2
+                #num_servers_per_rack: 2
+
+                ## 16 nodes
+                #num_communication_groups: 2
+                #num_racks_per_communication_group: 2
+                #num_servers_per_rack: 4
+
                 # 32 nodes
                 num_communication_groups: 4
                 num_racks_per_communication_group: 4
                 num_servers_per_rack: 2
+                
+                ## 64 nodes
+                #num_communication_groups: 4
+                #num_racks_per_communication_group: 4
+                #num_servers_per_rack: 4
+                
+                ## 128 nodes
+                #num_communication_groups: 4
+                #num_racks_per_communication_group: 4
+                #num_servers_per_rack: 8
 
                 ## 512 nodes
                 #num_communication_groups: 8
@@ -48,9 +71,15 @@ eval_loop:
                 #num_servers_per_rack: 8
                 
                 num_channels: 1
-                channel_bandwidth: 1250000000
-                switch_reconfiguration_latency: 0.00000125
-                worker_io_latency: 0.000000100
+                #channel_bandwidth: 1250000000 # 1.6 TB / num_communication_groups
+                #total_node_bandwidth: 6e9 # transceiver_bandwidth (a.k.a. channel_bandwidth) = total_node_bandwidth / num_communication_groups
+                #total_node_bandwidth: 1.6e12 # transceiver_bandwidth (a.k.a. channel_bandwidth) = total_node_bandwidth / num_communication_groups
+                #total_node_bandwidth: 25e9 # transceiver_bandwidth (a.k.a. channel_bandwidth) = total_node_bandwidth / num_communication_groups
+                total_node_bandwidth: 12.5e9 # transceiver_bandwidth (a.k.a. channel_bandwidth) = total_node_bandwidth / num_communication_groups
+                #total_node_bandwidth: 3.125e9 # transceiver_bandwidth (a.k.a. channel_bandwidth) = total_node_bandwidth / num_communication_groups
+                #switch_reconfiguration_latency: 0.00000125
+                intra_gpu_propagation_latency: 50e-9 # intra_gpu_propagation_latency (previously incorrectly called this switch_reconfiguration_latency)
+                worker_io_latency: 100e-9
 
         jobs_config:
             #path_to_files: /scratch/datasets/ddls/jobs/pipedream_graphs/image_classification/profiles/alexnet/
@@ -73,6 +102,7 @@ eval_loop:
                 #max_val: 1000
                 _target_: ddls.distributions.fixed.Fixed
                 val: 1000
+                #val: 100e3
             max_acceptable_job_completion_time_frac_dist:
                 #_target_: ddls.distributions.fixed.Fixed
                 #val: 1
@@ -82,15 +112,15 @@ eval_loop:
                     #0.50: 0.25
                     #0.75: 0.25
                     #1.00: 0.25
-                #_target_: ddls.distributions.uniform.Uniform
-                #min_val: 0.1
-                #max_val: 1
-                #decimals: 2
-                _target_: ddls.distributions.custom_skew_norm.CustomSkewNorm
-                skewness: -5
+                _target_: ddls.distributions.uniform.Uniform
                 min_val: 0.1
                 max_val: 1
                 decimals: 2
+                #_target_: ddls.distributions.custom_skew_norm.CustomSkewNorm
+                #skewness: -5
+                #min_val: 0.1
+                #max_val: 1
+                #decimals: 2
 
             #job_sampling_mode: remove
             job_sampling_mode: remove_and_repeat
@@ -102,8 +132,8 @@ eval_loop:
         #max_simulation_run_time: null
         #max_simulation_run_time: 1e3
         #max_simulation_run_time: 1e4
-        max_simulation_run_time: 1e6
         #max_simulation_run_time: 2e5
+        max_simulation_run_time: 1e6
 
         # CHANGE
         #max_partitions_per_op: null
@@ -114,10 +144,8 @@ eval_loop:
 
         # CHANGE
         #min_op_run_time_quantum: 0.000006 # original SiP-ML
-        #min_op_run_time_quantum: 1
         min_op_run_time_quantum: 0.01
-        #min_op_run_time_quantum: 10
-        #min_op_run_time_quantum: 25
+        #min_op_run_time_quantum: 1e-300 # ensure maximum parallelism for all jobs
 
         #reward_function: mean_job_completion_time
 
@@ -177,7 +205,7 @@ eval_loop:
     # CHANGE
     actor:
         ### HEURISTIC AGENTS
-        #_target_: ddls.environments.ramp_job_partitioning.agents.random.Random
+        _target_: ddls.environments.ramp_job_partitioning.agents.random.Random
 
         #_target_: ddls.environments.ramp_job_partitioning.agents.no_parallelism.NoParallelism
 
@@ -187,9 +215,10 @@ eval_loop:
         #max_partitions_per_op: 16
         ##max_partitions_per_op: 256
         
+        #_target_: ddls.environments.ramp_job_partitioning.agents.sip_ml.SiPML
         #_target_: ddls.environments.ramp_job_partitioning.agents.acceptable_jct.AcceptableJCT
-        _target_: ddls.environments.ramp_job_partitioning.agents.sip_ml.SiPML
         max_partitions_per_op: 16
+        #max_partitions_per_op: null
 
 
 wandb:

@@ -15,22 +15,17 @@ evaluation_config:
     env_config:
         jobs_config:
             shuffle_files: True
-            max_acceptable_job_completion_time_frac_dist:
-                #_target_: ddls.distributions.probability_mass_function.ProbabilityMassFunction
-                #probability_mass_function:
-                    #0.25: 0.25
-                    #0.50: 0.25
-                    #0.75: 0.25
-                    #1.00: 0.25
-                #_target_: ddls.distributions.uniform.Uniform
-                #min_val: 0.1
-                #max_val: 1
-                #decimals: 2
-                _target_: ddls.distributions.custom_skew_norm.CustomSkewNorm
-                skewness: 5
-                min_val: 0.1
-                max_val: 1
-                decimals: 2
+            #max_acceptable_job_completion_time_frac_dist:
+                ##_target_: ddls.distributions.probability_mass_function.ProbabilityMassFunction
+                ##probability_mass_function:
+                    ##0.25: 0.25
+                    ##0.50: 0.25
+                    ##0.75: 0.25
+                    ##1.00: 0.25
+                ##_target_: ddls.distributions.uniform.Uniform
+                ##min_val: 0.1
+                ##max_val: 1
+                ##decimals: 2
                 #_target_: ddls.distributions.custom_skew_norm.CustomSkewNorm
                 #skewness: 0
                 #min_val: 0.1
