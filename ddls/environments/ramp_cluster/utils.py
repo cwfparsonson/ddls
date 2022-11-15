@@ -125,7 +125,7 @@ def custom_eval_function(algorithm, eval_workers):
     # print(f'returning custom eval func episodes metrics') # DEBUG
     return metrics
 
-def load_ramp_cluster_environment_metrics(base_folder, base_name, ids, agent_to_id=None, default_agent='id'):
+def load_ramp_cluster_environment_metrics(base_folder, base_name, ids, agent_to_id=None, default_agent='id', hue='Agent'):
     agent_to_episode_stats_dict = defaultdict(list)
     agent_to_episode_completion_stats_dict = defaultdict(list)
     agent_to_episode_blocked_stats_dict = defaultdict(list)
@@ -188,11 +188,11 @@ def load_ramp_cluster_environment_metrics(base_folder, base_name, ids, agent_to_
                         agent_to_episode_blocked_stats_dict[metric].append(result)
                 else:
                     print(f'Unrecognised episode metric {metric}, skipping...')
-            agent_to_episode_stats_dict['Agent'].append(agent)
+            agent_to_episode_stats_dict[hue].append(agent)
             if completion_stats_found:
-                agent_to_episode_completion_stats_dict['Agent'].append(agent)
+                agent_to_episode_completion_stats_dict[hue].append(agent)
             if blocked_stats_found:
-                agent_to_episode_blocked_stats_dict['Agent'].append(agent)
+                agent_to_episode_blocked_stats_dict[hue].append(agent)
 
             # load step stats
             with gzip.open(agent_dir+'step_stats.pkl', 'rb') as f:
@@ -203,7 +203,7 @@ def load_ramp_cluster_environment_metrics(base_folder, base_name, ids, agent_to_
                 except TypeError:
                     agent_to_step_stats_dict[metric].append(result)
                 step_metrics.add(metric)
-            agent_to_step_stats_dict['Agent'].extend([agent for _ in range(len(result))])
+            agent_to_step_stats_dict[hue].extend([agent for _ in range(len(result))])
 
             print(f'Checkpoints loaded from {agent_dir[:-1]}.')
         else:
@@ -282,6 +282,7 @@ def remove_substrings_from_keys(results, substrings_to_remove):
 def load_ramp_cluster_environment_metrics_from_wandb_run(agent_to_run: dict, 
                                                          keys_to_ignore=None, 
                                                          key_substrings_to_remove=None, 
+                                                         hue='Agent',
                                                          verbose=True):
     '''
     Args:
@@ -343,9 +344,9 @@ def load_ramp_cluster_environment_metrics_from_wandb_run(agent_to_run: dict,
             else:
                 if verbose:
                     print(f'Unrecognised episode metric {metric}, skipping...')
-        agent_to_episode_stats_dict['Agent'].extend([agent for _ in range(episode_stats_found)])
-        agent_to_episode_completion_stats_dict['Agent'].extend([agent for _ in range(completion_stats_found)])
-        agent_to_episode_blocked_stats_dict['Agent'].extend([agent for _ in range(blocked_stats_found)])
+        agent_to_episode_stats_dict[hue].extend([agent for _ in range(episode_stats_found)])
+        agent_to_episode_completion_stats_dict[hue].extend([agent for _ in range(completion_stats_found)])
+        agent_to_episode_blocked_stats_dict[hue].extend([agent for _ in range(blocked_stats_found)])
             
     return (
         agent_to_episode_stats_dict,
@@ -354,10 +355,10 @@ def load_ramp_cluster_environment_metrics_from_wandb_run(agent_to_run: dict,
     )
 
 def load_ramp_cluster_environment_metrics_from_wandb_sweep(agent_to_sweep: dict,
-                                                           # hparams: list,
                                                            keys_to_ignore=None,
                                                            key_substrings_to_remove=None,
                                                            verbose=False,
+                                                           hue='Agent',
                                                            ):
     agent_to_episode_stats_dict, agent_to_episode_completion_stats_dict, agent_to_episode_blocked_stats_dict = defaultdict(list), defaultdict(list), defaultdict(list)
 
@@ -381,7 +382,7 @@ def load_ramp_cluster_environment_metrics_from_wandb_sweep(agent_to_sweep: dict,
                 
             # load run data
             agent_to_run = {agent: run}
-            _agent_to_episode_stats_dict, _agent_to_episode_completion_stats_dict, _agent_to_episode_blocked_stats_dict = load_ramp_cluster_environment_metrics_from_wandb_run(agent_to_run, keys_to_ignore=keys_to_ignore, key_substrings_to_remove=key_substrings_to_remove, verbose=verbose)
+            _agent_to_episode_stats_dict, _agent_to_episode_completion_stats_dict, _agent_to_episode_blocked_stats_dict = load_ramp_cluster_environment_metrics_from_wandb_run(agent_to_run, keys_to_ignore=keys_to_ignore, key_substrings_to_remove=key_substrings_to_remove, verbose=verbose, hue=hue)
             # print(f'_agent_to_episode_blocked_stats_dict: {_agent_to_episode_blocked_stats_dict}') # DEBUG
             
             # update episode stats dict with values and sweep hparams
@@ -409,7 +410,7 @@ def load_ramp_cluster_environment_metrics_from_wandb_sweep(agent_to_sweep: dict,
                     agent_to_episode_blocked_stats_dict[hparam].append(run_config_dict[hparam]['value'])
             
             print(f'Loaded data for run {run_counter+1} of {num_runs} ({run}) in {time.time() - run_load_start_t:.3f}.')
-        print(f'Loaded data for agent {agent} sweep {sweep} (num_runs={num_runs}) in {sweep_load_start_t:.3f} s.')
+        print(f'Loaded data for agent {agent} sweep {sweep} (num_runs={num_runs}) in {time.time() - sweep_load_start_t:.3f} s.')
 
     return (
         agent_to_episode_stats_dict,

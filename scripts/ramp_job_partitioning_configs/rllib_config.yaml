@@ -15,6 +15,7 @@ experiment:
     #name: job_placing
     name: ramp_job_partitioning
     train_seed: 0
+    #train_seed: 1
     test_seed: 1799
     #test_seed: null
     path_to_save: '/scratch/datasets/ddls/sims'
@@ -23,15 +24,15 @@ experiment:
         - 1
         - 2
         - 3
-        #- 4
-        #- 5
-        #- 6
-        #- 7
-        #- 8
+        - 4
+        - 5
+        - 6
+        - 7
+        - 8
     save_dir: null # placeholder, will be updated
 
 launcher:
-    #num_epochs: 1
+    #num_epochs: 1 # DEBUG
     #num_epochs: 2
     #num_epochs: 3
     #num_epochs: 5

@@ -1,6 +1,7 @@
 node_config:
     type_1:
         #num_nodes: 8
+        #num_nodes: 16
         num_nodes: 32
         workers_config:
             #- num_workers: 4
@@ -14,13 +15,24 @@ topology_config:
         #y_dims: 4
     type: ramp 
     kwargs:
+        ## 8 nodes
+        #num_communication_groups: 2
+        #num_racks_per_communication_group: 2
+        #num_servers_per_rack: 2
+
+        ## 16 nodes
+        #num_communication_groups: 2
+        #num_racks_per_communication_group: 2
+        #num_servers_per_rack: 4
+
+        # 32 nodes
         num_communication_groups: 4
         num_racks_per_communication_group: 4
         num_servers_per_rack: 2
 
         num_channels: 1
-        #total_node_bandwidth: 1.6e12 # transceiver_bandwidth (a.k.a. channel_bandwidth) = total_node_bandwidth / num_communication_groups
-        total_node_bandwidth: 12.5e9 # transceiver_bandwidth (a.k.a. channel_bandwidth) = total_node_bandwidth / num_communication_groups
+        total_node_bandwidth: 1.6e12 # transceiver_bandwidth (a.k.a. channel_bandwidth) = total_node_bandwidth / num_communication_groups
+        #total_node_bandwidth: 12.5e9 # transceiver_bandwidth (a.k.a. channel_bandwidth) = total_node_bandwidth / num_communication_groups
         intra_gpu_propagation_latency: 50e-9 # intra_gpu_propagation_latency (previously incorrectly called this switch_reconfiguration_latency)
         worker_io_latency: 100e-9
 
@@ -30,7 +42,7 @@ jobs_config:
     #path_to_files: /scratch/datasets/ddls/jobs/pipedream_graphs/image_classification/profiles/resnext50/
     path_to_files: /scratch/datasets/ddls/jobs/image_classification_and_translation/small_graphs/training/
     max_files: null
-    #replication_factor: 1
+    #replication_factor: 1 # DEBUG
     #replication_factor: 2
     #replication_factor: 10
     #replication_factor: 20
@@ -53,15 +65,15 @@ jobs_config:
             #0.50: 0.2
             #0.75: 0.3
             #1.00: 0.2
-        _target_: ddls.distributions.uniform.Uniform
-        min_val: 0.1
-        max_val: 1
-        decimals: 2
-        #_target_: ddls.distributions.custom_skew_norm.CustomSkewNorm
-        #skewness: 0
+        #_target_: ddls.distributions.uniform.Uniform
         #min_val: 0.1
         #max_val: 1
         #decimals: 2
+        _target_: ddls.distributions.custom_skew_norm.CustomSkewNorm
+        skewness: 5
+        min_val: 0.1
+        max_val: 1
+        decimals: 2
         #_target_: ddls.distributions.list_of_distributions.ListOfDistributions
         #name_to_cls_to_kwargs:
             #dist_1:
@@ -93,7 +105,7 @@ jobs_config:
     
 #max_simulation_run_time: null
 #max_simulation_run_time: 1000
-#max_simulation_run_time: 10000
+#max_simulation_run_time: 10000 # DEBUG
 #max_simulation_run_time: 2e5
 max_simulation_run_time: 1e6
     

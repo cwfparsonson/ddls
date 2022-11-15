@@ -181,7 +181,7 @@ class RampJobPartitioningEnvironment(gym.Env):
         # self.op_partitioner, self.op_placer, self.op_scheduler, self.dep_placer, self.dep_scheduler = self._init_cluster_managers()
         self.job_placement_shaper, self.op_placer, self.op_scheduler, self.dep_placer, self.dep_scheduler = self._init_cluster_managers()
 
-        # TODO: Is this really needed? NEW
+        # TODO: Is this really needed? Think is required by RLlib...
         self.reset()
 
     def _get_action_to_job_placement_shape(self):

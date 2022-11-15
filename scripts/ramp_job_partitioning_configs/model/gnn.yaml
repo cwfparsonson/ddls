@@ -10,20 +10,25 @@ fcnet_hiddens: # number of hidden layers and their corresponding dimensions to u
     # CONFIG.hiddens (DQN, ApexDQN, etc.)
     - 17 # ppo, impala, etc.
     #- 256 # dqn, apex dqn, etc.
-fcnet_activation: swish # activation function to use in final logit readout module
+fcnet_activation: relu # TUNED activation function to use in final logit readout module
 custom_model: my_model
 custom_model_config:
     in_features_node: 5 # dimension of node features
     in_features_edge: 2 # dimension of edge features
-    out_features_msg: 8 # dimension of message sent between nodes during message passing
-    out_features_hidden: 16 # embedding dimension of the hidden layer(s) during message passing
-    out_features_node: 8 # per-node-level output embedding size after message passing N.B. changed out_features -> out_features_node
     in_features_graph: 17 # 14 # dimension of graph features (gets concatenated with action_space so that graph embedding includes representation of action mask)
+    #out_features_msg: 8 # dimension of message sent between nodes during message passing
+    out_features_msg: 32 # TUNED
+    #out_features_hidden: 16 # embedding dimension of the hidden layer(s) during message passing
+    out_features_hidden: 64 # TUNED
+    #out_features_node: 8 # per-node-level output embedding size after message passing N.B. changed out_features -> out_features_node
+    out_features_node: 16 # TUNED
     out_features_graph: 8 # graph-level output embedding size (gets concatenated with out_features_node and passed through readout module to get final output logits)
-    num_rounds: 2 # number of message passing rounds to conduct (i.e. calls to aggregator module) when generating per-node embeddings. Includes input and output layers, so must be >=2.
+    num_rounds: 2 # TUNED number of message passing rounds to conduct (i.e. calls to aggregator module) when generating per-node embeddings. Includes input and output layers, so must be >=2.
     aggregator_type: mean
-    aggregator_activation: 'leaky_relu' # activation function to use when aggregating node edge and graph features during message passing
-    module_depth: 1 # depth of node, edge, and reduce modules (used during message passing) and of graph module (used to generate graph-feature embedding)
+    #aggregator_activation: 'leaky_relu' # activation function to use when aggregating node edge and graph features during message passing
+    aggregator_activation: 'relu' # TUNED
+    #module_depth: 1 # depth of node, edge, and reduce modules (used during message passing) and of graph module (used to generate graph-feature embedding)
+    module_depth: 2 # TUNED
     action_space_type: discrete # discrete continuous
     apply_action_mask: True # use for PPO, IMPALA, etc.
-    #apply_action_mask: False # use for DQN, ApexDQN, etc
+    #apply_action_mask: False # use for DQN, ApexDQN, etc.

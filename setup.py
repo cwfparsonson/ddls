@@ -5,4 +5,3 @@ setuptools.setup(name="ddls",
                  description="Distributed Deep Learning Simulator.",
                  packages=setuptools.find_packages(),
                  python_requires='>=3.6')
-

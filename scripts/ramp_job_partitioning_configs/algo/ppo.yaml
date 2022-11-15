@@ -13,6 +13,7 @@ model:
         False
 
 algo_config:
+    gamma: 0.997 # tuned
     batch_mode: truncate_episodes
 
     # SPECIFIC HPARAMS
@@ -20,16 +21,24 @@ algo_config:
     use_critic: True
     use_gae: True
     #lambda_: 1.0
-    kl_coeff: 0.2 # beta
-    num_sgd_iter: 30 # number of times to use sampled experiences to update NN
+    #kl_coeff: 0.2 # beta
+    kl_coeff: 0.01 # tuned
+    #num_sgd_iter: 30 # number of times to use sampled experiences to update NN
+    num_sgd_iter: 50 # tuned
     shuffle_sequences: True
-    vf_loss_coeff: 1.0 # c1
-    entropy_coeff: 0.0 # c2 - controls exploration
+    #vf_loss_coeff: 1.0 # c1
+    vf_loss_coeff: 0.5 # tuned
+    #entropy_coeff: 0.0 # c2 - controls exploration
+    entropy_coeff: 0.003 # tuned
     entropy_coeff_schedule: null
-    clip_param: 0.3 # clipping parameter epsilon
-    vf_clip_param: 10.0
-    grad_clip: null
-    kl_target: 0.01 # dtarg
+    #clip_param: 0.3 # clipping parameter epsilon
+    clip_param: 0.18 # tuned
+    #vf_clip_param: 10.0
+    vf_clip_param: 128.8 # tuned
+    #grad_clip: null
+    grad_clip: 1.5 # tuned
+    #kl_target: 0.01 # dtarg
+    kl_target: 0.001 # tuned
 
     # need sgd_minibatch_size <= train_batch_size
     #sgd_minibatch_size: 32
@@ -43,7 +52,8 @@ algo_config:
     sgd_minibatch_size: 128
     rollout_fragment_length: 200
     train_batch_size: 4000
-    #lr: 0.00005
+    #lr: 0.00005 
+    lr: 0.0002785 # tuned
     
 
     # PPO HPARAM INFO

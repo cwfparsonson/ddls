@@ -92,46 +92,120 @@ class PlotAesthetics:
 
 
 
+def plot_computation_graph_pygraphviz(graph, 
+                                      path_to_save=None):
+    '''
+    Use command line dot arguments from graphviz https://graphviz.org/doc/info/command.html
 
+    https://www.graphviz.org/pdf/dotguide.pdf
 
-def plot_computation_graph(graph,
-                             # figsize=(15, 15),
-                             scaling_factor=1,
-                             width_scaling_factor=1,
-                             height_scaling_factor=1,
-                             node_color_palette='pastel',
-                             node_size=150,
-                             edge_alpha=0.5,
-                             edge_width=0.5,
-                             font_size=8,
-                             title=None,
-                             show_fig=True,
-                             dpi=600,
-                             verbose=False):
+    You can search for graphviz attributes: https://graphviz.org/doc/info/attrs.html
+
+    When you click on an attribute, at the bottom of the page it says what this
+    attribute is valid on. E.g. ranksep (https://graphviz.org/docs/attrs/ranksep/)
+    is only valid on Graphs, so call it with -Granksep=<number>
+    '''
+    A = nx.nx_agraph.to_agraph(graph)
+    # A.layout('dot', args='-Nfontsize=10 -Nwidth=".2" -Nheight=".2" -Nmargin=0 -Gnodesep=0.02 -Gsep=0 -Gfontsize=8')
+    A.layout('dot', args='-Nfontsize=6.5 -Nwidth=".15" -Nheight=".05" -Nmargin=0 -Granksep=0.02 -Gfontsize=8 -Earrowsize=0.3')
+    if path_to_save is None:
+        path_to_save = 'graph.png'
+    A.draw(path_to_save)
+
+def plot_computation_graph_networkx(graph,
+                                    scaling_factor=1,
+                                    width_scaling_factor=1,
+                                    height_scaling_factor=1,
+                                    node_color_palette='pastel',
+                                    node_size=150,
+                                    edge_alpha=0.5,
+                                    # edge_width=0.5,
+                                    min_edge_width=0.5,
+                                    max_edge_width=5,
+                                    arrowsize=10,
+                                    font_size=8,
+                                    title=None,
+                                    show_fig=True,
+                                    dpi=600,
+                                    border=True,
+                                    plot_node_ids=True,
+                                    legend_kwargs=None,
+                                    verbose=False):
     start_time = time.time_ns()
 
     aesthetics = PlotAesthetics()
     aesthetics.set_icml_paper_plot_aesthetics(dpi=dpi)
     fig = plt.figure(figsize=aesthetics.get_standard_fig_size(scaling_factor=scaling_factor, width_scaling_factor=width_scaling_factor, height_scaling_factor=height_scaling_factor))
+    ax = plt.gca()
     
     pos = graphviz_layout(graph, prog='dot')
+
+    # collect forward and backward nodes
+    forward_nodes, backward_nodes = [], []
+    for node in graph.nodes:
+        if graph.nodes[node]['pass_type'] == 'forward_pass':
+            forward_nodes.append(node)
+        else:
+            backward_nodes.append(node)
     
-    node_labels = {node: node for node in graph.nodes}
+    # plot forward nodes
+    forward_node_labels = {node: node for node in forward_nodes}
     nx.draw_networkx_nodes(graph,
                            pos,
+                           nodelist=forward_nodes,
                            node_size=node_size,
                            node_color=sns.color_palette(node_color_palette)[0],
-                           label=node_labels)
+                           label='Forward pass operation')
+    if plot_node_ids:
+        nx.draw_networkx_labels(graph, 
+                                pos, 
+                                labels=forward_node_labels,
+                                font_size=font_size)
+
+    # plot backward nodes
+    backward_node_labels = {node: node for node in backward_nodes}
+    nx.draw_networkx_nodes(graph,
+                           pos,
+                           nodelist=backward_nodes,
+                           node_size=node_size,
+                           node_color=sns.color_palette(node_color_palette)[1],
+                           label='Backward pass operation')
+    if plot_node_ids:
+        nx.draw_networkx_labels(graph, 
+                                pos, 
+                                labels=backward_node_labels,
+                                font_size=font_size)
+
+    # edge width is proportional to the size of the dependency
+    dependency_sizes = []
+    for edge in graph.edges:
+        u, v, k = edge
+        dependency_sizes.append(graph[u][v][k]['size'])
+    dependency_sizes = np.array(dependency_sizes)
+    edgewidths = (dependency_sizes - np.min(dependency_sizes)) / (np.max(dependency_sizes) - np.min(dependency_sizes)) * (max_edge_width - min_edge_width) + min_edge_width
     
+    # plot edges
     nx.draw_networkx_edges(graph,
                            pos,
                            alpha=edge_alpha,
-                           width=edge_width)
+                           # width=edge_width,
+                           # min_source_margin=100,
+                           # min_target_margin=35,
+                           # connectionstyle='arc3, rad = 0.1',
+                           # width=edgewidths.tolist(),
+                           min_source_margin=0,
+                           min_target_margin=0,
+                           width=max_edge_width,
+                           arrowsize=arrowsize,
+                           label='Dependency')
     
-    nx.draw_networkx_labels(graph, 
-                            pos, 
-                            labels=node_labels,
-                            font_size=font_size)
+
+    if not border:
+        ax.axis('off')
+
+    if legend_kwargs is not None:
+        plt.legend()
+        ax.legend(**legend_kwargs)
     
     if title is not None:
         plt.title(title)

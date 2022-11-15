@@ -828,8 +828,9 @@ class RampClusterEnvironment:
             # print(f'tick_counter_to_active_workers_tick_size: {tick_counter_to_active_workers_tick_size}')
             mean_mounted_worker_utilisation_frac = 0
             for num_active_workers, tick_size in tick_counter_to_active_workers_tick_size.values():
-                mean_mounted_worker_utilisation_frac += ( (num_active_workers / len(job.details['mounted_workers'])) * (lookahead_job_completion_time) )
-                # print(f'num_active_workers: {num_active_workers} | tick_size: {tick_size} | mounted workers: {len(job.details["mounted_workers"])} | stopwatch time: {tmp_stopwatch.time()} -> mean_mounted_worker_utilisation_frac: {mean_mounted_worker_utilisation_frac}')
+                mean_mounted_worker_utilisation_frac += ( (num_active_workers / len(job.details['mounted_workers'])) * (tick_size / lookahead_job_completion_time) )
+                # print(f'num_active_workers: {num_active_workers} | tick_size: {tick_size} | mounted workers: {len(job.details["mounted_workers"])} -> mean_mounted_worker_utilisation_frac: {mean_mounted_worker_utilisation_frac}')
+            # print(f'Final mean_mounted_worker_utilisation_frac: {mean_mounted_worker_utilisation_frac}')
             # # print(f'\nEvaluating channel utilisation...')
             # mean_mounted_channel_utilisation_frac = 0
             # for num_active_channels, tick_size in tick_counter_to_active_channels_tick_size.values():
@@ -895,8 +896,7 @@ class RampClusterEnvironment:
         # verbose = True # DEBUG
 
         self.action = action
-        # if action.actions['op_placement'] is None and action.actions['op_schedule'] is None and action.actions['dep_placement'] is None and action.actions['dep_schedule'] is None:
-            # raise Exception(f'>=1 action must != None.')
+
         if self.path_to_save is not None and self.use_sqlite_database and self.step_counter % self.save_freq == 0:
             # saved logs at end of previous step, can reset in-memory logs for this step
             self._reset_sim_log()
@@ -1044,6 +1044,7 @@ class RampClusterEnvironment:
 
         # log step-level data
         self.step_stats['step_end_time'] = self.stopwatch.time()
+        self.step_stats['step_time'] = self.step_stats['step_end_time'] - self.step_stats['step_start_time']
 
         for metric in [
                        'mean_num_jobs_running',
@@ -1059,7 +1060,6 @@ class RampClusterEnvironment:
             else:
                 self.step_stats[metric] = 0
 
-        self.step_stats['step_time'] = self.step_stats['step_end_time'] - self.step_stats['step_start_time']
         for throughput_metric, info_processed in {
                 'mean_compute_throughput': 'compute_info_processed',
                 'mean_dep_throughput': 'dep_info_processed',
@@ -1092,6 +1092,15 @@ class RampClusterEnvironment:
                     'demand_compute_info_processed',
                     'demand_dep_info_processed',
                     'demand_total_info_processed',
+
+
+                    # step metrics
+                    'mean_compute_overhead_frac',
+                    'mean_communication_overhead_frac',
+                    'mean_num_jobs_running',
+                    'mean_num_mounted_workers',
+                    'mean_mounted_worker_utilisation_frac',
+                    'mean_cluster_worker_utilisation_frac',
                     ]:
             self.episode_stats[metric].append(self.step_stats[metric])
 
@@ -1143,6 +1152,19 @@ class RampClusterEnvironment:
                 else:
                     self.episode_stats[throughput_metric] = 0
 
+            for step_metric in [
+                    'mean_compute_overhead_frac',
+                    'mean_communication_overhead_frac',
+                    'mean_num_jobs_running',
+                    'mean_num_mounted_workers',
+                    'mean_mounted_worker_utilisation_frac',
+                    'mean_cluster_worker_utilisation_frac',
+                    ]:
+                if self.episode_stats[step_metric] != 0 and self.episode_stats['episode_time'] != 0:
+                    self.episode_stats[step_metric] = np.mean(self.episode_stats[step_metric])
+                else:
+                    self.episode_stats[step_metric] = 0
+
         # save logs
         if self.path_to_save is not None:
             if self.step_counter % self.save_freq == 0 or self.is_done():
@@ -1188,7 +1210,14 @@ class RampClusterEnvironment:
                 'mean_demand_dep_throughput',
                 'mean_demand_total_throughput',
 
-                # extra episode stats sometimes added externall by e.g. RLlib, but useful for loggin
+                'mean_compute_overhead_frac',
+                'mean_communication_overhead_frac',
+                'mean_num_jobs_running',
+                'mean_num_mounted_workers',
+                'mean_mounted_worker_utilisation_frac',
+                'mean_cluster_worker_utilisation_frac',
+
+                # extra episode stats sometimes added externally by e.g. RLlib, but useful for logging
                 'return',
                 'episode_reward',
                 'run_time',
@@ -1202,7 +1231,6 @@ class RampClusterEnvironment:
         return {
                 'mean_num_mounted_workers',
                 'mean_num_mounted_channels',
-
                 }
 
     @staticmethod
@@ -1248,7 +1276,6 @@ class RampClusterEnvironment:
                 'jobs_blocked_original_demand_num_edges',
                 'jobs_blocked_original_demand_total_operation_memory_cost',
                 'jobs_blocked_original_demand_total_dependency_size',
-
                 }
 
     def _update_flow_run_times(self, job):
@@ -1381,18 +1408,6 @@ class RampClusterEnvironment:
                 for job_idx in sorted(channel.mounted_job_idx_to_deps.keys()):
                     job = self.jobs_running[job_idx]
                     for dep_id in sorted(channel.mounted_job_idx_to_deps[job_idx]):
-                        # if dep_id not in dep_schedule[channel_id][job.job_id]:
-                            # print(f'ERROR')
-                            # print(f'dep_id {dep_id} not found in dep_schedule[{channel_id}][{job.job_id}] {dep_schedule[channel_id][job.job_id]}')
-                            # print(f'channel_id: {channel_id}')
-                            # print(f'job_id: {job.job_id}')
-                            # print(f'job_idx: {job_idx}')
-                            # print(f'jobs_running: {self.jobs_running.keys()}')
-                            # print(f'jobs_completed: {self.jobs_completed.keys()}')
-                            # print(f'jobs_blocked: {self.jobs_blocked.keys()}')
-                            # print(f'jobs queued: {self.job_queue.jobs.keys()}')
-                            # import pdb; pdb.set_trace()
-                            # raise Exception()
                         channel.mounted_job_dep_to_priority[gen_job_dep_str(job_idx, job.job_id, dep_id)] = dep_schedule[channel_id][job.job_id][dep_id]
             else:
                 # dep not a flow so not placed on channel so no need to schedule
@@ -1577,8 +1592,6 @@ class RampClusterEnvironment:
         if self.save_thread is not None:
             self.save_thread.join()
         self.save_thread = threading.Thread(target=self._save_logs, 
-                                            # args=({'sim_log': copy.deepcopy(self.sim_log),
-                                                   # 'steps_log': copy.deepcopy(self.steps_log)},))
                                             args=({'sim_log': self.sim_log,
                                                    'steps_log': self.steps_log},))
         self.save_thread.start()

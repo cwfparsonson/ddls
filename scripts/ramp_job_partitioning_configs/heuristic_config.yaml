@@ -73,9 +73,9 @@ eval_loop:
                 num_channels: 1
                 #channel_bandwidth: 1250000000 # 1.6 TB / num_communication_groups
                 #total_node_bandwidth: 6e9 # transceiver_bandwidth (a.k.a. channel_bandwidth) = total_node_bandwidth / num_communication_groups
-                #total_node_bandwidth: 1.6e12 # transceiver_bandwidth (a.k.a. channel_bandwidth) = total_node_bandwidth / num_communication_groups
+                total_node_bandwidth: 1.6e12 # transceiver_bandwidth (a.k.a. channel_bandwidth) = total_node_bandwidth / num_communication_groups
                 #total_node_bandwidth: 25e9 # transceiver_bandwidth (a.k.a. channel_bandwidth) = total_node_bandwidth / num_communication_groups
-                total_node_bandwidth: 12.5e9 # transceiver_bandwidth (a.k.a. channel_bandwidth) = total_node_bandwidth / num_communication_groups
+                #total_node_bandwidth: 12.5e9 # transceiver_bandwidth (a.k.a. channel_bandwidth) = total_node_bandwidth / num_communication_groups
                 #total_node_bandwidth: 3.125e9 # transceiver_bandwidth (a.k.a. channel_bandwidth) = total_node_bandwidth / num_communication_groups
                 #switch_reconfiguration_latency: 0.00000125
                 intra_gpu_propagation_latency: 50e-9 # intra_gpu_propagation_latency (previously incorrectly called this switch_reconfiguration_latency)
@@ -86,7 +86,7 @@ eval_loop:
             #path_to_files: /scratch/datasets/ddls/jobs/pipedream_graphs/image_classification/profiles/resnext50/
             path_to_files: /scratch/datasets/ddls/jobs/image_classification_and_translation/small_graphs/training/
             max_files: null
-            #replication_factor: 1
+            #replication_factor: 1 # DEBUG
             #replication_factor: 5
             #replication_factor: 2
             #replication_factor: 5
@@ -131,7 +131,7 @@ eval_loop:
 
         #max_simulation_run_time: null
         #max_simulation_run_time: 1e3
-        #max_simulation_run_time: 1e4
+        #max_simulation_run_time: 1e4 # DEBUG
         #max_simulation_run_time: 2e5
         max_simulation_run_time: 1e6
 
@@ -204,8 +204,8 @@ eval_loop:
 
     # CHANGE
     actor:
-        ### HEURISTIC AGENTS
-        _target_: ddls.environments.ramp_job_partitioning.agents.random.Random
+        #### HEURISTIC AGENTS
+        #_target_: ddls.environments.ramp_job_partitioning.agents.random.Random
 
         #_target_: ddls.environments.ramp_job_partitioning.agents.no_parallelism.NoParallelism
 
@@ -216,7 +216,7 @@ eval_loop:
         ##max_partitions_per_op: 256
         
         #_target_: ddls.environments.ramp_job_partitioning.agents.sip_ml.SiPML
-        #_target_: ddls.environments.ramp_job_partitioning.agents.acceptable_jct.AcceptableJCT
+        _target_: ddls.environments.ramp_job_partitioning.agents.acceptable_jct.AcceptableJCT
         max_partitions_per_op: 16
         #max_partitions_per_op: null
 

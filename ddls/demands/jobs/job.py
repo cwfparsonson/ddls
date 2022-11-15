@@ -1,4 +1,4 @@
-from ddls.plotting.plotting import plot_computation_graph
+from ddls.plotting.plotting import plot_computation_graph_networkx, plot_computation_graph_pygraphviz
 
 import networkx as nx
 import copy
@@ -587,9 +587,10 @@ class Job:
         descr += f' | Max acceptable job completion time: {self.details["max_acceptable_job_completion_time"]}'
         return descr
     
-    def render(self, scaling_factor=3, title='computation_graph', show_fig=True, verbose=False):
-        return plot_computation_graph(self.computation_graph, 
-                                      scaling_factor=scaling_factor, 
-                                      title=title, 
-                                      show_fig=show_fig, 
-                                      verbose=verbose)
+    def render(self, mode='networkx', **kwargs):
+        if mode == 'networkx':
+            return plot_computation_graph_networkx(self.computation_graph, **kwargs)
+        elif mode == 'pygraphviz':
+            return plot_computation_graph_pygraphviz(self.computation_graph, **kwargs)
+        else:
+            raise Exception(f'Unrecognised mode {mode}')

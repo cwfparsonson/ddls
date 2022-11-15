@@ -1,20 +1,20 @@
 # https://docs.wandb.ai/guides/sweeps/configuration
 
-# TEST HEURISTIC
-program: test_heuristic_from_config.py # HEURISTIC
-#method: bayes
-method: grid
-metric:
-  goal: maximize
-  name: valid/episode_stats/return
-
-### TRAIN RLLIB
-#program: train_rllib_from_config.py # RLLIB
-#method: bayes
-##method: grid
+## TEST HEURISTIC
+#program: test_heuristic_from_config.py # HEURISTIC
+##method: bayes
+#method: grid
 #metric:
   #goal: maximize
-  #name: evaluation/episode_reward_mean
+  #name: valid/episode_stats/return
+
+## TRAIN RLLIB
+program: train_rllib_from_config.py # RLLIB
+method: bayes
+#method: grid
+metric:
+  goal: maximize
+  name: evaluation/episode_reward_mean
 
 parameters:
 
@@ -102,10 +102,27 @@ parameters:
         #min: 1e-7
         #max: 1e-5
         #distribution: log_uniform_values
-    #algo.algo_config.exploration_config.final_epsilon:
-        #values: [0.025, 0.05, 0.1]
-    #algo.algo_config.exploration_config.epsilon_timesteps:
-        #values: [25000, 50000, 100000, 250000, 500000, 1000000]
+
+
+    ### PHASE 3
+    model.custom_model_config.module_depth:
+        values: [1, 2, 4]
+    model.custom_model_config.out_features_msg:
+        values: [8, 16, 32, 64]
+    model.custom_model_config.out_features_hidden:
+        values: [8, 16, 32, 64]
+    model.custom_model_config.out_features_node:
+        values: [8, 16, 32, 64]
+    #model.custom_model_config.out_features_graph: # FORGOT TO ACTUALLY RUN THIS
+        #values: [8, 16, 32, 64]
+    model.custom_model_config.num_rounds:
+        values: [2, 4]
+    model.custom_model_config.module_depth:
+        values: [1, 2]
+    model.fcnet_activation:
+        values: ['tanh', 'relu', 'swish']
+    model.custom_model_config.aggregator_activation:
+        values: ['leaky_relu', 'relu', 'elu', 'hard_swish', 'softplus', 'mish', 'softsign']
 
 
 
@@ -177,9 +194,9 @@ parameters:
 
     ################################### TEST HEURISTIC ##############################
 
-    experiment.seed:
-        values: [0, 1, 2]
-        ####values: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    #experiment.seed:
+        #values: [0, 1, 2]
+        #####values: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     
     #eval_loop.actor._target_: 
         ##values: ['ddls.environments.ramp_job_partitioning.agents.random.Random', 'ddls.environments.ramp_job_partitioning.agents.no_parallelism.NoParallelism', 'ddls.environments.ramp_job_partitioning.agents.sip_ml.SiPML', 'ddls.environments.ramp_job_partitioning.agents.acceptable_jct.AcceptableJCT']
