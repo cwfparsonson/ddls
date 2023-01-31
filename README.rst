@@ -1,14 +1,12 @@
-Distributed Deep Learning Simulator
-===================================
-
-======================================
-:space_invader: Retro Branching :herb:
-======================================
+=================================================================
+:scissors: Distributed Deep Learning Simulator :desktop_computer:
+=================================================================
 
 --------------------------------------------------------------------------------------------------------------------------------------------
 
 Implementation of PAC-ML (partitioning for asynchronous computing with machine
-learning) as reported in `Partitioning Distributed Compute Jobs with Reinforcement Learning and Graph Neural Networks <https://arxiv.org/abs/2205.14345>`_.
+learning) and the associated distributed deep learning simulation of a RAMP optical architecture 
+as reported in `Partitioning Distributed Compute Jobs with Reinforcement Learning and Graph Neural Networks <https://arxiv.org/abs/2205.14345>`_.
 
 .. figure:: assets/rl_gnn_partitioning_methodology.drawio.png
 
