@@ -60,6 +60,13 @@ if __name__ == '__main__':
                 type=str,
                 default='<unknown>',
             )
+    parser.add_argument(
+                '--verbose',
+                '-v',
+                help='If true, will display any print statements sent to the terminal by the script(s) being ran.',
+                action=argparse.BooleanOptionalAction,
+                default=True,
+            )
     args = parser.parse_args()
 
     # run command to generate a weights and biases sweep agent command
@@ -71,7 +78,8 @@ if __name__ == '__main__':
             if realtime_output == '' and process.poll() is not None:
                 break
             if realtime_output:
-                # print(f'realtime_output: {realtime_output}')
+                if args.verbose:
+                    print(f'OUTPUT: {realtime_output}')
                 if 'Run sweep agent with' in realtime_output.strip():
                     run_sweep_cmd = str(realtime_output.strip()).split('with: ')[-1]
                 elif 'View sweep at' in realtime_output.strip():

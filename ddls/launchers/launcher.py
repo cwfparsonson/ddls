@@ -48,6 +48,7 @@ class Launcher:
     def _step(self):
         if self.epoch_loop is not None:
             _results = self.epoch_loop.run(self.epoch_batch_size)
+            self.epoch_loop.log(_results)
             self.epoch_counter += 1
             if 'rllib_results' in _results:
                 # using rllib epoch loop
@@ -95,7 +96,8 @@ class Launcher:
 
     def run(self, 
             logger: Logger = None,
-            checkpointer: Checkpointer = None):
+            checkpointer: Checkpointer = None,
+            ):
         if self.verbose:
             print(f'Launching...')
 
@@ -107,9 +109,9 @@ class Launcher:
             # save initial agent checkpoint
             checkpointer.write(self.epoch_loop)
 
-            if self.epoch_loop.validator is not None:
-                # run evaluation thread of checkpoint just saved
-                self.epoch_loop.validate(self.epoch_loop.last_agent_checkpoint, save_results=True)
+            # if self.epoch_loop.validator is not None:
+                # # run evaluation thread of checkpoint just saved
+                # self.epoch_loop.validate(self.epoch_loop.last_agent_checkpoint, save_results=True)
 
         # run launcher
         while not self._check_if_should_stop():
@@ -123,7 +125,21 @@ class Launcher:
             # print(results)
 
             if self.verbose:
-                print(f'ELAPSED: Epochs: {self.epoch_counter} | Episodes: {self.episode_counter} | Actor steps: {self.actor_step_counter} | Run time: {results["launcher_stats"]["total_run_time"][-1]:.3f} s')
+                if self.epoch_loop.best_agent_checkpoint_performances is not None:
+                    performance = self.epoch_loop.best_agent_checkpoint_performances[-1]
+                else:
+                    performance = None
+                print(f'ELAPSED: Epochs: {self.epoch_counter} | Episodes: {self.episode_counter} | Actor steps: {self.actor_step_counter} | Best {self.epoch_loop.metric}: {performance} | Run time: {results["launcher_stats"]["total_run_time"][-1]:.3f} s')
+
+            # check if should save checkpoint
+            if checkpointer is not None and self.epoch_loop is not None:
+                # if self.epoch_counter % checkpointer.epoch_checkpoint_freq == 0:
+                if self.epoch_counter % self.epoch_loop.rllib_config['evaluation_interval'] == 0:
+                    checkpointer.write(self.epoch_loop)
+
+                    # if self.epoch_loop.validator is not None:
+                        # # run evaluation thread of checkpoint just saved
+                        # self.epoch_loop.validate(self.epoch_loop.last_agent_checkpoint, save_results=True)
 
             # check if should write log data
             if logger is not None:
@@ -133,14 +149,6 @@ class Launcher:
                     # reset in-memory results
                     results = {'launcher_stats': {'total_run_time': []}}
 
-            # check if should save checkpoint
-            if checkpointer is not None and self.epoch_loop is not None:
-                if self.epoch_counter % checkpointer.epoch_checkpoint_freq == 0:
-                    checkpointer.write(self.epoch_loop)
-
-                    if self.epoch_loop.validator is not None:
-                        # run evaluation thread of checkpoint just saved
-                        self.epoch_loop.validate(self.epoch_loop.last_agent_checkpoint, save_results=True)
 
     def _check_if_should_log(self, logger):
         should_log = False

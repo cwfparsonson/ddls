@@ -16,6 +16,7 @@ import dgl
 from omegaconf import OmegaConf
 from functools import reduce
 
+
 def seed_stochastic_modules_globally(numpy_module,
                                      random_module,
                                      torch_module,
@@ -30,15 +31,8 @@ def seed_stochastic_modules_globally(numpy_module,
         numpy_seed = default_seed
     if random_seed is None:
         random_seed = default_seed
-
-    if numpy_seed is None:
-        numpy_seed = default_seed
-    if random_seed is None:
-        random_seed = default_seed
     if torch_seed is None:
         torch_seed = default_seed
-    if dgl_seed is None:
-        dgl_seed = default_seed
 
     numpy_module.random.seed(numpy_seed)
 
@@ -50,39 +44,7 @@ def seed_stochastic_modules_globally(numpy_module,
     torch_module.backends.cudnn.benchmark = False
     torch_module.backends.cudnn.deterministic = True
 
-    # dgl.seed(dgl_seed)
-
-# def seed_stochastic_modules_globally(default_seed=0, 
-                                     # numpy_seed=None, 
-                                     # random_seed=None,
-                                     # torch_seed=None,
-                                     # dgl_seed=None):
-    # '''Seeds any stochastic modules so get reproducible results.'''
-    # if numpy_seed is None:
-        # numpy_seed = default_seed
-    # if random_seed is None:
-        # random_seed = default_seed
-
-    # if numpy_seed is None:
-        # numpy_seed = default_seed
-    # if random_seed is None:
-        # random_seed = default_seed
-    # if torch_seed is None:
-        # torch_seed = default_seed
-    # if dgl_seed is None:
-        # dgl_seed = default_seed
-
-    # np.random.seed(numpy_seed)
-
-    # random.seed(random_seed)
-
-    # torch.manual_seed(torch_seed)
-    # torch.cuda.manual_seed(torch_seed)
-    # torch.cuda.manual_seed_all(torch_seed)
-    # torch.backends.cudnn.benchmark = False
-    # torch.backends.cudnn.deterministic = True
-
-    # # dgl.seed(dgl_seed)
+    return numpy_module, random_module, torch_module
 
 
 class Sampler:
@@ -559,6 +521,12 @@ def get_class_from_path(path):
     module = __import__(path_to_class, fromlist=[ClassName])
     return getattr(module, ClassName)
 
+def get_function_from_path(path):
+    module_path = '.'.join(path.split('.')[:-1])
+    module = get_module_from_path(module_path)
+    func = path.split('.')[-1]
+    return getattr(module, func)
+
 def gen_unique_experiment_folder(path_to_save, experiment_name):
     # init highest level folder
     path = path_to_save + '/' + experiment_name + '/'
@@ -658,13 +626,5 @@ def map_agent_id_to_hparams(base_folder, base_name, ids, hparams, verbose=True):
             id_to_hparams[_id][hparam] = val
 
     return id_to_hparams
-
-
-
-
-
-
-
-
 
 

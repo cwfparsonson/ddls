@@ -49,10 +49,10 @@ def calc_ramp_all_reduce_collective_communication_run_time(
     x: int = 32, # number of communication groups in the whole network
     # λ: int = 64,
     # J: int = 32, # number of racks per communicaiton group
-    DATA_RATE=1.6e12, # I/O GPU bandwidth (DATA_RATE / x = network link bandwidth)
+    DATA_RATE=1.6e12, # I/O GPU bandwidth (DATA_RATE / x = network link bandwidth) # BYTES
     # CLK=1455e6,
     MEM_FRQ=2e12, # device memory frequency
-    latency=1.25e-6, # intra GPU internal data propagation latency
+    latency=1.25e-6, # intra GPU internal data propagation latency through the network (1.25us assumes worst case for very large network, will be ~50 ns for <1024 nodes)
     π=130e12, # device peak computational power
     # comp=True,
     # circ_rec_time=0,
@@ -139,7 +139,7 @@ def set_collective_dep_run_time(partitioned_job, collective, op_placement, clust
                                                                                       cont_racks=cont_racks,
                                                                                       x=cluster.topology.num_communication_groups,
                                                                                       DATA_RATE=cluster.topology.channel_bandwidth,
-                                                                                      latency=cluster.topology.switch_reconfiguration_latency,
+                                                                                      latency=cluster.topology.intra_gpu_propagation_latency,
                                                                                       IO_latency=cluster.topology.worker_io_latency)
     if verbose:
         print(f'collective_run_time: {collective_run_time}')
@@ -158,7 +158,7 @@ def set_one_to_one_dep_run_time(partitioned_job, dep, op_placement, cluster, ver
     else:
         dep_run_time = calc_one_to_one_communication_run_time(partitioned_job.computation_graph[u][v][k]['size'],
                                                               DATA_RATE=cluster.topology.channel_bandwidth,
-                                                              latency=cluster.topology.switch_reconfiguration_latency,
+                                                              latency=cluster.topology.intra_gpu_propagation_latency,
                                                               IO_latency=cluster.topology.worker_io_latency)
     if verbose:
         print(f'\none-to-one dep: {dep}')

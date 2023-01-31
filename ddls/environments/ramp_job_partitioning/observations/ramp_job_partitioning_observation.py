@@ -77,29 +77,15 @@ class RampJobPartitioningObservation(DDLSObservationFunction):
         # print(f'\n\n\n--------------------------------------------------')
         # print(f'\nobs_space:\n{self.observation_space}')
     
-    def get_action_set_and_action_mask(self, env):
-        # action_set, action_mask = [0], [True] # action = 0 (do not place job) is always valid
-        # for action in range(1, env.cluster.topology.graph.graph['num_workers']+1):
-            # action_set.append(action)
-            # is_valid = False
-            
-            # # if partitoning op (i.e. num partitions >1), then number of times op is partitioned must be even
-            # if (action > 1 and action % 2 == 0) or (action == 1):
-                # # cannot partition an op more times than max_partitions_per_op
-                # if action <= env.max_partitions_per_op:
-                    # # cannot partition an op more times than there are available workers
-                    # if action <= env.cluster.topology.graph.graph['num_workers'] - len(env.cluster.mounted_workers):
-                        # is_valid = True
-
-            # # # DEBUG
-            # # print(f'action: {action} | max_partitions_per_op: {env.max_partitions_per_op} | num available workers: {env.cluster.topology.graph.graph["num_workers"] - len(env.cluster.mounted_workers)} -> is_valid: {is_valid}')
-
-            # action_mask.append(is_valid)
+    def get_action_set_and_action_mask(self, env, verbose=False):
+        # verbose = True # DEBUG
 
         ramp_shape = (env.cluster.topology.num_communication_groups, env.cluster.topology.num_racks_per_communication_group, env.cluster.topology.num_servers_per_rack)
         action_set, action_mask = [0], [True] # action = 0 (do not place job) is always valid
         # for action in range(1, env.cluster.topology.graph.graph['num_workers']+1):
         for action in range(1, env.max_partitions_per_op+1):
+            if verbose:
+                print(f'\tChecking action {action}...')
             action_set.append(action)
             is_valid = False
 
@@ -122,9 +108,23 @@ class RampJobPartitioningObservation(DDLSObservationFunction):
                                 b.extend(block)
                             if len(b) > 0:
                                 is_valid = True
+                            else:
+                                if verbose:
+                                    print(f'Action ({action}) has no valid placement shape which meets the RAMP rule requirements -> invald.')
+                    else:
+                        if verbose:
+                            print(f'Action ({action}) is > number of available workers ({env.cluster.topology.graph.graph["num_workers"] - len(env.cluster.mounted_workers)}) -> invalid.')
+                else:
+                    if verbose:
+                        print(f'Action ({action}) is > env.max_partitions_per_op ({env.max_partitions_per_op}) -> invalid.')
+            else:
+                if verbose:
+                    print(f'Action ({action}) is odd -> invalid.')
 
-            # # DEBUG
-            # print(f'action: {action} | max_partitions_per_op: {env.max_partitions_per_op} | num available workers: {env.cluster.topology.graph.graph["num_workers"] - len(env.cluster.mounted_workers)} -> is_valid: {is_valid}')
+            if verbose:
+                if is_valid:
+                    print(f'Action ({action}) is valid.')
+                print(f'Action: {action} | max_partitions_per_op: {env.max_partitions_per_op} | num available workers: {env.cluster.topology.graph.graph["num_workers"] - len(env.cluster.mounted_workers)} -> is_valid: {is_valid}')
 
             action_mask.append(is_valid)
 

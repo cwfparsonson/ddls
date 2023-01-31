@@ -506,7 +506,7 @@ def get_block_shapes(pairs,meta_block_shape):
         for pair in pairs:
             var = math.sqrt(pair[0])
             if VERBOSE:
-                print(f'Checking pair {pair} with var {var}')
+                print(f'\tChecking pair {pair} with var {var}')
             if (var % 1 == 0) and (var <= meta_block_shape[0] and var <= meta_block_shape[1] and pair[1] <= meta_block_shape[2]):
                 blocks.append((int(var), int(var), pair[1]))
                 if VERBOSE:
@@ -573,5 +573,10 @@ def allocate(ramp,ramp_shape,job_graph,sequence,splits,meta_block_info,parents,o
 
     if VERBOSE:
         print(f'Final allocation op_server_info: {op_server_info}')
+        allocated_workers = set()
+        for op in op_server_info:
+            for worker in op_server_info[op]:
+                allocated_workers.add(worker)
+        print(f'workers job allocated to ({len(allocated_workers)}): {allocated_workers}')
             
     return ramp, op_server_info

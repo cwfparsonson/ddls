@@ -34,7 +34,7 @@ import torch
 def run(cfg: DictConfig):
     # seeding
     if 'seed' in cfg.experiment:
-        seed_stochastic_modules_globally(default_seed=cfg.experiment.seed,
+        np, random, torch = seed_stochastic_modules_globally(default_seed=cfg.experiment.seed,
                                          numpy_module=np,
                                          random_module=random,
                                          torch_module=torch,
@@ -48,8 +48,8 @@ def run(cfg: DictConfig):
     if 'wandb' in cfg:
         if cfg.wandb is not None:
             import wandb
-            wandb.init(**cfg.wandb.init)
-            wandb.confg = cfg
+            hparams = OmegaConf.to_container(cfg)
+            wandb.init(config=hparams, **cfg.wandb.init)
         else:
             wandb = None
     else:
@@ -91,7 +91,6 @@ def run(cfg: DictConfig):
         with gzip.open(log_path + '.pkl', 'wb') as f:
             pickle.dump(log, f)
         print(f'Saved validation data to {log_path}.pkl')
-
 
 if __name__ == '__main__':
     run()

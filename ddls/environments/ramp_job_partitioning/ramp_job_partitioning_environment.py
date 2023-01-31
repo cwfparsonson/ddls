@@ -70,8 +70,12 @@ class RampJobPartitioningEnvironment(gym.Env):
                  path_to_save: str = None,
                  save_cluster_data: bool = False,
                  save_freq: int = 1,
-                 use_sqlite_database: bool = False):
+                 use_sqlite_database: bool = False,
+                 apply_action_mask: bool = True, # If True, if invalid action chosen, will raise Exception. If False, will just overwrite to action=0 (i.e. do not place job, which is always valid)
+                 ):
         self.suppress_warnings = suppress_warnings
+        self.apply_action_mask = apply_action_mask
+
         self.topology_config = topology_config
         self.node_config = node_config
         self.jobs_config = jobs_config
@@ -177,7 +181,7 @@ class RampJobPartitioningEnvironment(gym.Env):
         # self.op_partitioner, self.op_placer, self.op_scheduler, self.dep_placer, self.dep_scheduler = self._init_cluster_managers()
         self.job_placement_shaper, self.op_placer, self.op_scheduler, self.dep_placer, self.dep_scheduler = self._init_cluster_managers()
 
-        # TODO: Is this really needed? NEW
+        # TODO: Is this really needed? Think is required by RLlib...
         self.reset()
 
     def _get_action_to_job_placement_shape(self):
@@ -300,7 +304,6 @@ class RampJobPartitioningEnvironment(gym.Env):
         # action = 4 # DEBUG
         # action = 0 # DEBUG
 
-
         if verbose:
             print(f'\n~~~~~~~~~~~~~~~~~~~ Step {self.step_counter} ~~~~~~~~~~~~~~~~~~~~~')
 
@@ -309,10 +312,14 @@ class RampJobPartitioningEnvironment(gym.Env):
 
         # # PROCESS AGENT DECISION
         if action not in self.obs['action_set']:
-            raise Exception(f'Action {action} not in action set {self.obs["action_set"]}')
-        # TODO TEMP: Checking if RLlib pre-checks are crashing scripts
+            # action not possible in this environment
+            raise Exception(f'Action {action} not in action set {self.obs["action_set"]}.')
         if not self.obs['action_mask'][action]:
-            raise Exception(f'Action {action} is invalid given action mask {self.obs["action_mask"]} for action set {self.obs["action_set"]}')
+            if self.apply_action_mask:
+                raise Exception(f'Action {action} is invalid given action mask {self.obs["action_mask"]}. To stop raising exceptions when invalid actions chosen and instead just take no action, set apply_action_mask=False.')
+            else:
+                # agent tried to take an invalid action, do not place job by overwritting to action=0 (which is always valid)
+                action = 0
 
         if action != 0:
             job_id, job = list(self.cluster.job_queue.jobs.keys())[0], list(self.cluster.job_queue.jobs.values())[0]
@@ -403,7 +410,6 @@ class RampJobPartitioningEnvironment(gym.Env):
 
         if verbose:
             print(f'Reward: {self.reward} | Done: {self.done}')
-
         
         self.step_counter += 1
 

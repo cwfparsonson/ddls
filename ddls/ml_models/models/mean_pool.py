@@ -31,6 +31,7 @@ class MeanPool(torch.nn.Module):
         in_features_edge (int): dimension of the edge features seen by this layer
         out_features_msg (int): dimension of the message that will be sent between nodes
         out_features_reduce (int): dimension of the output embedding for each node
+
     '''
 
     def __init__(self,

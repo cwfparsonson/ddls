@@ -14,15 +14,18 @@ class Ramp(Topology):
                  num_racks_per_communication_group: int = 2,
                  num_servers_per_rack: int = 4,
                  num_channels: int = 1,
-                 channel_bandwidth: int = int(1.25e9),
-                 switch_reconfiguration_latency: Union[int, float] = 1.25e-6,
+                 total_node_bandwidth: int = int(1.6e12),
+                 intra_gpu_propagation_latency: Union[int, float] = 1.25e-6,
                  worker_io_latency: Union[int, float] = 100e-9):
         self.num_communication_groups = num_communication_groups
         self.num_racks_per_communication_group = num_racks_per_communication_group
+        if self.num_racks_per_communication_group > self.num_communication_groups:
+            raise Exception(f'num_racks_per_communication_group ({self.num_racks_per_communication_group}) must be <= num_communication_groups ({self.num_communication_groups})')
         self.num_servers_per_rack = num_servers_per_rack
         self.num_channels = num_channels
-        self.channel_bandwidth = channel_bandwidth
-        self.switch_reconfiguration_latency = switch_reconfiguration_latency
+        self.total_node_bandwidth = total_node_bandwidth
+        self.channel_bandwidth = total_node_bandwidth / num_communication_groups # a.k.a. per-transeiver bandwidth
+        self.intra_gpu_propagation_latency = intra_gpu_propagation_latency 
         self.worker_io_latency = worker_io_latency
         
         self.graph = nx.Graph()
@@ -55,6 +58,13 @@ class Ramp(Topology):
                 channel_two = Channel(v, u, channel_num, channel_bandwidth=self.channel_bandwidth)
                 self.graph[v][u]['channels'][channel_two.channel_id] = channel_two
                 self.channel_id_to_channel[channel_two.channel_id] = channel_two
+
+        # get shortest path(s) from each node to all other nodes
+        for src_node in self.graph.nodes:
+            self.graph.nodes[src_node]['target_to_shortest_paths'] = {}
+            for dst_node in self.graph.nodes:
+                if src_node != dst_node:
+                    self.graph.nodes[src_node]['target_to_shortest_paths'][dst_node] = list(nx.all_shortest_paths(self.graph, source=src_node, target=dst_node))
                 
     def render(self, 
                label_node_names=False, 

@@ -1,0 +1,78 @@
+_target_: ddls.loops.rllib_epoch_loop.RLlibEpochLoop
+
+# define string path to the model you want to use
+#path_to_model_cls: ddls.ml_models.policies.GNNPolicy
+path_to_model_cls: ddls.ml_models.policies.gnn_policy.GNNPolicy
+
+# define string path to the environment you want to use
+path_to_env_cls: ddls.environments.ramp_job_partitioning.ramp_job_partitioning_environment.RampJobPartitioningEnvironment
+
+# define string path to the rllib trainer you want to use
+path_to_rllib_trainer_cls: null # will automatically be overitten by defaults.algo.path_to_rllib_trainer_cls
+
+# init vars which are only used by test_rllib_from_config.py (i.e. not used at all during training)
+path_to_validator_cls: ddls.loops.rllib_eval_loop.RLlibEvalLoop 
+#test_time_checkpoint_path: /scratch/datasets/ddls/sims/ramp_job_partitioning/ramp_job_partitioning_1/checkpoints/checkpoint_000002/checkpoint-2 # USE FOR TESTING SPECIFIC CHECKPOINT (is ignored during training)
+#test_time_checkpoint_path: /scratch/datasets/ddls/sims/ramp_job_partitioning/ramp_job_partitioning_1493/checkpoints/checkpoint_000093/checkpoint-93
+#test_time_checkpoint_path: /scratch/datasets/ddls/sims/ramp_job_partitioning/ramp_job_partitioning_1635/checkpoints/checkpoint_000014/checkpoint-14
+#test_time_checkpoint_path: /scratch/datasets/ddls/sims/ramp_job_partitioning/ramp_job_partitioning_2044/checkpoints/checkpoint_000066/checkpoint-66
+#test_time_checkpoint_path: /scratch/datasets/ddls/sims/ramp_job_partitioning/ramp_job_partitioning_2041/checkpoints/checkpoint_000290/checkpoint-290
+#test_time_checkpoint_path: /scratch/datasets/ddls/sims/ramp_job_partitioning/ramp_job_partitioning_2347/checkpoints/checkpoint_000096/checkpoint-96
+test_time_checkpoint_path: /scratch/datasets/ddls/sims/ramp_job_partitioning/ramp_job_partitioning_2405/checkpoints/checkpoint_000112/checkpoint-112
+
+metric: evaluation/episode_reward_mean
+metric_goal: maximise
+#metric_goal: minimise
+
+# define the rllib training config as usual
+rllib_config:
+    #env: job_placing_all_nodes_environment
+    env: ramp_job_partitioning_environment
+
+    env_config: null # will automatically be overwritten with defaults.env_config
+
+    seed: null # will automatically be overwritten with experiment.train_seed
+
+    disable_env_checking: true
+
+    model: null # will automatically be overwritten with defaults.model
+
+    callbacks: ddls.environments.ramp_cluster.utils.RLlibRampClusterEnvironmentCallback
+
+    num_workers: 2 # num remote parallel cpu workers to have in addition to the local worker
+    #num_workers: 1
+    #num_workers: 0
+    num_gpus: 1 # num gpus available for RLlib
+
+    framework: torch
+    
+
+    ##### EVALUATION CONFIG #####
+    # will be automatically added overwritten with defaults.eval_config
+
+
+
+
+
+
+    
+    ##### ALGORITHM DEFAULT CONFIG #####
+    # For batch_mode and rollout_fragment_length overview, see https://docs.ray.io/en/master/rllib/rllib-sample-collection.html
+    # these hparams exist for all RLlib algorithms, but can be overwritten in defaults.algo.algo_config
+    lr: 0.0001
+    #gamma: 0.9
+    gamma: 0.99
+    batch_mode: complete_episodes
+
+    train_batch_size: 200
+    rollout_fragment_length: 50 # ignored if batch_mode = complete_episodes
+
+    #train_batch_size: 200
+    #rollout_fragment_length: 200
+    
+
+
+
+
+    ###### ALGORITHM SPECIFIC CONFIG #####
+    # will be automatically added overwritten with defaults.algo.algo_config

@@ -50,9 +50,31 @@ def run(cfg: DictConfig):
     cfg.experiment.cuda_visible_devices = os.environ['CUDA_VISIBLE_DEVICES']
     print(f'Set CUDA_VISIBLE_DEVICES to least used GPU {least_used_gpu}')
 
+    # merge various configs into rllib config, epoch config, and model config as required
+    if 'algo' in cfg:
+        cfg.epoch_loop.path_to_rllib_trainer_cls = cfg.algo.path_to_rllib_trainer_cls
+        cfg.epoch_loop.rllib_config = {**cfg.epoch_loop.rllib_config, **cfg.algo.algo_config}
+    if 'model' in cfg:
+        model_dict = OmegaConf.to_container(cfg.model, resolve=False)
+        if 'model' in cfg.algo:
+            algo_model_dict = OmegaConf.to_container(cfg.algo.model, resolve=False)
+            model_dict = recursively_update_nested_dict(model_dict, algo_model_dict, verbose=False)
+        cfg.epoch_loop.rllib_config.model = OmegaConf.create(model_dict)
+    if 'env_config' in cfg:
+        cfg.epoch_loop.rllib_config.env_config = cfg.env_config
+    if 'eval_config' in cfg:
+        eval_config_dict = OmegaConf.to_container(cfg.eval_config, resolve=False)
+        if 'eval_config' in cfg.algo:
+            algo_eval_config_dict = OmegaConf.to_container(cfg.algo.eval_config, resolve=False)
+            eval_config_dict = recursively_update_nested_dict(eval_config_dict, algo_eval_config_dict, verbose=False) # overwrite with any algorithm-specific eval config settings
+        # overwrite rllib config with evaluation config for this test_rllib_from_config script
+        rllib_config_dict = OmegaConf.to_container(cfg.epoch_loop.rllib_config, resolve=False)
+        rllib_config_dict = recursively_update_nested_dict(rllib_config_dict, eval_config_dict['evaluation_config'], verbose=False) # overwrite with any algorithm-specific eval config settings
+        cfg.epoch_loop.rllib_config = OmegaConf.create(rllib_config_dict)
+
     # seeding
     if 'test_seed' in cfg.experiment:
-        seed_stochastic_modules_globally(default_seed=cfg.experiment.test_seed,
+        np, random, torch = seed_stochastic_modules_globally(default_seed=cfg.experiment.test_seed,
                                          numpy_module=np,
                                          random_module=random,
                                          torch_module=torch,
@@ -60,11 +82,25 @@ def run(cfg: DictConfig):
         if 'rllib_config' in cfg.epoch_loop:
             # must seed rllib separately in config
             cfg.epoch_loop.rllib_config.seed = cfg.experiment.test_seed
-            cfg.epoch_loop.validator_rllib_config.seed = cfg.experiment.test_seed
+        # if 'rllib_config' in cfg.epoch_loop:
+            # # must seed rllib separately in config
+            # cfg.epoch_loop.rllib_config.seed = cfg.experiment.test_seed
+            # cfg.epoch_loop.rllib_config.evaluation_config.seed = cfg.experiment.test_seed
 
     # create dir for saving data
     save_dir = gen_unique_experiment_folder(path_to_save=cfg.experiment.path_to_save, experiment_name=cfg.experiment.name)
     cfg['experiment']['save_dir'] = save_dir
+
+    # init weights and biases
+    if 'wandb' in cfg:
+        if cfg.wandb is not None:
+            import wandb
+            hparams = OmegaConf.to_container(cfg)
+            wandb.init(config=hparams, **cfg.wandb.init)
+        else:
+            wandb = None
+    else:
+        wandb = None
 
     # print info
     print('\n\n\n')
@@ -96,19 +132,16 @@ def run(cfg: DictConfig):
     rllib_config.update(_rllib_config)
 
     # init rllib eval loop
-    validator_rllib_config = rllib_config
-    if cfg.epoch_loop.validator_rllib_config is not None:
-        # update eval config with any overrides
-        validator_rllib_config = recursively_update_nested_dict(validator_rllib_config, cfg.epoch_loop.validator_rllib_config)
     eval_loop = get_class_from_path(cfg.epoch_loop.path_to_validator_cls)(path_to_env_cls=cfg.epoch_loop.path_to_env_cls,
                                                                           path_to_rllib_trainer_cls=cfg.epoch_loop.path_to_rllib_trainer_cls,
-                                                                          rllib_config=validator_rllib_config)
+                                                                          rllib_config=rllib_config,
+                                                                          wandb=wandb)
     print(f'Initialised {eval_loop}.')
 
     start_time = time.time()
     results = eval_loop.run(checkpoint_path=cfg.epoch_loop.test_time_checkpoint_path, verbose=True)
     print(f'Finished validation of {cfg.epoch_loop.test_time_checkpoint_path} in {time.time() - start_time:.3f} s.')
-    print(f'Validation results:\n{results}')
+    # print(f'Validation results:\n{results}')
 
     base_path = '/'.join(save_dir.split('/')[:-1])
     for log_name, log in results.items():

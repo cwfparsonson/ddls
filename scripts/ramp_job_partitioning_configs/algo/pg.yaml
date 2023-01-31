@@ -1,0 +1,13 @@
+path_to_rllib_trainer_cls: ray.rllib.agents.pg.PGTrainer
+
+model:
+    # overwrite default model config as desired
+    fcnet_hiddens:
+        # must == action_space.n
+        - 17
+    custom_model_config:
+        apply_action_mask: True
+
+algo_config:
+    num_workers: 0
+    _disable_preprocessor_api: True
