@@ -100,15 +100,6 @@ class RampFirstFitOpPlacer(Placer):
                 # update the topology and op-server info for use in the next job allocation
                 ramp_topology, op_server_info = allocated
                 
-                # TODO: CHECK WITH ZAK
-                '''
-                When had min_op_run_time_quantum=0.1, had bug where op partition chosen was not masked in env
-                but when passed to placer, placer could not find a valid meta block shape. Is there some 
-                inconsistency where valid meta block shapes are not being found for some reason? Need to check.
-                To 'fix' this (by stopping error), had to indent the below so that only add op_id to
-                job_to_operation_to_worker if found placement, but should always find placement if was able
-                to partition since if no placement is available then no partition should be available before.
-                '''
                 # update job placement dict
                 for n in ramp_topology.keys():
                     c, r, s = n
@@ -119,4 +110,6 @@ class RampFirstFitOpPlacer(Placer):
                         # ensure op_id is string for consistency
                         job_to_operation_to_worker[job_id][str(op_id)] = worker_id
 
-        return OpPlacement(job_to_operation_to_worker, op_partition=op_partition, cluster=cluster)
+        op_placement = OpPlacement(job_to_operation_to_worker, op_partition=op_partition, cluster=cluster)
+
+        return op_placement

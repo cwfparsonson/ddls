@@ -74,11 +74,14 @@ def run(cfg: DictConfig):
 
     # seeding
     if 'test_seed' in cfg.experiment:
-        seed_stochastic_modules_globally(default_seed=cfg.experiment.train_seed,
+        np, random, torch = seed_stochastic_modules_globally(default_seed=cfg.experiment.test_seed,
                                          numpy_module=np,
                                          random_module=random,
                                          torch_module=torch,
                                          )
+        if 'rllib_config' in cfg.epoch_loop:
+            # must seed rllib separately in config
+            cfg.epoch_loop.rllib_config.seed = cfg.experiment.test_seed
         # if 'rllib_config' in cfg.epoch_loop:
             # # must seed rllib separately in config
             # cfg.epoch_loop.rllib_config.seed = cfg.experiment.test_seed

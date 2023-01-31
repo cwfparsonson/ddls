@@ -48,8 +48,8 @@ jobs_config:
     #replication_factor: 20
     #replication_factor: 100
     #replication_factor: 200
-    replication_factor: 201
-    #replication_factor: 1000
+    #replication_factor: 201
+    replication_factor: 1000
     #job_sampling_mode: remove
     job_sampling_mode: remove_and_repeat
     job_interarrival_time_dist:
@@ -65,15 +65,15 @@ jobs_config:
             #0.50: 0.2
             #0.75: 0.3
             #1.00: 0.2
-        #_target_: ddls.distributions.uniform.Uniform
-        #min_val: 0.1
-        #max_val: 1
-        #decimals: 2
-        _target_: ddls.distributions.custom_skew_norm.CustomSkewNorm
-        skewness: 5
+        _target_: ddls.distributions.uniform.Uniform
         min_val: 0.1
         max_val: 1
         decimals: 2
+        #_target_: ddls.distributions.custom_skew_norm.CustomSkewNorm
+        #skewness: -5
+        #min_val: 0.1
+        #max_val: 1
+        #decimals: 2
         #_target_: ddls.distributions.list_of_distributions.ListOfDistributions
         #name_to_cls_to_kwargs:
             #dist_1:
@@ -105,7 +105,7 @@ jobs_config:
     
 #max_simulation_run_time: null
 #max_simulation_run_time: 1000
-#max_simulation_run_time: 10000 # DEBUG
+#max_simulation_run_time: 2000 # DEBUG
 #max_simulation_run_time: 2e5
 max_simulation_run_time: 1e6
     

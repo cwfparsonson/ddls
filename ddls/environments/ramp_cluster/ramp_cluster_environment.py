@@ -824,6 +824,7 @@ class RampClusterEnvironment:
             self._remove_job_from_cluster(job)
         else:
             # calc overall average utilisation of the mounted workers and channels for this job
+            # # DEBUG
             # print(f'\nEvaluating worker utilisation...')
             # print(f'tick_counter_to_active_workers_tick_size: {tick_counter_to_active_workers_tick_size}')
             mean_mounted_worker_utilisation_frac = 0
@@ -1334,7 +1335,7 @@ class RampClusterEnvironment:
                     # self.job_op_to_worker[f'{job.details["job_idx"]}_{job.job_id}_{op_id}'] = worker_id
                     self.job_op_to_worker[gen_job_dep_str(job.details['job_idx'], job.job_id, op_id)] = worker_id
                     if verbose:
-                        print(f'Op ID {op_id} of job index {job.details["job_idx"]} placed on node ID {node_id} worker ID {worker_id}')
+                        print(f'Op ID {op_id} of job index {job.details["job_idx"]} placed on node ID {node_id} worker ID {worker_id}. Number of workers assigned to job so far: {len(job.details["mounted_workers"])}')
 
             # 2. update the dependency (flow) communication times for this job based on the placement
             self._update_flow_run_times(job)

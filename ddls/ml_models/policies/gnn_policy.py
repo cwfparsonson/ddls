@@ -30,6 +30,11 @@ General:
     an acceptable framework for how any Env built for DDL should interface
     (i.e. what do the returns of reset and step look like)
 
+    N.B. Padding is only done when passing the gym state into RLlib (since in
+    RLlib the state must always be the same size) - then inside the GNN we just
+    delete the padding (since GNNs do not require padding) and only work with
+    the actual node and edge features rather than the padded features.
+
 TODO (or consider):
     - understand the value function feature of rllib torch models better
         -- consider if better way or if fine as is (seems fine)

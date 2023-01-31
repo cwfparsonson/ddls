@@ -5,7 +5,7 @@ import torch
 class GNN(torch.nn.Module):
     '''
     Simple GNN model. Stacks an aggregation and message passing module (e.g. MeanPool)
-    num_rounds times and passes input graph throuugh stack to generate per-node embeddings, 
+    num_rounds times and passes input graph through stack to generate per-node embeddings, 
 
     Given input args, this model works effectively like a regular Sequential model
     (i.e. there is an input dimension, hidden output dimension and final output dimension).

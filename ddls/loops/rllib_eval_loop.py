@@ -1,6 +1,7 @@
 from ddls.utils import get_class_from_path, seed_stochastic_modules_globally, recursively_update_nested_dict
 
 from collections import defaultdict
+from collections.abc import Iterable
 import numpy as np
 
 import copy
@@ -100,21 +101,29 @@ class RLlibEvalLoop:
 
         results['episode_stats']['return'] = np.sum(results['step_stats']['reward'])
         for key, val in self.env.cluster.episode_stats.items():
-            try:
-                val = list(val)
-            except TypeError:
-                # val is not iterable (e.g. is int or float)
-                val = [val]
-            try:
-                results['episode_stats'][key] = np.mean(val)
-            except TypeError:
-                # val is not numeric (is e.g. a string)
-                results['episode_stats'][key] = val
+            # try:
+                # val = list(val)
+            # except TypeError:
+                # # val is not iterable (e.g. is int or float)
+                # val = [val]
+            # try:
+                # results['episode_stats'][key] = np.mean(val)
+            # except TypeError:
+                # # val is not numeric (is e.g. a string)
+                # results['episode_stats'][key] = val
+            results['episode_stats'][key] = np.array(val) # CHANGE
         # print(f'\nstep stats: {results["step_stats"]}')
         # print(f'\nepisode stats: {results["episode_stats"]}\n')
 
+
         if self.wandb is not None:
             wandb_log = {}
+
+            # record raw logged metrics in a custom wandb table
+            wandb_log[f'valid/completed_jobs_table'] = self._create_raw_logged_metric_wandb_table(results=results, col_headers_to_try=self.env.cluster.episode_completion_metrics())
+            wandb_log[f'valid/blocked_jobs_table'] = self._create_raw_logged_metric_wandb_table(results=results, col_headers_to_try=self.env.cluster.episode_blocked_metrics())
+
+            # record mean of logged metrics
             for log_name, log in results.items():
                 for key, val in log.items():
                     # record average of stat for validation run
@@ -123,4 +132,28 @@ class RLlibEvalLoop:
             self.wandb.log(wandb_log)
 
         return results
+
+    def _create_raw_logged_metric_wandb_table(self, results, col_headers_to_try, verbose=False):
+        row_idx_to_col_vals = defaultdict(list)
+        col_headers = []
+        for key in col_headers_to_try:
+            if key in results['episode_stats']:
+                if isinstance(results['episode_stats'][key], Iterable):
+                    if verbose:
+                        print(f'{key} vals are iterable, logging raw vals in wandb table...')
+                    col_headers.append(key)
+                    for row_idx in range(len(results['episode_stats'][key])):
+                        row_idx_to_col_vals[row_idx].append(results['episode_stats'][key][row_idx])
+                else:
+                    if verbose:
+                        print(f'{key} vals ({results["episode_stats"][key]}) are not iterable, no need to log raw val in wandb table.')
+            else:
+                if verbose:
+                    print(f'No stats for metric {key} were recorded this episode.')
+        if verbose:
+            print(f'Table column headers: {col_headers}')
+        wandb_table = self.wandb.Table(columns=col_headers)
+        for row in row_idx_to_col_vals.values():
+            wandb_table.add_data(*row)
+        return wandb_table
 

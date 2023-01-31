@@ -14,7 +14,11 @@ path_to_rllib_trainer_cls: null # will automatically be overitten by defaults.al
 path_to_validator_cls: ddls.loops.rllib_eval_loop.RLlibEvalLoop 
 #test_time_checkpoint_path: /scratch/datasets/ddls/sims/ramp_job_partitioning/ramp_job_partitioning_1/checkpoints/checkpoint_000002/checkpoint-2 # USE FOR TESTING SPECIFIC CHECKPOINT (is ignored during training)
 #test_time_checkpoint_path: /scratch/datasets/ddls/sims/ramp_job_partitioning/ramp_job_partitioning_1493/checkpoints/checkpoint_000093/checkpoint-93
-test_time_checkpoint_path: /scratch/datasets/ddls/sims/ramp_job_partitioning/ramp_job_partitioning_1635/checkpoints/checkpoint_000014/checkpoint-14
+#test_time_checkpoint_path: /scratch/datasets/ddls/sims/ramp_job_partitioning/ramp_job_partitioning_1635/checkpoints/checkpoint_000014/checkpoint-14
+#test_time_checkpoint_path: /scratch/datasets/ddls/sims/ramp_job_partitioning/ramp_job_partitioning_2044/checkpoints/checkpoint_000066/checkpoint-66
+#test_time_checkpoint_path: /scratch/datasets/ddls/sims/ramp_job_partitioning/ramp_job_partitioning_2041/checkpoints/checkpoint_000290/checkpoint-290
+#test_time_checkpoint_path: /scratch/datasets/ddls/sims/ramp_job_partitioning/ramp_job_partitioning_2347/checkpoints/checkpoint_000096/checkpoint-96
+test_time_checkpoint_path: /scratch/datasets/ddls/sims/ramp_job_partitioning/ramp_job_partitioning_2405/checkpoints/checkpoint_000112/checkpoint-112
 
 metric: evaluation/episode_reward_mean
 metric_goal: maximise

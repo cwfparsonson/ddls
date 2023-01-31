@@ -8,8 +8,9 @@ fcnet_hiddens: # number of hidden layers and their corresponding dimensions to u
     # SET OUTPUT SIZE TO BE:
     # action_space.n (PPO, IMPALA, etc.)
     # CONFIG.hiddens (DQN, ApexDQN, etc.)
-    - 17 # ppo, impala, etc.
-    #- 256 # dqn, apex dqn, etc.
+    #- 17 # ppo, impala, etc.
+    - 256 # dqn, apex dqn, etc.
+#fcnet_activation: swish
 fcnet_activation: relu # TUNED activation function to use in final logit readout module
 custom_model: my_model
 custom_model_config:
@@ -27,8 +28,8 @@ custom_model_config:
     aggregator_type: mean
     #aggregator_activation: 'leaky_relu' # activation function to use when aggregating node edge and graph features during message passing
     aggregator_activation: 'relu' # TUNED
-    #module_depth: 1 # depth of node, edge, and reduce modules (used during message passing) and of graph module (used to generate graph-feature embedding)
-    module_depth: 2 # TUNED
+    module_depth: 1 # depth of node, edge, and reduce modules (used during message passing) and of graph module (used to generate graph-feature embedding)
+    #module_depth: 2 # TUNED
     action_space_type: discrete # discrete continuous
     apply_action_mask: True # use for PPO, IMPALA, etc.
     #apply_action_mask: False # use for DQN, ApexDQN, etc.

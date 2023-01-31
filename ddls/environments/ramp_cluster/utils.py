@@ -12,6 +12,7 @@ import gzip
 import copy
 import time
 import json
+import shutil
 
 from typing import Union
 
@@ -235,17 +236,51 @@ def load_run_results_dict(run: Union[str, wandb.apis.public.Run], keys_to_ignore
         pass
     else:
         raise Exception(f'Unrecognised run type {type(run)}, must be str (path to run) or wandb.apis.public.Run')
-    history = run.scan_history()
+    # print(f'api:\n{dir(api)}') # DEBUG
+    # print(f'run:\n{dir(run)}') # DEBUG
+
     results = defaultdict(list)
     recorded_keys, ignored_keys = set(), set()
+
+    # load standard metrics recorded
+    history = run.scan_history()
     for log in history:
         for key, val in log.items():
             if not check_if_ignore(key, keys_to_ignore):
-                results[key].append(val)
-                recorded_keys.add(key)
+                if isinstance(val, dict):
+                    # is a reference to an artifact, will load below but can ignore here
+                    ignored_keys.add(key)
+                else:
+                    results[key].append(val)
+                    recorded_keys.add(key)
             else:
                 ignored_keys.add(key)
-    
+
+    # load any artifacts
+    for artifact in run.logged_artifacts():
+        path_to_downloaded_artifact = artifact.download()
+
+        # find json file
+        attempts = 0
+        while 'json' not in path_to_downloaded_artifact:
+            path_to_downloaded_artifact += f'/{os.listdir(path_to_downloaded_artifact)[0]}'
+            attempts += 1
+            if attempts > 50:
+                raise Exception(f'Unable to find a .json file in {artifact.download()}. Ensure that this file actually exists with the necessary extension, or if need to add more supported extensions to this block of code.')
+
+        # load json file data into a dict
+        with open(path_to_downloaded_artifact) as f:
+            artifact_data = json.load(f)
+
+        # create mapping of column header to column values
+        formatted_artifact_data = defaultdict(list)
+        for row in artifact_data['data']:
+            for col_idx in range(len(row)):
+                formatted_artifact_data[artifact_data['columns'][col_idx]].append(row[col_idx])
+
+        # record formatted artifact data
+        results[artifact.name.split('-')[-1]+'_artifact'] = formatted_artifact_data
+
     if verbose:
         print(f'\nRecorded keys: {recorded_keys}')
         print(f'Ignored keys: {ignored_keys}')
@@ -279,10 +314,29 @@ def remove_substrings_from_keys(results, substrings_to_remove):
         new_results[new_key] = results[key]
     return new_results
 
+def load_ramp_cluster_environment_wandb_table_from_wandb_run(agent_to_run: dict,
+                                                             keys_to_ignore=None,
+                                                             key_substrings_to_remove=None,
+                                                             hue='Agent',
+                                                             verbose=True):
+    if keys_to_ignore is None:
+        keys_to_ignore = []
+
+    # gather relevant agent data
+    agent_to_results = {agent: load_run_results_dict(run, keys_to_ignore, verbose=verbose) for agent, run in agent_to_run.items()}
+
+    if key_substrings_to_remove is not None:
+        agent_to_clean_results = {agent: remove_substrings_from_keys(results, key_substrings_to_remove) for agent, results in agent_to_results.items()}
+        # print(f'\nAgent clean results: {agent_to_clean_results}')
+    else:
+        agent_to_clean_results = agent_to_results
+
+    return agent_to_clean_results
+
+
 def load_ramp_cluster_environment_metrics_from_wandb_run(agent_to_run: dict, 
                                                          keys_to_ignore=None, 
                                                          key_substrings_to_remove=None, 
-                                                         hue='Agent',
                                                          verbose=True):
     '''
     Args:
