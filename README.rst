@@ -40,7 +40,7 @@ If you find this project or the associated paper useful, please cite our work::
 
     article{parsonson2022reinforcement,
           title = {Partitioning Distributed Compute Jobs with Reinforcement Learning and Graph Neural Networks},
-          author = {Parsonson, Christopher W. F. and Shabka, Zacharaya and Ottino, Alessandro and Georgios, Zervas},
+          author = {Parsonson, Christopher W. F. and Shabka, Zacharaya and Ottino, Alessandro and Zervas, Georgios},
           journal = {arXiv},
           year = {2023}
         }
