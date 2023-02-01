@@ -125,6 +125,45 @@ you as a researcher can define your own custom environment class with your own a
 and still have the ``RampClusterEnvironment`` perform the underlying DDL simulation logic. This makes
 the ``ddls`` compatible with many research projects beyond just what was focused on by PAC-ML.
 
+Below is an example of how you might go about building your own custom environment
+with your own framing of actions, rewards, observations, and so on but using the
+underlying simulation logic of ``ddls``:
+
+.. code:: python
+    from ddls.environments.ramp_cluster.ramp_cluster_environment import RampClusterEnvironment
+    from ddls.environments.ramp_cluster.actions.action import Action
+
+    class MyCustomEnvironment:
+        def __init__(self, **ramp_cluster_kwargs):
+            # Instantiate the RAMP cluster to run the underlying DDL simulation logic
+            self.cluster = RampClusterEnvironment(**ramp_cluster_kwargs)
+
+            # **Your own custom initialisation here**
+
+        def reset(self, **ramp_cluster_reset_kwargs):
+            # Reset the RAMP cluster N.B. No useful info is returned by RampClusterEnvironment.reset()
+            _ = self.cluster.reset(**ramp_cluster_reset_kwargs)
+
+            # **Your own custom reset and observation generation here**
+
+            return obs
+
+        def step(self, action):
+            # Use your custom action to define a RAMP cluster action
+            ramp_action = Action(op_partition=...,
+                                 op_placement=...,
+                                 op_schedule=...,
+                                 dep_placement=...,
+                                 dep_schedule=...
+                                )
+
+            # Step the RAMP simulator N.B. No useful info is returned by RampClusterEnvironment.step()
+            _ = self.cluster.step(ramp_action)
+
+            # **Your own custom step here to extract any custom observation, reward, done, info data you may want**
+
+            return obs, reward, done, info
+
 Re-Running the Paper's Experiments
 ==================================
 TODO
