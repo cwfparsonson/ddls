@@ -69,7 +69,7 @@ but does not inherit from ``gym``. This avoids the need to worry about consisten
 dimensioned observation and action spaces.
 
 Interacting with the ``RampClusterEnvironment`` is straightforward. At each simulation
-step, there will be a job requesting to be placed on the cluster and, except on reset,
+step, there will be a job requesting to be placed on the cluster and
 there will be a series of jobs already running on the cluster.
 
 When calling ``RampClusterEnvironment.step()``, you must pass a ``ddls.environments.ramp_cluster.actions.action.Action`` object.
