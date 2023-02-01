@@ -48,7 +48,7 @@ as a ``ddls.demands.job.Job`` and (2) a series of resource management actions de
 cluster. All of the consequences of the computation graph, the cluster's architecture, and
 the resource management decisions taken will be evaluated by the underlying simulation logic
 of this ``ddls`` library. This enables you as a researcher to focus on developing
-more performance resource management strategies, such as the PAC-ML method which we developed,
+more performant resource management strategies, such as the PAC-ML method which we developed,
 rather than having to worry about building an entire cluster simulation or accessing
 a real production cluster.
 
@@ -83,10 +83,7 @@ Currently, the resource management actions which must be specified are:
 
 Note that the above actions can be taken by any agent. This could be a heuristic,
 such as one of the heuristics available in ``ddls.environments.ramp_cluster.agents`` or your own heuristic,
-or a learning agent. (see ``ddls.environments.ramp_job_partitioning.ramp_job_partitioning_environment.RampJobPartitioningEnvironment``
-to see how we controlled the operation partitioning task with a learning agent and all
-other tasks with standard heuristics and then interfaced with the ``RampClusterEnvironment`` object each
-time ``RampJobPartitioningEnvironment.step()`` was called).
+or a learning agent (see ``ddls.environments.ramp_job_partitioning.ramp_job_partitioning_environment.RampJobPartitioningEnvironment`` and the below 'Using the RAMP Simulator in your Own Code' section).
 
 Various tricks have been used in ``RampClusterEnvironment`` to enable the simulation
 to scale to large network sizes without long simulation times. For example, the simulation
@@ -97,11 +94,12 @@ For a full understanding of how this underlying simulation works, you should rea
 Using the RAMP Simulator in your Own Code
 =========================================
 This DDLS library and its assoicated cluster simulator have been built to be highly
-customisable to any research project.
+customisable to many different DDL research project.
 
-Many DDL research projects focus on a specific part of the cluster. For example,
+Most DDL research projects focus on a specific part of the cluster, and a lot of customisation to accommodate for novel ideas. For example,
 in the PAC-ML paper, we considered the question of how much to partition computation
-jobs.
+jobs, and required the use of a graph neural network, reinforcement learning, our own concept of what an 'action' was, and our own
+reward and observation function.
 
 To succinctly frame your own problem without having to worry about all the components
 of the DDLS simulation, you can create your own environment which interfaces with
