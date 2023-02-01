@@ -93,7 +93,7 @@ For a full understanding of how this underlying simulation works, you should rea
 
 Using the RAMP Simulator in your Own Code
 =========================================
-This DDLS library and its assoicated cluster simulator have been built to be highly
+This ``ddls`` library and its assoicated cluster simulator have been built to be highly
 customisable to many different DDL research project.
 
 Most DDL research projects focus on a specific part of the cluster, and a lot of customisation to accommodate for novel ideas. For example,
@@ -102,7 +102,7 @@ jobs, and required the use of a graph neural network, reinforcement learning, ou
 reward and observation function.
 
 To succinctly frame your own problem without having to worry about all the components
-of the DDLS simulation, you can create your own environment which interfaces with
+of the ``ddls`` simulation, you can create your own environment which interfaces with
 the ``RampClusterEnvironment``.
 
 An example of how you might go about doing this is given in the ``ddls.environments.ramp_job_partitioning.ramp_job_partitioning_environment.RampJobPartitioningEnvironment``
