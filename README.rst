@@ -150,7 +150,7 @@ underlying simulation logic of ``ddls``.
             return obs
 
         def step(self, action):
-            # Use your custom action to define a RAMP cluster action
+            # **Use your custom action to define a RAMP cluster action**
             ramp_action = Action(op_partition=...,
                                  op_placement=...,
                                  op_schedule=...,
