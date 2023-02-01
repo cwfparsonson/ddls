@@ -96,7 +96,7 @@ Using the RAMP Simulator in your Own Code
 This ``ddls`` library and its assoicated cluster simulator have been built to be highly
 customisable to many different DDL research projects.
 
-Most DDL research projects focus on a specific part of the cluster, and a lot of customisation to accommodate for novel ideas. For example,
+Most DDL research projects focus on a specific part of the cluster, and require a lot of customisation to accommodate for novel ideas. For example,
 in the PAC-ML paper, we considered the question of how much to partition computation
 jobs, and required the use of a graph neural network, reinforcement learning, our own concept of what an 'action' was, and our own
 reward and observation function.
@@ -123,7 +123,7 @@ is integrate the chosen actions into a ``ddls.environments.ramp_cluster.actions.
 and pass it the ``RampClusterEnvironment``. This is powerful because it means that
 you as a researcher can define your own custom environment class with your own actions, observations, rewards, and decision-making agent
 and still have the ``RampClusterEnvironment`` perform the underlying DDL simulation logic. This makes
-the ``ddls`` compatible with many research projects beyond just what was focused on by PAC-ML.
+the ``ddls`` library compatible with many research projects beyond just what was focused on by PAC-ML.
 
 Below is an example of how you might go about building your own custom environment
 with your own framing of actions, rewards, observations, and so on but using the
@@ -161,7 +161,7 @@ underlying simulation logic of ``ddls``.
             # Step the RAMP simulator N.B. No useful info is returned by RampClusterEnvironment.step()
             _ = self.cluster.step(ramp_action)
 
-            # **Your own custom step here to extract any custom observation, reward, done, info data you may want**
+            # **Your own custom step here to extract data from the RAMP cluster as you wish**
 
             return obs, reward, done, info
 
