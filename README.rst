@@ -94,7 +94,7 @@ For a full understanding of how this underlying simulation works, you should rea
 Using the RAMP Simulator in your Own Code
 =========================================
 This ``ddls`` library and its assoicated cluster simulator have been built to be highly
-customisable to many different DDL research project.
+customisable to many different DDL research projects.
 
 Most DDL research projects focus on a specific part of the cluster, and a lot of customisation to accommodate for novel ideas. For example,
 in the PAC-ML paper, we considered the question of how much to partition computation
