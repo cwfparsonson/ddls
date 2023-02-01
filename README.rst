@@ -127,9 +127,10 @@ the ``ddls`` compatible with many research projects beyond just what was focused
 
 Below is an example of how you might go about building your own custom environment
 with your own framing of actions, rewards, observations, and so on but using the
-underlying simulation logic of ``ddls``:
+underlying simulation logic of ``ddls``.
 
 .. code:: python
+
     from ddls.environments.ramp_cluster.ramp_cluster_environment import RampClusterEnvironment
     from ddls.environments.ramp_cluster.actions.action import Action
 
